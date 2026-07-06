@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Manage Locations</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+  </head>
+  <body>
+    <h1>Locations</h1>
+    <a href="/admin/locations/create">Create New Location</a>
+    <table border="1">
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Description</th>
+        <th>Питомник</th>
+        <th>Лечение</th>
+        <th>Actions</th>
+      </tr>
+      {{range .}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.Description}}</td>
+        <td>{{if .HasNursery}}✅{{else}}❌{{end}}</td>
+        <td>{{if .HasHealing}}✅{{else}}❌{{end}}</td>
+        <td>
+          <a href="/admin/locations/edit?id={{.ID}}">Edit</a>
+          <form
+            action="/admin/locations/delete"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="id" value="{{.ID}}" />
+            <button type="submit" onclick="return confirm('Delete?')">
+              Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+  </body>
+</html>

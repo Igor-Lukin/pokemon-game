@@ -1,0 +1,48 @@
+﻿body {
+  font-family: Arial, sans-serif;
+  background-color: #edfffe;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  max-width: 600px;
+  margin: 50px auto;
+  padding: 20px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+  text-align: center;
+}
+
+h1 {
+  color: #333;
+}
+
+.news {
+  margin-bottom: 20px;
+}
+
+.buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.btn {
+  padding: 10px 20px;
+  color: #2f241f;
+  text-decoration: none;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  border-radius: 6px;
+}
+
+.btn:hover {
+}
+
+input {
+  width: 100%;
+  padding: 10px;
+  margin: 10px 0;
+  border: 1px solid #ddd;
+}

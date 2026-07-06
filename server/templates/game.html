@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, user-scalable=no"
+    />
+    <title>Pokémon World — игра</title>
+    <link rel="stylesheet" href="/static/css/game.css" />
+    <link rel="stylesheet" href="/static/css/pokedex.css" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body id="body">
+    <div class="app-wrapper">
+      <!-- ШАПКА -->
+      <div class="game-header">
+        <div class="header-left"></div>
+        <div class="header-center">
+          <div class="header-icon">👤</div>
+          <div class="header-icon" id="my-pokemons-icon">🐾</div>
+          <div class="header-icon" id="inventory-icon">🎒</div>
+          <div class="header-icon">📦</div>
+          <div class="header-icon">✉️</div>
+          <div class="header-icon" id="pokedex-icon">📘</div>
+          <div class="header-icon" id="search-wild-icon">🌿</div>
+          <div class="header-icon" id="diary-icon">📔</div>
+        </div>
+        <div class="header-right">
+          <span class="username" id="header-username">{{.Username}}</span>
+          <div class="header-icon help-icon">❓</div>
+          <div class="header-icon exit-icon">✖️</div>
+        </div>
+      </div>
+
+      <!-- НОВЫЙ КОНТЕЙНЕР -->
+      <div id="divGameContent">
+        <div id="divVisios">
+          <!-- Блок локации -->
+          <div id="divVisioLoc" class="location-panel">
+            <div class="exits-block">
+              <div class="panel-header">🚪 ПЕРЕХОДЫ</div>
+              <div class="location-links" id="location-links">
+                <div class="exit-placeholder">Загрузка...</div>
+              </div>
+            </div>
+            <div class="description-block">
+              <h2 id="location-name">Лес Пикачу</h2>
+              <div class="location-description" id="location-description">
+                Вы находитесь в густом лесу...
+              </div>
+              <div class="location-image" id="location-image"></div>
+            </div>
+            <div class="npc-block">
+              <div class="panel-header">🧙 ПЕРСОНАЖИ</div>
+              <div class="npc-list" id="npc-list">
+                <div class="npc-placeholder">Загрузка...</div>
+              </div>
+              <div
+                id="location-services"
+                class="location-services"
+                style="display: none"
+              >
+                <div class="service-btn" id="heal-btn">💊 Лечение</div>
+                <div class="service-btn" id="nursery-btn">🥚 Питомник</div>
+              </div>
+            </div>
+          </div>
+          <!-- Дополнительные блоки (торговля, бой) -->
+          <div id="divVisioTrade" style="display: none"></div>
+          <div id="divVisioFight" style="display: none">
+            <!-- Здесь размещён код окна битвы, который Вы прислали -->
+            <div id="divFightI">
+              <template id="battle-player-template"></template>
+            </div>
+            <div id="divFightH">...</div>
+            <div id="divFightData">
+              <div id="divFightOptions" class="txtgray2">
+                <div class="agro"></div>
+              </div>
+              <div id="divFightRaund" class="">
+                <div id="divFightAction" class="rednote">ТОРОПИТЕСЬ!</div>
+                <div id="divFightTimer" class="attention">
+                  <div class="progressbar"><div style="width: 0%"></div></div>
+                  <div class="timeout" style="display: none">...</div>
+                </div>
+              </div>
+              <div id="divFightWeather"><div class="iconweather w0"></div></div>
+              <div id="divFightLog" class="divFightLog"></div>
+              <div
+                id="divFightCaptcha"
+                class="divFightCaptcha"
+                style="display: none"
+              ></div>
+              <div id="divFightBottom">
+                <div id="divFightInfoI"></div>
+                <div id="divFightButtons" style="visibility: visible">
+                  <div class="button red" id="surrender-btn">Сдаться</div>
+                </div>
+                <div id="divFightInfoH"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Чат -->
+        <div class="chat-panel">
+          <div class="chat-block">
+            <div class="chat-messages" id="chat-messages">
+              <div class="message">
+                <span class="sender">Система:</span
+                ><span class="text">Добро пожаловать в чат!</span>
+              </div>
+            </div>
+            <div class="chat-inputs">
+              <input
+                type="text"
+                id="recipient"
+                placeholder="👤 Получатель"
+                value="все"
+                class="recipient-input"
+              />
+              <input
+                type="text"
+                id="message-input"
+                placeholder="💬 Введите сообщение..."
+                class="message-input"
+              />
+              <button id="send-btn" class="send-btn">→</button>
+            </div>
+          </div>
+          <div class="users-block">
+            <div class="panel-header">👥 ИГРОКИ ОНЛАЙН</div>
+            <div class="user-list" id="user-list">
+              <div class="user">Игрок1</div>
+              <div class="user">Игрок2</div>
+              <div class="user">Тренер Ли</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Покедекс -->
+    <div id="pokedex-panel" class="pokedex-panel">
+      <div class="pokedex-content">
+        <div class="pokedex-search">
+          <input
+            type="text"
+            id="pokedex-search-input"
+            placeholder="Введите имя или номер покемона для поиска."
+          />
+          <span class="search-icon">🔍</span>
+        </div>
+        <div class="pokedex-subtitle">
+          Покедекс - электронное устройство с информацией о всех покемонах.
+        </div>
+        <div class="pokedex-types-section">
+          <div class="pokedex-types-title">Типы покемонов</div>
+          <div class="pokedex-types-grid" id="pokedex-types-grid"></div>
+        </div>
+        <div
+          id="pokedex-detail"
+          class="pokedex-detail"
+          style="display: none"
+        ></div>
+        <button class="pokedex-collapse-btn" id="pokedex-collapse-btn">
+          ▲
+        </button>
+      </div>
+    </div>
+
+    <!-- Окно питомника -->
+    <div class="divDockPanels" id="nursery-panel" style="display: none">
+      <div class="divDockPanelsArrow"></div>
+      <div class="divDockPanelsTitle">
+        <span class="divDockPanelsTitleText">🥚 ПИТОМНИК</span>
+        <div class="button close justicon" id="nursery-close">
+          <span class="icon icomoon icon-x">✖</span>
+        </div>
+      </div>
+      <div class="nursery-search">
+        <input
+          type="text"
+          id="nursery-search-input"
+          placeholder="Поиск по номеру или имени покемона..."
+        />
+      </div>
+      <div class="nursery-list" id="nursery-list">
+        <div class="nursery-loading">Загрузка...</div>
+      </div>
+    </div>
+
+    <!-- Окно инвентаря -->
+    <div class="divDockPanels" id="inventory-dock">
+      <div class="divDockPanelsArrow" id="inventory-dock-arrow"></div>
+      <div class="divDockPanelsTitle">
+        <div class="divDockPanelsTitleText">Рюкзак</div>
+        <div class="button close justicon" id="inventory-close">
+          <span class="icon icomoon icon-x">✖</span>
+        </div>
+      </div>
+      <div class="divDockPanelsContent">
+        <div class="inventory-tabs">
+          <div class="inv-tab inv-tab-active" data-category="all">Все</div>
+          <div class="inv-tab" data-category="">Загрузка...</div>
+        </div>
+        <div class="inv-search">
+          <input type="text" id="inv-search-input" placeholder="Поиск предметов...">
+        </div>
+        <div class="inventory-list" id="inventory-list">
+          <div class="inv-loading">Загрузка...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Окно команды -->
+    <div class="divDockPanels" id="team-dock">
+      <div class="divDockPanelsArrow" id="team-dock-arrow"></div>
+      <div class="divDockPanelsTitle">
+        <div class="divDockPanelsTitleText">Команда покемонов</div>
+        <div class="divDockPanelsTitleToolbar"></div>
+        <div class="button close justicon" id="team-close">
+          <span class="icon icomoon icon-x">✖</span>
+        </div>
+      </div>
+      <div class="divDockPanelsContent">
+        <div class="panel panelpokes" style="display: block">
+          <div class="divPokeTeam" id="team-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Контекстное меню команды -->
+    <div id="team-context-menu" class="team-context-menu" style="display:none">
+      <div class="ctx-item ctx-item-pokedex" data-pok-id="">Покедекс</div>
+      <div class="ctx-item ctx-item-nursery" data-pok-id="">В питомник</div>
+    </div>
+
+    <!-- Мини-окно информации об атаке -->
+    <div id="attack-info-popup" class="attack-info-popup" style="display:none">
+      <div class="attack-info-body">
+        <div class="attack-info-type-row">
+          <img class="attack-info-type-icon" src="" alt="">
+          <div class="attack-info-names">
+            <span class="attack-info-name-rus"></span>
+            <span class="attack-info-name-eng"></span>
+          </div>
+          <div class="attack-info-header-stats">
+            <span class="ai-header-pp"><span class="detail-label">ПП:</span> <span class="detail-value" id="ai-pp"></span></span>
+            <span class="ai-header-priority"><span class="detail-label">Приоритет:</span> <span class="detail-value" id="ai-priority"></span></span>
+          </div>
+        </div>
+        <div class="attack-info-details">
+          <div class="attack-info-detail"><span class="detail-label">Сила:</span> <span class="detail-value" id="ai-power"></span></div>
+          <div class="attack-info-detail"><span class="detail-label">Точность:</span> <span class="detail-value" id="ai-accuracy"></span></div>
+          <div class="ai-tag-row">
+            <span class="ai-category-badge" id="ai-category-badge"></span>
+            <span class="ai-target-label" id="ai-target-label"></span>
+            <span class="ai-flag" id="ai-contact" style="display:none">Контакт</span>
+            <span class="ai-flag" id="ai-sound" style="display:none">Звук</span>
+            <span class="ai-flag ai-flag-disabled" id="ai-disabled" style="display:none">✖ Не работает</span>
+          </div>
+          <div class="attack-info-desc" id="ai-description"></div>
+        </div>
+      </div>
+      <div class="attack-info-footer">
+        <button class="attack-info-swap-btn" id="attack-info-swap-btn">Сменить атаку</button>
+      </div>
+    </div>
+
+    <!-- Эволюция -->
+    <div id="evolution-popup" class="evolution-popup" style="display:none">
+      <div class="evolution-popup-bg"></div>
+      <div class="evolution-popup-content">
+        <div class="evolution-popup-title">ЭВОЛЮЦИЯ!</div>
+        <div class="evolution-popup-body">
+          <div class="evolution-popup-info" id="evolution-popup-info"></div>
+          <div class="evolution-popup-actions">
+            <button class="evolution-btn" id="evolution-btn-evolve">Эволюционировать</button>
+            <button class="evolution-btn evolution-btn-cancel" id="evolution-btn-cancel">Отложить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Список изучаемых атак -->
+    <div id="learnable-list-popup" class="learnable-list-popup" style="display:none">
+      <div class="learnable-list-header">
+        <span>Изучаемые атаки</span>
+        <span class="learnable-list-close">✖</span>
+      </div>
+      <div class="learnable-list-body" id="learnable-list-body">
+        <div class="learnable-loading">Загрузка...</div>
+      </div>
+    </div>
+
+    <!-- Меню замены в бою -->
+    <div id="battle-switch-menu" class="team-context-menu" style="display:none"></div>
+
+    <!-- Окно Дневник тренера -->
+    <div class="divDockPanels" id="diary-dock">
+      <div class="divDockPanelsArrow" id="diary-dock-arrow"></div>
+      <div class="divDockPanelsTitle">
+        <div class="divDockPanelsTitleText">Дневник тренера</div>
+        <div class="button close justicon" id="diary-close">
+          <span class="icon icomoon icon-x">✖</span>
+        </div>
+      </div>
+      <div class="divDockPanelsContent">
+        <div class="diary-tabs">
+          <div class="diary-tab diary-tab-active" data-tab="weather">Погода</div>
+        </div>
+        <div class="diary-tab-content" id="diary-tab-weather">
+          <div class="diary-weather-info">
+            <div class="diary-weather-region" id="diary-weather-region"></div>
+            <div class="diary-weather-icon" id="diary-weather-icon"></div>
+            <div class="diary-weather-description" id="diary-weather-description"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Окно распределения EV -->
+    <div id="ev-popup" class="ev-popup" style="display:none">
+      <div class="ev-popup-content">
+        <div class="ev-popup-header">
+          <span>Распределение EV</span>
+          <span class="ev-popup-close">✖</span>
+        </div>
+        <div class="ev-popup-body">
+          <div class="ev-popup-stat"></div>
+          <div class="ev-popup-row">
+            <label>Количество EV:</label>
+            <input type="number" class="ev-popup-input" value="1" min="1" max="126" />
+          </div>
+          <div class="ev-popup-row">
+            <label>Доступно: <span class="ev-popup-available"></span></label>
+          </div>
+          <div class="ev-popup-row ev-popup-error" style="display:none"></div>
+          <button class="ev-popup-submit">Готово</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/js/game.js?v={{.Version}}"></script>
+    <script src="/static/js/pokedex.js?v={{.Version}}"></script>
+  </body>
+</html>

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Manage Abilities</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+  </head>
+  <body>
+    <h1>Pokemon Abilities</h1>
+    <a href="/admin/abilities/create">Create New Ability</a>
+    <table border="1">
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Description</th>
+        <th>Actions</th>
+      </tr>
+      {{range .}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.Description}}</td>
+        <td>
+          <a href="/admin/abilities/edit?id={{.ID}}">Edit</a>
+          <form
+            action="/admin/abilities/delete"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="id" value="{{.ID}}" />
+            <button
+              type="submit"
+              onclick="return confirm('Delete this ability?')"
+            >
+              Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+  </body>
+</html>

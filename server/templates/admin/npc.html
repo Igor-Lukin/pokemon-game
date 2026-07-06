@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Manage NPC</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+  </head>
+  <body>
+    <h1>НПС</h1>
+    <a href="/admin/npc/create">Создать нового НПС</a>
+    <table border="1">
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Location</th>
+        <th>Action</th>
+      </tr>
+      {{range .}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.LocationName}}</td>
+        <td>
+          <a href="/admin/npc/edit?id={{.ID}}">Edit</a>
+          <form
+            action="/admin/npc/delete"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="id" value="{{.ID}}" />
+            <button type="submit" onclick="return confirm('Delete?')">
+              Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+  </body>
+</html>

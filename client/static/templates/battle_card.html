@@ -1,0 +1,51 @@
+<div class="poke pokemonBoxCard pokemonBoxFight minimized" data-p-id="{{.ID}}">
+  <div class="minicardContainer">
+    <div class="minicard">
+      <div class="rank txtgray2"><span>{{.Rank}}</span></div>
+      <div class="image"><img src="{{.ImageURL}}" alt="{{.Name}}" /></div>
+      <div class="boxleft antioverlaybug">
+        <img src="/static/images/pokeball.png" class="ball clickable" />
+        <div class="typ" style="visibility: visible">
+          {{range .Types}}
+          <img src="/static/images/types/{{.}}.png" class="typ" />
+          {{end}}
+        </div>
+        <div class="lvl">{{.Level}}</div>
+      </div>
+      <div class="boxright"><div class="icons antioverlaybug"></div><div class="icons2 antioverlaybug"><span class="icon icomoon icon-star-fill starter" style="display: none;"></span></div><div class="items antioverlaybug"></div></div>
+      <div class="bars">
+        <div class="progressbar barHP max">
+          <div style="width: {{.HpPercent}}%;"></div>
+        </div>
+        <div class="progressbar barEXP">
+          <div style="width: {{.ExpPercent}}%;"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="maincardContainer">
+      <div class="title">
+        <div class="name">{{.Name}}</div>
+        <span class="status-badge" style="display:none"></span>
+        <span class="icon icomoon icon-sex-2 gender"></span>
+      </div>
+  </div>
+  <div class="moves">
+    {{range .Attacks}}
+    <div class="moveBox">
+      <div class="divMove">
+        <div class="divMoveTyp">
+          <img src="/static/images/types/{{.TypeID}}.png" class="typ" />
+        </div>
+        <div class="divMoveInfo clickable">
+          <div class="divMoveTitle category{{.CategoryID}}">{{.Name}}</div>
+          <div class="divMoveFooter">
+            <div class="divMoveIcons"></div>
+            <div class="divMoveParams">PP {{.PP}}/{{.MaxPP}}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {{end}}
+  </div>
+</div>

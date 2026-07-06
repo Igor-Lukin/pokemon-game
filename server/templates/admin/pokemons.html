@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Manage Pokemons</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+  </head>
+  <body>
+    <h1>Pokemons</h1>
+    <a href="/admin/pokemons/create">Create New Pokemon</a>
+    <table border="1">
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Description</th>
+        <th>Primary Type</th>
+        <th>Secondary Type</th>
+        <th>Actions</th>
+      </tr>
+      {{range .}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.Description}}</td>
+        <td>{{.PrimaryType}}</td>
+        <td>{{.SecondaryType}}</td>
+        <td>
+          <a href="/admin/pokemons/edit?id={{.ID}}">Edit</a>
+          <form
+            action="/admin/pokemons/delete"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="id" value="{{.ID}}" />
+            <button
+              type="submit"
+              onclick="return confirm('Delete this pokemon?')"
+            >
+              Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+  </body>
+</html>

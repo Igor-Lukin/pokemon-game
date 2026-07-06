@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html><head><title>Категории предметов — админка</title><link rel="stylesheet" href="/static/css/admin.css"></head>
+<body><h1>Категории предметов</h1>
+<a href="/admin/items/categories/create">+ Создать категорию</a> | <a href="/admin/items">Назад к предметам</a>
+<table border="1"><tr><th>ID</th><th>Название</th><th>Действия</th></tr>
+{{range .}}<tr>
+<td>{{.ID}}</td><td>{{.Name}}</td>
+<td><a href="/admin/items/categories/edit?id={{.ID}}">Ред.</a>
+<form action="/admin/items/categories/delete" method="post" style="display:inline"><input type="hidden" name="id" value="{{.ID}}"><button onclick="return confirm('Удалить?')">Уд.</button></form></td>
+</tr>{{end}}</table>
+</body></html>

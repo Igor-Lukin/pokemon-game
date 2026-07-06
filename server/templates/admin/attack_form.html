@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{{if .Attack.ID}}Редактировать{{else}}Создать{{end}} атаку</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+    <style>
+      .form-group { margin-bottom: 10px; }
+      label { display: inline-block; width: 180px; }
+      input, select, textarea { width: 300px; }
+      .sc-row { margin-bottom: 6px; padding: 6px; border: 1px solid #ccc; border-radius: 4px; background: #f9f9f9; }
+      .sc-row select, .sc-row input { width: auto; }
+      .sc-row label { width: auto; margin-right: 4px; }
+      .sc-remove { margin-left: 8px; cursor: pointer; color: #c00; font-weight: bold; }
+      .sc-add { margin-top: 6px; }
+    </style>
+  </head>
+  <body>
+    <h1>{{if .Attack.ID}}Редактировать{{else}}Создать{{end}} атаку</h1>
+    <form method="POST">
+      <!-- Основная информация -->
+      <div class="form-group">
+        <label>Название (англ.):</label>
+        <input type="text" name="eng_name" value="{{.Attack.EngName}}" />
+      </div>
+      <div class="form-group">
+        <label>Название (рус.):</label>
+        <input type="text" name="name" value="{{.Attack.Name}}" required />
+      </div>
+      <div class="form-group">
+        <label>Тип:</label>
+        <select name="type_id" required>
+          <option value="">-- Выберите тип --</option>
+          {{range .Types}}
+          <option value="{{.ID}}" {{if eq .ID $.Attack.TypeID}}selected{{end}}>
+            {{.Name}}
+          </option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Сила (оставьте пустым):</label>
+        <input type="number" name="power" value="{{if .Attack.Power.Valid}}{{.Attack.Power.Int64}}{{end}}" />
+      </div>
+      <div class="form-group">
+        <label>Точность (оставьте пустым):</label>
+        <input type="number" name="accuracy" value="{{if .Attack.Accuracy.Valid}}{{.Attack.Accuracy.Int64}}{{end}}" />
+        <label style="width:auto; margin-left:12px">
+          <input type="checkbox" name="never_misses" {{if .Attack.NeverMisses}}checked{{end}} />
+          Никогда не промахивается
+        </label>
+      </div>
+      <div class="form-group">
+        <label>PP (оставьте пустым):</label>
+        <input type="number" name="pp" value="{{if .Attack.PP.Valid}}{{.Attack.PP.Int64}}{{end}}" />
+      </div>
+      <div class="form-group">
+        <label>Категория:</label>
+        <select name="category_id" required>
+          <option value="">-- Выберите категорию --</option>
+          {{range .Categories}}
+          <option value="{{.ID}}" {{if eq .ID $.Attack.CategoryID}}selected{{end}}>
+            {{.Name}}
+          </option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Цель атаки:</label>
+        <select name="target_id" required>
+          <option value="">-- Выберите цель --</option>
+          {{range .Targets}}
+          <option value="{{.ID}}" {{if eq .ID $.Attack.TargetID}}selected{{end}}>
+            {{.Name}}
+          </option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Приоритет (по умолч. 0):</label>
+        <input type="number" name="priority" value="{{.Attack.Priority}}" />
+      </div>
+      <div class="form-group">
+        <label>Описание:</label>
+        <textarea name="description" rows="4" cols="50">{{.Attack.Description}}</textarea>
+      </div>
+
+      <!-- Дополнительные поля -->
+      <div class="form-group">
+        <label>Контактная атака:</label>
+        <input type="checkbox" name="contact" {{if .Attack.Contact}}checked{{end}} />
+      </div>
+      <div class="form-group">
+        <label>Звуковая атака:</label>
+        <input type="checkbox" name="sound" {{if .Attack.Sound}}checked{{end}} />
+      </div>
+      <div class="form-group">
+        <label>Не работает:</label>
+        <input type="checkbox" name="disabled" {{if .Attack.Disabled}}checked{{end}} />
+        <span style="font-size:11px;color:#888">Атака не работает корректно</span>
+      </div>
+      <div class="form-group">
+        <label>Эффект:</label>
+        <select name="effect_status_id">
+          <option value="">-- Нет --</option>
+          {{range .Statuses}}
+          <option value="{{.ID}}" {{if eq .ID $.Attack.EffectStatusID.Int64}}selected{{end}}>
+            {{.Name}}
+          </option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Шанс статуса (%):</label>
+        <input type="number" name="effect_chance" value="{{.Attack.EffectChance}}" />
+      </div>
+      <div class="form-group">
+        <label>Дрейн / отдача (% от урона):</label>
+        <input type="number" name="drain" value="{{.Attack.Drain}}" />
+        <span style="font-size:11px;color:#888">Отрицательное = отдача, положительное = вампиризм</span>
+      </div>
+      <div class="form-group">
+        <label>Крит. удар (ступень):</label>
+        <input type="number" name="crit_rate" value="{{.Attack.CritRate}}" min="0" />
+      </div>
+      <div class="form-group">
+        <label>Ударов за раунд (мин):</label>
+        <input type="number" name="hits_min" value="{{.Attack.HitsMin}}" min="1" />
+      </div>
+      <div class="form-group">
+        <label>Ударов за раунд (макс):</label>
+        <input type="number" name="hits_max" value="{{.Attack.HitsMax}}" min="1" />
+      </div>
+
+      <!-- Изменения статов -->
+      <h2>Изменения статов</h2>
+      <div id="sc-container">
+        {{$len := len .StatChanges}}
+        {{if gt $len 0}}
+          {{range $i, $sc := .StatChanges}}
+          <div class="sc-row">
+            <select name="sc_stat_id">
+              <option value="">--</option>
+              <option value="1" {{if eq $sc.StatID 1}}selected{{end}}>Атака</option>
+              <option value="2" {{if eq $sc.StatID 2}}selected{{end}}>Защита</option>
+              <option value="3" {{if eq $sc.StatID 3}}selected{{end}}>Скорость</option>
+              <option value="4" {{if eq $sc.StatID 4}}selected{{end}}>Спец. Атака</option>
+              <option value="5" {{if eq $sc.StatID 5}}selected{{end}}>Спец. Защита</option>
+              <option value="6" {{if eq $sc.StatID 6}}selected{{end}}>Точность</option>
+              <option value="7" {{if eq $sc.StatID 7}}selected{{end}}>Ловкость</option>
+            </select>
+            <label>Ступени:</label>
+            <input type="number" name="sc_stages" value="{{$sc.Stages}}" style="width:60px" />
+            <label>Цель:</label>
+            <select name="sc_target">
+              <option value="0" {{if eq $sc.Target 0}}selected{{end}}>Цель</option>
+              <option value="1" {{if eq $sc.Target 1}}selected{{end}}>Себя</option>
+            </select>
+            <label>Шанс %:</label>
+            <input type="number" name="sc_chance" value="{{$sc.Chance}}" style="width:60px" min="0" max="100" />
+            <span class="sc-remove" onclick="this.parentElement.remove()">[X]</span>
+          </div>
+          {{end}}
+        {{else}}
+          <div class="sc-row">
+            <select name="sc_stat_id">
+              <option value="">--</option>
+              <option value="1">Атака</option>
+              <option value="2">Защита</option>
+              <option value="3">Скорость</option>
+              <option value="4">Спец. Атака</option>
+              <option value="5">Спец. Защита</option>
+              <option value="6">Точность</option>
+              <option value="7">Ловкость</option>
+            </select>
+            <label>Ступени:</label>
+            <input type="number" name="sc_stages" value="0" style="width:60px" />
+            <label>Цель:</label>
+            <select name="sc_target">
+              <option value="0">Цель</option>
+              <option value="1">Себя</option>
+            </select>
+            <label>Шанс %:</label>
+            <input type="number" name="sc_chance" value="100" style="width:60px" min="0" max="100" />
+            <span class="sc-remove" onclick="this.parentElement.remove()">[X]</span>
+          </div>
+        {{end}}
+      </div>
+      <button type="button" class="sc-add" onclick="addScRow()">+ Добавить изменение стата</button>
+
+      <div class="form-group" style="margin-top:20px">
+        <button type="submit">Сохранить</button>
+        <a href="/admin/attacks">Отмена</a>
+      </div>
+    </form>
+
+    <script>
+      function addScRow() {
+        const container = document.getElementById("sc-container");
+        const row = document.createElement("div");
+        row.className = "sc-row";
+        row.innerHTML =
+          '<select name="sc_stat_id">' +
+            '<option value="">--</option>' +
+            '<option value="1">Атака</option>' +
+            '<option value="2">Защита</option>' +
+            '<option value="3">Скорость</option>' +
+            '<option value="4">Спец. Атака</option>' +
+            '<option value="5">Спец. Защита</option>' +
+            '<option value="6">Точность</option>' +
+            '<option value="7">Ловкость</option>' +
+          '</select>' +
+          '<label> Ступени:</label>' +
+          '<input type="number" name="sc_stages" value="0" style="width:60px" />' +
+          '<label> Цель:</label>' +
+          '<select name="sc_target">' +
+            '<option value="0">Цель</option>' +
+            '<option value="1">Себя</option>' +
+          '</select>' +
+          '<label> Шанс %:</label>' +
+          '<input type="number" name="sc_chance" value="100" style="width:60px" min="0" max="100" />' +
+          '<span class="sc-remove" onclick="this.parentElement.remove()">[X]</span>';
+        container.appendChild(row);
+      }
+    </script>
+  </body>
+</html>

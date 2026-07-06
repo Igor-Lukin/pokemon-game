@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html><head><title>Выдать предмет — админка</title><link rel="stylesheet" href="/static/css/admin.css"></head>
+<body>
+<h1>Выдать предмет тренеру</h1>
+<form method="post">
+<p>Тренер: <select name="user_id">
+{{range .Users}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+</select></p>
+<p>Предмет: <select name="item_id">
+{{range .Items}}<option value="{{.ID}}">{{.Name}}</option>{{end}}
+</select></p>
+<p>Количество: <input type="number" name="quantity" value="1" min="1"></p>
+<button>Выдать</button>
+</form>
+<a href="/admin/items">Назад к предметам</a>
+</body></html>

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Управление атаками</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+  </head>
+  <body>
+    <h1>Атаки покемонов</h1>
+    <a href="/admin/attacks/create">Создать новую атаку</a>
+    <table border="1">
+      <tr>
+        <th>ID</th>
+        <th>Название</th>
+        <th>Тип</th>
+        <th>Сила</th>
+        <th>Точность</th>
+        <th>PP</th>
+        <th>Категория</th>
+        <th>Цель</th>
+        <th>Приоритет</th>
+        <th>Дрейн</th>
+        <th>Не работает</th>
+        <th>Действия</th>
+      </tr>
+      {{range .}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.TypeName}}</td>
+        <td>{{if .Power}}{{.Power}}{{else}}-{{end}}</td>
+        <td>{{if .Accuracy}}{{.Accuracy}}{{else}}-{{end}}</td>
+        <td>{{if .PP}}{{.PP}}{{else}}-{{end}}</td>
+        <td>{{.CategoryName}}</td>
+        <td>{{.TargetName}}</td>
+        <td>{{.Priority}}</td>
+        <td>{{if .Drain}}{{.Drain}}%{{else}}-{{end}}</td>
+        <td>{{if .Disabled}}⚠️{{else}}✔️{{end}}</td>
+        <td>
+          <a href="/admin/attacks/edit?id={{.ID}}">Редактировать</a>
+          <form
+            action="/admin/attacks/delete"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="id" value="{{.ID}}" />
+            <button
+              type="submit"
+              onclick="return confirm('Удалить эту атаку?')"
+            >
+              Удалить
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+  </body>
+</html>

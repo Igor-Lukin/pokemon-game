@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{{if .Pokemon.ID}}Edit{{else}}Create{{end}} Pokemon</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+    <style>
+      .form-group {
+        margin-bottom: 10px;
+      }
+      label {
+        display: inline-block;
+        width: 180px;
+      }
+      input,
+      select,
+      textarea {
+        width: 300px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>{{if .Pokemon.ID}}Edit{{else}}Create{{end}} Pokemon</h1>
+
+    <!-- ОСНОВНАЯ ФОРМА (поля покемона) -->
+    <form method="POST">
+      <div class="form-group">
+        <label>Name:</label>
+        <input type="text" name="name" value="{{.Pokemon.Name}}" required />
+      </div>
+      <div class="form-group">
+        <label>Description:</label>
+        <textarea name="description" rows="4">
+{{.Pokemon.Description}}</textarea
+        >
+      </div>
+      <div class="form-group">
+        <label>Image URL (gif):</label>
+        <input
+          type="text"
+          name="image_url"
+          value="{{if .Pokemon.ImageURL.Valid}}{{.Pokemon.ImageURL.String}}{{end}}"
+        />
+        <small style="display: block; opacity: 0.7"
+          >Пример: /static/images/pokemons/normal/001.gif</small
+        >
+      </div>
+      <div class="form-group">
+        <label>Height (m):</label>
+        <input
+          type="text"
+          name="height"
+          value="{{if .Pokemon.Height.Valid}}{{.Pokemon.Height.Float64}}{{end}}"
+        />
+      </div>
+      <div class="form-group">
+        <label>Weight (kg):</label>
+        <input
+          type="text"
+          name="weight"
+          value="{{if .Pokemon.Weight.Valid}}{{.Pokemon.Weight.Float64}}{{end}}"
+        />
+      </div>
+      <div class="form-group">
+        <label>Base HP:</label>
+        <input
+          type="number"
+          name="base_hp"
+          value="{{.Pokemon.BaseHP}}"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label>Base Attack:</label>
+        <input
+          type="number"
+          name="base_attack"
+          value="{{.Pokemon.BaseAttack}}"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label>Base Defense:</label>
+        <input
+          type="number"
+          name="base_defense"
+          value="{{.Pokemon.BaseDefense}}"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label>Base Speed:</label>
+        <input
+          type="number"
+          name="base_speed"
+          value="{{.Pokemon.BaseSpeed}}"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label>Base Special Attack:</label>
+        <input
+          type="number"
+          name="base_special_attack"
+          value="{{.Pokemon.BaseSpecialAttack}}"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label>Base Special Defense:</label>
+        <input
+          type="number"
+          name="base_special_defense"
+          value="{{.Pokemon.BaseSpecialDefense}}"
+          required
+        />
+      </div>
+      <div class="form-group">
+        <label>Category Power:</label>
+        <input
+          type="number"
+          name="category_power"
+          value="{{.Pokemon.CategoryPower}}"
+        />
+      </div>
+      <div class="form-group">
+        <label>Experience Group:</label>
+        <input
+          type="number"
+          name="experience_group"
+          value="{{.Pokemon.ExperienceGroup}}"
+        />
+      </div>
+      <div class="form-group">
+        <label>Rarity:</label>
+        <input type="number" name="rarity" value="{{.Pokemon.Rarity}}" />
+      </div>
+      <div class="form-group">
+        <label>Female Percentage:</label>
+        <input
+          type="number"
+          name="female_percentage"
+          value="{{.Pokemon.FemalePercentage}}"
+        />
+      </div>
+      <div class="form-group">
+        <label>Male Percentage:</label>
+        <input
+          type="number"
+          name="male_percentage"
+          value="{{.Pokemon.MalePercentage}}"
+        />
+      </div>
+      <div class="form-group">
+        <label>Primary Type:</label>
+        <select name="primary_type_id" required>
+          <option value="">-- Select --</option>
+          {{range .Types}}
+          <option
+            value="{{.ID}}"
+            {{if
+            eq
+            .ID
+            $.Pokemon.PrimaryTypeID}}selected{{end}}
+          >
+            {{.Name}}
+          </option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Secondary Type:</label>
+        <select name="secondary_type_id">
+          <option value="">-- None --</option>
+          {{range .Types}}
+          <option
+            value="{{.ID}}"
+            {{if
+            eq
+            .ID
+            $.Pokemon.SecondaryTypeID.Int64}}selected{{end}}
+          >
+            {{.Name}}
+          </option>
+          {{end}}
+        </select>
+      </div>
+      {{if .Pokemon.ID}}
+      <hr />
+      <h2>Evolution</h2>
+      <div class="form-group">
+        <label>Evolves from:</label>
+        <select name="evolves_from_id">
+          <option value="">-- None --</option>
+          {{range .AllPokemons}}
+          <option
+            value="{{.ID}}"
+            {{if
+            eq
+            .ID
+            $.Pokemon.EvolvesFromID.Int64}}selected{{end}}
+          >
+            {{.Name}} (ID {{.ID}})
+          </option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Evolution Method:</label>
+        <select name="evolution_method_id">
+          <option value="">-- None --</option>
+          {{range .EvoMethods}}
+          <option
+            value="{{.ID}}"
+            {{if
+            eq
+            .ID
+            $.Pokemon.EvolutionMethodID.Int64}}selected{{end}}
+          >
+            {{.Name}}
+          </option>
+          {{end}}
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Evolution Level (if level method):</label>
+        <input
+          type="number"
+          name="evolution_level"
+          value="{{if .Pokemon.EvolutionLevel.Valid}}{{.Pokemon.EvolutionLevel.Int64}}{{end}}"
+        />
+      </div>
+      <div class="form-group">
+        <label>Evolution Item ID (if item method):</label>
+        <input
+          type="number"
+          name="evolution_item_id"
+          value="{{if .Pokemon.EvolutionItemID.Valid}}{{.Pokemon.EvolutionItemID.Int64}}{{end}}"
+        />
+      </div>
+      {{end}}
+      <div class="form-group">
+        <button type="submit">Save Pokemon</button>
+        <a href="/admin/pokemons">Cancel</a>
+      </div>
+    </form>
+    <!-- КОНЕЦ ОСНОВНОЙ ФОРМЫ -->
+
+    {{if .Pokemon.ID}}
+    <hr />
+    <h2>Abilities</h2>
+    <h3>Current Abilities</h3>
+    {{if .Abilities}}
+    <table border="1">
+      <tr>
+        <th>Name</th>
+        <th>Hidden</th>
+        <th>Action</th>
+      </tr>
+      {{range .Abilities}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{if .IsHidden}}Yes{{else}}No{{end}}</td>
+        <td>
+          <form
+            action="/admin/pokemons/ability/remove"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="pokemon_id" value="{{$.Pokemon.ID}}" />
+            <input type="hidden" name="ability_id" value="{{.ID}}" />
+            <button
+              type="submit"
+              onclick="return confirm('Remove this ability?')"
+            >
+              Remove
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+    {{else}}
+    <p>No abilities assigned.</p>
+    {{end}}
+
+    <h3>Add Ability</h3>
+    <form action="/admin/pokemons/ability/add" method="POST">
+      <input type="hidden" name="pokemon_id" value="{{.Pokemon.ID}}" />
+      <select name="ability_id" required>
+        <option value="">-- Select ability --</option>
+        {{range .AllAbilities}}
+        <option value="{{.ID}}">{{.Name}}</option>
+        {{end}}
+      </select>
+      <label><input type="checkbox" name="is_hidden" /> Hidden ability</label>
+      <button type="submit">Add</button>
+    </form>
+
+    <hr />
+    <h2>Habitat Locations</h2>
+    <h3>Current Locations</h3>
+    {{if .Locations}}
+    <table border="1">
+      <tr>
+        <th>Location</th>
+        <th>Rarity</th>
+        <th>Action</th>
+      </tr>
+      {{range .Locations}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{.Rarity}}</td>
+        <td>
+          <form
+            action="/admin/pokemons/location/remove"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="pokemon_id" value="{{$.Pokemon.ID}}" />
+            <input type="hidden" name="location_id" value="{{.ID}}" />
+            <button
+              type="submit"
+              onclick="return confirm('Remove this location?')"
+            >
+              Remove
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+    {{else}}
+    <p>No locations assigned.</p>
+    {{end}}
+
+    <h3>Add Location</h3>
+    <form action="/admin/pokemons/location/add" method="POST">
+      <input type="hidden" name="pokemon_id" value="{{.Pokemon.ID}}" />
+      <select name="location_id" required>
+        <option value="">-- Select location --</option>
+        {{range .AllLocations}}
+        <option value="{{.ID}}">{{.Name}}</option>
+        {{end}}
+      </select>
+      <input
+        type="text"
+        name="rarity"
+        placeholder="Rarity (e.g., common, rare)"
+        size="20"
+      />
+      <button type="submit">Add</button>
+    </form>
+    {{end}} {{if .Pokemon.ID}}
+    <hr />
+    <h2>Attacks</h2>
+    <h3>Current Attacks</h3>
+    {{if .Attacks}}
+    <table border="1">
+      <tr>
+        <th>Name</th>
+        <th>Learn Method</th>
+        <th>Level</th>
+        <th>Action</th>
+      </tr>
+      {{range .Attacks}}
+      <tr>
+        <td>{{.Name}}</td>
+        <td>{{.LearnMethod}}</td>
+        <td>
+          {{if .LevelLearnedAt.Valid}}{{.LevelLearnedAt.Int64}}{{else}}-{{end}}
+        </td>
+        <td>
+          <form
+            action="/admin/pokemons/attack/remove"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="pokemon_id" value="{{$.Pokemon.ID}}" />
+            <input type="hidden" name="attack_id" value="{{.ID}}" />
+            <input
+              type="hidden"
+              name="learn_method_id"
+              value="{{.LearnMethodID}}"
+            />
+            <button
+              type="submit"
+              onclick="return confirm('Remove this attack?')"
+            >
+              Remove
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+    {{else}}
+    <p>No attacks assigned.</p>
+    {{end}}
+
+    <h3>Add Attack</h3>
+    <form action="/admin/pokemons/attack/add" method="POST">
+      <input type="hidden" name="pokemon_id" value="{{.Pokemon.ID}}" />
+      <select name="attack_id" required>
+        <option value="">-- Select attack --</option>
+        {{range .AllAttacks}}
+        <option value="{{.ID}}">{{.Name}}</option>
+        {{end}}
+      </select>
+      <select name="learn_method_id" required>
+        <option value="">-- Learn method --</option>
+        {{range .LearnMethods}}
+        <option value="{{.ID}}">{{.Name}}</option>
+        {{end}}
+      </select>
+      <input
+        type="number"
+        name="level_learned_at"
+        placeholder="Level (if level-up)"
+        step="1"
+      />
+      <button type="submit">Add</button>
+    </form>
+    {{end}}
+  </body>
+</html>

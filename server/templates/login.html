@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Авторизация</title>
+    <link rel="stylesheet" href="/static/css/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <h1>Авторизация</h1>
+      <form id="login-form" method="POST">
+        <input
+          type="text"
+          name="username"
+          placeholder="Имя пользователя"
+          required
+        />
+        <input type="password" name="password" placeholder="Пароль" required />
+        <button type="submit" class="btn">Войти</button>
+      </form>
+    </div>
+    <script src="/static/js/login.js"></script>
+    <!-- Подключение скрипта -->
+  </body>
+</html>

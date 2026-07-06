@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html><head><title>{{if .Item}}Редактировать{{else}}Создать{{end}} предмет — админка</title><link rel="stylesheet" href="/static/css/admin.css"></head>
+<body>
+<h1>{{if .Item}}Редактировать{{else}}Создать{{end}} предмет</h1>
+<form method="post">
+<p>Название: <input name="name" value="{{if .Item}}{{.Item.Name}}{{end}}" required></p>
+<p>Описание: <textarea name="description">{{if .Item}}{{.Item.Description}}{{end}}</textarea></p>
+<p>Категория: <select name="category_id" required>
+{{range .Categories}}<option value="{{.ID}}" {{if $.Item}}{{if eq $.Item.CategoryID .ID}}selected{{end}}{{end}}>{{.Name}}</option>{{end}}
+</select></p>
+<p>Цена: <input type="number" name="price" value="{{if .Item}}{{.Item.Price}}{{else}}0{{end}}"></p>
+<p>Тип эфф.: <select name="effect_type"><option value="">—</option><option value="heal_hp" {{if eq .Item.EffectType "heal_hp"}}selected{{end}}>heal_hp</option><option value="heal_status" {{if eq .Item.EffectType "heal_status"}}selected{{end}}>heal_status</option><option value="revive" {{if eq .Item.EffectType "revive"}}selected{{end}}>revive</option><option value="catch_bonus" {{if eq .Item.EffectType "catch_bonus"}}selected{{end}}>catch_bonus</option><option value="evolve" {{if eq .Item.EffectType "evolve"}}selected{{end}}>evolve</option></select></p>
+<p>Значение эфф.: <input type="number" name="effect_value" value="{{if .Item}}{{.Item.EffectValue}}{{else}}0{{end}}"></p>
+<p>URL иконки: <input name="image_url" value="{{if .Item}}{{.Item.ImageURL}}{{end}}" style="width:300px"></p>
+<button>Сохранить</button>
+</form>
+<a href="/admin/items">Назад</a>
+</body></html>

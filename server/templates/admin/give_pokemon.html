@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Give Pokemon to Trainer</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+  </head>
+  <body>
+    <h1>Выдать покемона тренеру</h1>
+    <form method="POST">
+      <label>Тренер:</label><br />
+      <select name="user_id" required>
+        <option value="">-- Выберите тренера --</option>
+        {{range .Users}}
+        <option value="{{.ID}}">{{.Name}} (ID {{.ID}})</option>
+        {{end}}</select
+      ><br /><br />
+
+      <label>Покемон:</label><br />
+      <select name="pokemon_id" required>
+        <option value="">-- Выберите покемона --</option>
+        {{range .Pokemons}}
+        <option value="{{.ID}}">{{.Name}} (ID {{.ID}})</option>
+        {{end}}</select
+      ><br /><br />
+
+      <label>Уровень (1–100):</label><br />
+      <input type="number" name="level" value="1" min="1" max="100" /><br /><br />
+
+      <label>Индивидуальные значения (IV 0–31):</label><br />
+      <table style="border-collapse:collapse">
+        <tr>
+          <th style="padding:4px 8px">HP</th>
+          <th style="padding:4px 8px">Атака</th>
+          <th style="padding:4px 8px">Защита</th>
+          <th style="padding:4px 8px">Скорость</th>
+          <th style="padding:4px 8px">Сп.Атака</th>
+          <th style="padding:4px 8px">Сп.Защита</th>
+        </tr>
+        <tr>
+          <td style="padding:4px 8px"><input type="number" name="iv_hp" value="0" min="0" max="31" style="width:60px" /></td>
+          <td style="padding:4px 8px"><input type="number" name="iv_attack" value="0" min="0" max="31" style="width:60px" /></td>
+          <td style="padding:4px 8px"><input type="number" name="iv_defense" value="0" min="0" max="31" style="width:60px" /></td>
+          <td style="padding:4px 8px"><input type="number" name="iv_speed" value="0" min="0" max="31" style="width:60px" /></td>
+          <td style="padding:4px 8px"><input type="number" name="iv_special_attack" value="0" min="0" max="31" style="width:60px" /></td>
+          <td style="padding:4px 8px"><input type="number" name="iv_special_defense" value="0" min="0" max="31" style="width:60px" /></td>
+        </tr>
+      </table><br />
+
+      <label>Характер:</label><br />
+      <select name="nature_id" required>
+        <option value="">-- Выберите характер --</option>
+        {{range .Natures}}
+        <option value="{{.ID}}">{{.Name}}{{if .IncreasedStat}} (+{{.IncreasedStat}}{{if .DecreasedStat}}, -{{.DecreasedStat}}{{end}}){{end}}</option>
+        {{end}}</select
+      ><br /><br />
+
+      <button type="submit">Выдать</button>
+      <a href="/admin">Отмена</a>
+    </form>
+  </body>
+</html>
