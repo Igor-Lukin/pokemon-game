@@ -157,6 +157,14 @@
             </select>
             <label>Шанс %:</label>
             <input type="number" name="sc_chance" value="{{$sc.Chance}}" style="width:60px" min="0" max="100" />
+            <label>Погода:</label>
+            <select name="sc_req_weather">
+              <option value="0" {{if eq $sc.ReqWeather 0}}selected{{end}}>Любая</option>
+              <option value="2" {{if eq $sc.ReqWeather 2}}selected{{end}}>Солнце</option>
+              <option value="3" {{if eq $sc.ReqWeather 3}}selected{{end}}>Дождь</option>
+              <option value="4" {{if eq $sc.ReqWeather 4}}selected{{end}}>Град</option>
+              <option value="5" {{if eq $sc.ReqWeather 5}}selected{{end}}>Буря</option>
+            </select>
             <span class="sc-remove" onclick="this.parentElement.remove()">[X]</span>
           </div>
           {{end}}
@@ -181,6 +189,14 @@
             </select>
             <label>Шанс %:</label>
             <input type="number" name="sc_chance" value="100" style="width:60px" min="0" max="100" />
+            <label>Погода:</label>
+            <select name="sc_req_weather">
+              <option value="0">Любая</option>
+              <option value="2">Солнце</option>
+              <option value="3">Дождь</option>
+              <option value="4">Град</option>
+              <option value="5">Буря</option>
+            </select>
             <span class="sc-remove" onclick="this.parentElement.remove()">[X]</span>
           </div>
         {{end}}
@@ -218,6 +234,14 @@
           '</select>' +
           '<label> Шанс %:</label>' +
           '<input type="number" name="sc_chance" value="100" style="width:60px" min="0" max="100" />' +
+          '<label> Погода:</label>' +
+          '<select name="sc_req_weather">' +
+            '<option value="0">Любая</option>' +
+            '<option value="2">Солнце</option>' +
+            '<option value="3">Дождь</option>' +
+            '<option value="4">Град</option>' +
+            '<option value="5">Буря</option>' +
+          '</select>' +
           '<span class="sc-remove" onclick="this.parentElement.remove()">[X]</span>';
         container.appendChild(row);
       }

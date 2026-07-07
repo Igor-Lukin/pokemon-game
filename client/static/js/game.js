@@ -20,6 +20,14 @@ function statusIconHtml(statusId) {
   return '<div class="statuscontainer"><div class="statusimg" style="background-position: ' + pos + ';"></div></div>';
 }
 
+function leechSeedIconHtml() {
+  return '<div class="statuscontainer"><div class="statusimg" style="background-position: -210px 0;"></div></div>';
+}
+
+function trapIconHtml() {
+  return '<div class="statuscontainer"><div class="statusimg" style="background-position: -600px 0;"></div></div>';
+}
+
 function statStageIconHtml(stages) {
   if (!stages || stages.every(s => s === 0)) return "";
   const statX = {1:"-15px", 2:"-30px", 3:"-45px", 4:"-60px", 5:"-75px", 6:"-90px", 7:"-105px"};
@@ -1253,7 +1261,7 @@ async function createBattleCard(pokemon, isPlayer) {
 
   const iconsDiv = card.querySelector(".boxright .icons");
   if (iconsDiv) {
-    iconsDiv.innerHTML = statusIconHtml(pokemon.status_id) + statStageIconHtml(pokemon.stat_stages);
+    iconsDiv.innerHTML = statusIconHtml(pokemon.status_id) + (pokemon.leech_seeded ? leechSeedIconHtml() : "") + (pokemon.trapped ? trapIconHtml() : "") + statStageIconHtml(pokemon.stat_stages);
   }
 
   const movesContainer = card.querySelector(".moves");
@@ -1312,7 +1320,7 @@ function updateBattleCardHp(containerId, pokemon) {
   }
   const iconsDiv = container.querySelector(".boxright .icons");
   if (iconsDiv) {
-    iconsDiv.innerHTML = statusIconHtml(pokemon.status_id) + statStageIconHtml(pokemon.stat_stages);
+    iconsDiv.innerHTML = statusIconHtml(pokemon.status_id) + (pokemon.leech_seeded ? leechSeedIconHtml() : "") + (pokemon.trapped ? trapIconHtml() : "") + statStageIconHtml(pokemon.stat_stages);
   }
   const statusBadge = container.querySelector(".status-badge");
   if (statusBadge) {
@@ -1471,7 +1479,9 @@ function addBattleLogEntry(entry) {
         "заморозка": "заморожен",
         "сон": "усыплён",
         "отравление": "отравлен",
-        "сильное отравление": "сильно отравлен"
+        "сильное отравление": "сильно отравлен",
+        "семена-пиявки": "внедрены семена-пиявки",
+        "ловушка": "попал в ловушку"
       };
       eventText.textContent = statusNames[entry.status_event] || entry.status_event;
       statusEl.appendChild(eventText);

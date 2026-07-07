@@ -57,15 +57,16 @@ type Attack struct {
 }
 
 type StatChangeRow struct {
-	StatID int
-	Stages int
-	Target int
-	Chance int
+	StatID     int
+	Stages     int
+	Target     int
+	Chance     int
+	ReqWeather int // 0 = любая погода; иначе только при этой погоде (id из таблицы weather)
 }
 
 func loadStatChangesForAttack(attackID int) []StatChangeRow {
 	rows, err := db.DB.Query(`
-		SELECT stat_id, stages, target, chance
+		SELECT stat_id, stages, target, chance, COALESCE(req_weather, 0)
 		FROM attack_stat_changes
 		WHERE attack_id = ?
 	`, attackID)
@@ -76,7 +77,7 @@ func loadStatChangesForAttack(attackID int) []StatChangeRow {
 	var scs []StatChangeRow
 	for rows.Next() {
 		var sc StatChangeRow
-		if rows.Scan(&sc.StatID, &sc.Stages, &sc.Target, &sc.Chance) == nil {
+		if rows.Scan(&sc.StatID, &sc.Stages, &sc.Target, &sc.Chance, &sc.ReqWeather) == nil {
 			scs = append(scs, sc)
 		}
 	}
@@ -87,9 +88,9 @@ func saveStatChangesForAttack(attackID int, scs []StatChangeRow) {
 	db.DB.Exec("DELETE FROM attack_stat_changes WHERE attack_id = ?", attackID)
 	for _, sc := range scs {
 		db.DB.Exec(`
-			INSERT INTO attack_stat_changes (attack_id, stat_id, stages, target, chance)
-			VALUES (?, ?, ?, ?, ?)
-		`, attackID, sc.StatID, sc.Stages, sc.Target, sc.Chance)
+			INSERT INTO attack_stat_changes (attack_id, stat_id, stages, target, chance, req_weather)
+			VALUES (?, ?, ?, ?, ?, ?)
+		`, attackID, sc.StatID, sc.Stages, sc.Target, sc.Chance, sc.ReqWeather)
 	}
 }
 
@@ -421,6 +422,7 @@ func parseStatChanges(r *http.Request) []StatChangeRow {
 	stages := r.Form["sc_stages"]
 	targets := r.Form["sc_target"]
 	chances := r.Form["sc_chance"]
+	weathers := r.Form["sc_req_weather"]
 	var scs []StatChangeRow
 	for i := 0; i < len(statIDs); i++ {
 		sid := strings.TrimSpace(statIDs[i])
@@ -431,11 +433,16 @@ func parseStatChanges(r *http.Request) []StatChangeRow {
 		stgInt, _ := strconv.Atoi(strings.TrimSpace(stages[i]))
 		tgtInt, _ := strconv.Atoi(strings.TrimSpace(targets[i]))
 		chInt, _ := strconv.Atoi(strings.TrimSpace(chances[i]))
+		wthInt := 0
+		if i < len(weathers) {
+			wthInt, _ = strconv.Atoi(strings.TrimSpace(weathers[i]))
+		}
 		scs = append(scs, StatChangeRow{
-			StatID: sidInt,
-			Stages: stgInt,
-			Target: tgtInt,
-			Chance: chInt,
+			StatID:     sidInt,
+			Stages:     stgInt,
+			Target:     tgtInt,
+			Chance:     chInt,
+			ReqWeather: wthInt,
 		})
 	}
 	return scs

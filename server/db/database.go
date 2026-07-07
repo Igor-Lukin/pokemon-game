@@ -265,6 +265,7 @@ func createTables() {
 			stages INTEGER NOT NULL,
 			target INTEGER NOT NULL DEFAULT 0,
 			chance INTEGER NOT NULL DEFAULT 100,
+			req_weather INTEGER NOT NULL DEFAULT 0,
 			FOREIGN KEY(attack_id) REFERENCES attacks(id) ON DELETE CASCADE
 		);`,
 
@@ -305,6 +306,7 @@ func createTables() {
 	DB.Exec("ALTER TABLE locations ADD COLUMN has_healing INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE locations ADD COLUMN region_id INTEGER DEFAULT 1 REFERENCES regions(id)")
 	DB.Exec("ALTER TABLE user_pokemon_learnable_attacks ADD COLUMN current_pp INTEGER DEFAULT 0")
+	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN happiness INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN never_misses INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN recoil INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN drain INTEGER DEFAULT 0")

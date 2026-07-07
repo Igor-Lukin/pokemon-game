@@ -1,0 +1,132 @@
+================================================================
+ЗАДАНИЕ НА ТЕСТ: Фаза B — volatile-статусы вынесены в реестр
+pokemon-game
+================================================================
+Чистый рефакторинг (как Фазы 0/1): поведение боя НЕ должно измениться.
+Перенесены 4 временных (volatile) статуса в отдельный файл volatiles.go.
+Собери, сверь по диффу/бою, впиши отчёт внизу.
+
+----------------------------------------------------------------
+1. ЧТО ИЗМЕНИЛОСЬ
+----------------------------------------------------------------
+Новый файл server/handlers/api/volatiles.go — "дом" volatile-статусов:
+  - volatileFlinch(p, log) bool      — испуг (перенос из processPreTurnStatus)
+  - volatileConfusion(p, log) bool   — замешательство (перенос оттуда же)
+  - volatileLeechSeed(seeder, seeded, log) — семена-пиявки (бывш. processLeechSeed)
+  - volatileTrap(p, log)             — ловушка (бывш. processTrapDamage)
+  - endTurnVolatiles []{name, apply} — реестр ПО-ХОДОВЫХ volatile
+  - runEndTurnVolatiles(a, b, log)   — прогон реестра в прежнем порядке
+
+server/handlers/api/battle.go:
+  - в processPreTurnStatus:
+      * блок испуга заменён на `if !volatileFlinch(p, log) { return false }`
+        (на том же месте — в самом начале функции);
+      * блок замешательства заменён на `if !volatileConfusion(p, log) { return false }`
+        (на том же месте — в конце, после урона по ходам от статуса);
+  - функции processLeechSeed и processTrapDamage УДАЛЕНЫ (перенесены в volatiles.go);
+  - в processTurn 4 вызова
+        processLeechSeed(player, wild); processLeechSeed(wild, player);
+        processTrapDamage(player); processTrapDamage(wild)
+    заменены на ОДИН: runEndTurnVolatiles(player, wild, &log)
+    (порядок внутри тот же: leech(player,wild), leech(wild,player),
+     trap(player), trap(wild));
+  - в обработчике смены (SwitchHandler) вызовы переименованы:
+        processLeechSeed(active, wild) -> volatileLeechSeed(active, wild)
+        processTrapDamage(wild)        -> volatileTrap(wild)
+
+НЕ трогалось: карточки основных статусов (Фазы 0/1), условия по погоде
+(Фаза 2), applyEffectByID.
+
+----------------------------------------------------------------
+2. СОБРАТЬ
+----------------------------------------------------------------
+    go build -o server.exe ./server
+    go vet ./server/...
+Ожидание: чисто. Примечание: в endTurnVolatiles поле `name` не
+используется (только `apply`) — неиспользуемое поле структуры в Go
+допустимо, не ошибка. Если ошибки компиляции — исправь минимально и
+опиши.
+
+----------------------------------------------------------------
+3. ЭТАЛОН ПОВЕДЕНИЯ (как ДО Фазы B)
+----------------------------------------------------------------
+ИСПУГ (Flinch): если p.Flinched — сбросить флаг, лог "<Имя> испуган(а)!",
+   пропустить ход (return false). Проверяется в начале processPreTurnStatus.
+
+ЗАМЕШАТЕЛЬСТВО (Confusion): если p.Confused —
+   - ConfusedTurns--;
+   - если <=0: снять (Confused=false), лог "<Имя> больше не замешана(н)!",
+     покемон ДЕЙСТВУЕТ;
+   - иначе: лог "<Имя> в замешательстве!"; с шансом 33% ударить себя на
+     Level*2 урона, лог "<Имя> ударяет себя в замешательстве! -<N> HP",
+     при HP<=0 — обморок; и пропустить ход (return false). Если 33% не
+     сработало — действует.
+   Порядок: ПОСЛЕ урона по ходам от основного статуса.
+
+СЕМЕНА-ПИЯВКИ (Leech Seed): если seeded.LeechSeeded и оба живы — seeded
+   теряет max(1, MaxHP/8), seeder восстанавливает столько же (не выше
+   своего MaxHP), лог "<seeded> теряет N HP от семян-пиявок! <seeder>
+   восстанавливает N HP!", при HP<=0 обморок seeded.
+
+ЛОВУШКА (Trap): если p.Trapped и жив — p теряет max(1, MaxHP/16), лог
+   "<Имя> получает N урона от ловушки!", при HP<=0 обморок.
+
+ПОРЯДОК по-ходовых в обычном бою (processTurn):
+   leech(player,wild) -> leech(wild,player) -> trap(player) -> trap(wild).
+   (runEndTurnVolatiles обязан давать ровно этот порядок.)
+В бою после смены (SwitchHandler): leech(active,wild), trap(wild) — как было.
+
+----------------------------------------------------------------
+4. КАК ПРОВЕРИТЬ
+----------------------------------------------------------------
+A) Диффом: тексты логов, формулы (1/8, 1/16, Level*2), шанс 33%,
+   позиции вызовов (испуг в начале, замешательство в конце), и особенно
+   ПОРЯДОК в runEndTurnVolatiles (leech оба направления, потом trap оба).
+B) (опц.) Боем: навесить замешательство/семена/ловушку/испуг и сверить
+   сообщения и урон.
+
+Тонкость: порядок важен, т.к. при обмороке от семян ловушка на том же
+покемоне пропускается (guard IsFainted). runEndTurnVolatiles должен
+сохранять исходную последовательность.
+
+----------------------------------------------------------------
+5. ОТЧЁТ (заполни ниже)
+----------------------------------------------------------------
+[x] go build — успех? (если нет — ошибки и что поправил)
+    да, без ошибок.
+[x] go vet — вывод
+    чистый вывод, без ошибок и предупреждений.
+[x] Испуг — как эталон (лог + пропуск)?
+    да. volatileFlinch: если p.Flinched → сброс флага, лог "<Имя> испуган(а)!",
+    return false. Позиция в processPreTurnStatus — сразу после IsFainted.
+[x] Замешательство — декремент/снятие/33% самоудар/пропуск — как эталон?
+    да. volatileConfusion: ConfusedTurns--; при <=0 снятие + лог;
+    иначе лог + 33% самоудар Level*2 + обморок при 0 HP. Позиция — после OnTurn.
+[x] Семена-пиявки — урон/лечение/лог — как эталон?
+    да. volatileLeechSeed: dmg = max(1, MaxHP/8); seeded -= dmg, seeder += dmg
+    (не выше MaxHP); лог + обморок при 0 HP.
+[x] Ловушка — урон/лог — как эталон?
+    да. volatileTrap: dmg = max(1, MaxHP/16); p -= dmg; лог + обморок при 0 HP.
+[x] Порядок по-ходовых (leech,leech,trap,trap) сохранён?
+    да. runEndTurnVolatiles → endTurnVolatiles: сначала "семена-пиявки"
+    (leech(a,b), leech(b,a)), потом "ловушка" (trap(a), trap(b)).
+[x] SwitchHandler: leech(active,wild)+trap(wild) — как было?
+    да. volatileLeechSeed(active,wild), volatileTrap(wild) — те же вызовы,
+    что и раньше (processLeechSeed/processTrapDamage), только переименованы.
+[x] Проверял диффом / боем / оба?
+    чтением исходного кода (volatiles.go, battle.go) и диффа.
+[ ] Расхождения или подозрения:
+    Не обнаружено. Все 4 volatile-статуса перенесены дословно: те же тексты,
+    те же формулы (1/8, 1/16, Level*2), те же шансы (33%), тот же порядок.
+    Поле name в endTurnVolatiles не используется — Go не ругается (не локальная
+    переменная). processLeechSeed/processTrapDamage удалены из battle.go без
+    замены (their code lives in volatiles.go now).
+
+ТЕКСТ КОММЕНТАРИЯ АГЕНТА:
+Фаза B пройдена. go build и go vet чисты. Все 4 volatile-статуса (испуг,
+замешательство, семена-пиявки, ловушка) переехали из battle.go в новый файл
+volatiles.go без малейшего изменения логики/текстов/формул/порядка.
+processPreTurnStatus вызывает volatileFlinch (в начале) и volatileConfusion
+(после OnTurn). По-ходовые эффекты собраны в реестр endTurnVolatiles и
+прогоняются runEndTurnVolatiles в прежнем порядке: leech,leech,trap,trap.
+SwitchHandler использует volatileLeechSeed+volatileTrap напрямую.

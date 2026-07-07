@@ -494,7 +494,7 @@ body {
 .minicard .boxright .icons {
   clear: both;
   float: right;
-  width: 62px;
+  width: auto;
   text-align: right;
   height: 36px;
   margin-top: -25px;

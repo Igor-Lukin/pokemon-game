@@ -26,10 +26,11 @@ func newBattleID() string {
 // ======================== Data Structures ========================
 
 type StatChange struct {
-	StatID int `json:"stat_id"`
-	Stages int `json:"stages"`
-	Target int `json:"target"`
-	Chance int `json:"chance"`
+	StatID     int `json:"stat_id"`
+	Stages     int `json:"stages"`
+	Target     int `json:"target"`
+	Chance     int `json:"chance"`
+	ReqWeather int `json:"req_weather"` // 0 = любая погода; иначе срабатывает только при этой погоде
 }
 
 type BattleMove struct {
@@ -74,6 +75,7 @@ type BattlePokemon struct {
 	SecondaryTypeID *int          `json:"secondary_type_id,omitempty"`
 	ImageURL        string        `json:"image_url"`
 	StatusID        int           `json:"status_id"`
+	Happiness       int           `json:"-"`
 	Moves           []BattleMove  `json:"moves"`
 	IsFainted       bool          `json:"is_fainted"`
 	// In-battle volatile state
@@ -82,6 +84,8 @@ type BattlePokemon struct {
 	ConfusedTurns int       `json:"-"`
 	Flinched     bool       `json:"-"`
 	PoisonTurns  int        `json:"-"`
+	LeechSeeded  bool       `json:"leech_seeded,omitempty"`
+	Trapped      bool       `json:"trapped,omitempty"`
 	StatStages   StatStages `json:"stat_stages"`
 }
 
@@ -221,6 +225,23 @@ func effectiveStat(base int, stage int) int {
 	return val
 }
 
+// critChanceForLevel возвращает базовый шанс критического удара по уровню крита.
+// Уровень: 1→7%, 2→13%, 3→25%, 4→33%, 5→50%. Значения вне диапазона клампятся.
+func critChanceForLevel(level int) float64 {
+	switch {
+	case level <= 1:
+		return 0.07
+	case level == 2:
+		return 0.13
+	case level == 3:
+		return 0.25
+	case level == 4:
+		return 0.33
+	default: // 5 и выше
+		return 0.50
+	}
+}
+
 func calculateDamage(attacker, defender *BattlePokemon, move *BattleMove) (damage int, isCrit bool, effectiveness float64) {
 	if move.CategoryID == 3 || move.Power == 0 {
 		return 0, false, 1
@@ -229,8 +250,13 @@ func calculateDamage(attacker, defender *BattlePokemon, move *BattleMove) (damag
 	// Random factor
 	r := 0.85 + mathrand.Float64()*0.15
 
-	// Critical hit (6.25%)
-	isCrit = mathrand.Float64() < 0.0625
+	// Critical hit: шанс зависит от уровня крита (базовый 1 + crit_rate атаки),
+	// при максимальном счастье атакующего (255) итоговый шанс +50%.
+	critChance := critChanceForLevel(1 + move.CritRate)
+	if attacker.Happiness >= 255 {
+		critChance *= 1.5
+	}
+	isCrit = mathrand.Float64() < critChance
 	critMult := 1.0
 	if isCrit {
 		critMult = 1.5
@@ -241,10 +267,8 @@ func calculateDamage(attacker, defender *BattlePokemon, move *BattleMove) (damag
 	if move.CategoryID == 1 { // physical
 		a = effectiveStat(attacker.Attack, attacker.StatStages[1])
 		d = effectiveStat(defender.Defense, defender.StatStages[2])
-		// Burn halves physical attack
-		if attacker.StatusID == 3 {
-			a = a / 2
-		}
+		// Множитель атаки от статуса (ожог ×0.5) — из карточки статуса.
+		a = int(float64(a) * statMultiplier(attacker.StatusID, 1))
 	} else { // special
 		a = effectiveStat(attacker.SpecialAttack, attacker.StatStages[4])
 		d = effectiveStat(defender.SpecialDefense, defender.StatStages[5])
@@ -330,7 +354,7 @@ func makeEntry(round int, pokemon *BattlePokemon, move *BattleMove, damage int, 
 	return e
 }
 
-func executeDamagingMove(attacker, defender *BattlePokemon, move *BattleMove, round int, log *[]BattleLogEntry) (fainted bool, weatherChange int) {
+func executeDamagingMove(attacker, defender *BattlePokemon, move *BattleMove, weatherID, round int, log *[]BattleLogEntry) (fainted bool, weatherChange int) {
 	hit := false
 
 	if move.HitsMin > 1 {
@@ -406,9 +430,9 @@ func executeDamagingMove(attacker, defender *BattlePokemon, move *BattleMove, ro
 
 	if hit && !fainted {
 		weatherChange = applyEffectByID(attacker, defender, move, round, log)
-		applyStatChanges(attacker, defender, move, round, log)
+		applyStatChanges(attacker, defender, move, weatherID, round, log)
 	} else {
-		applyStatChanges(attacker, nil, move, round, log)
+		applyStatChanges(attacker, nil, move, weatherID, round, log)
 	}
 
 	return
@@ -419,164 +443,48 @@ func processPreTurnStatus(p *BattlePokemon, log *[]BattleLogEntry) bool {
 		return true
 	}
 
-	if p.Flinched {
-		p.Flinched = false
-		*log = append(*log, BattleLogEntry{
-			Round:    0,
-			PokemonName: p.Name,
-			Message:   p.Name + " испуган(а)!",
-		})
+	// Испуг (volatile) — может пропустить ход. Логика в volatiles.go.
+	if !volatileFlinch(p, log) {
 		return false
 	}
 
-	switch p.StatusID {
-	case 2: // Paralysis
-		if mathrand.Intn(100) < 25 {
-			return false
-		}
-	case 4: // Freeze
-		if mathrand.Intn(100) < 20 {
-			p.StatusID = 1
-			*log = append(*log, BattleLogEntry{
-				Round:    0,
-				PokemonName: p.Name,
-				Message:   p.Name + " оттаивает!",
-			})
-		} else {
-			return false
-		}
-	case 5: // Sleep
-		if p.SleepTurns > 0 {
-			p.SleepTurns--
-		}
-		if p.SleepTurns > 0 {
-			return false
-		} else {
-			p.StatusID = 1
-			*log = append(*log, BattleLogEntry{
-				Round:    0,
-				PokemonName: p.Name,
-				Message:   p.Name + " просыпается!",
-			})
-		}
-	}
-
-	// Burn damage (1/16 max HP)
-	if p.StatusID == 3 {
-		dmg := p.MaxHP / 16
-		if dmg < 1 {
-			dmg = 1
-		}
-		p.CurrentHP -= dmg
-		*log = append(*log, BattleLogEntry{
-			Round:    0,
-			PokemonName: p.Name,
-			Message:   p.Name + " получает урон от ожога! -" + strconv.Itoa(dmg) + " HP",
-		})
-		if p.CurrentHP <= 0 {
-			p.CurrentHP = 0
-			p.IsFainted = true
-			*log = append(*log, BattleLogEntry{
-				Round:      0,
-				PokemonName: p.Name,
-				Fainted:    true,
-			})
+	// Может ли покемон действовать в этом ходу — из карточки статуса
+	// (паралич 25% пропуск, заморозка/оттаивание, сон/пробуждение).
+	if def, ok := statusRegistry[p.StatusID]; ok && def.CanAct != nil {
+		if !def.CanAct(p, log) {
 			return false
 		}
 	}
 
-	// Poison damage
-	if p.StatusID == 6 {
-		dmg := p.MaxHP / 8
-		if dmg < 1 {
-			dmg = 1
-		}
-		p.CurrentHP -= dmg
-		*log = append(*log, BattleLogEntry{
-			Round:    0,
-			PokemonName: p.Name,
-			Message:   p.Name + " получает урон от отравления! -" + strconv.Itoa(dmg) + " HP",
-		})
-		if p.CurrentHP <= 0 {
-			p.CurrentHP = 0
-			p.IsFainted = true
-			*log = append(*log, BattleLogEntry{
-				Round:      0,
-				PokemonName: p.Name,
-				Fainted:    true,
-			})
-			return false
-		}
-	}
-
-	// Severe poison damage (progressive: 1/16, 2/16, 3/16 ... capped at 15/16)
-	if p.StatusID == 7 {
-		factor := p.PoisonTurns
-		if factor < 1 {
-			factor = 1
-		}
-		if factor > 15 {
-			factor = 15
-		}
-		dmg := p.MaxHP * factor / 16
-		if dmg < 1 {
-			dmg = 1
-		}
-		p.CurrentHP -= dmg
-		p.PoisonTurns++
-		*log = append(*log, BattleLogEntry{
-			Round:    0,
-			PokemonName: p.Name,
-			Message:   p.Name + " получает урон от сильного отравления! -" + strconv.Itoa(dmg) + " HP",
-		})
-		if p.CurrentHP <= 0 {
-			p.CurrentHP = 0
-			p.IsFainted = true
-			*log = append(*log, BattleLogEntry{
-				Round:      0,
-				PokemonName: p.Name,
-				Fainted:    true,
-			})
-			return false
-		}
-	}
-
-	// Check confusion
-	if p.Confused {
-		p.ConfusedTurns--
-		if p.ConfusedTurns <= 0 {
-			p.Confused = false
-			*log = append(*log, BattleLogEntry{
-				Round:    0,
-				PokemonName: p.Name,
-				Message:   p.Name + " больше не замешана(н)!",
-			})
-		} else {
-			*log = append(*log, BattleLogEntry{
-				Round:    0,
-				PokemonName: p.Name,
-				Message:   p.Name + " в замешательстве!",
-			})
-			if mathrand.Intn(100) < 33 {
-				confDmg := p.Level * 2
-				p.CurrentHP -= confDmg
+	// Урон/лечение по ходам берётся из карточки статуса (реестр statusRegistry).
+	// Заменяет прежние отдельные блоки ожога / отравления / сильного отравления.
+	if def, ok := statusRegistry[p.StatusID]; ok && def.OnTurn != nil {
+		delta := def.OnTurn(p) // отрицательное = урон, положительное = лечение
+		if delta != 0 {
+			p.CurrentHP += delta
+			if delta < 0 {
 				*log = append(*log, BattleLogEntry{
-					Round:      0,
+					Round:       0,
 					PokemonName: p.Name,
-					Message:    p.Name + " ударяет себя в замешательстве! -" + strconv.Itoa(confDmg) + " HP",
+					Message:     p.Name + " получает урон от " + def.TickWord + "! -" + strconv.Itoa(-delta) + " HP",
 				})
-				if p.CurrentHP <= 0 {
-					p.CurrentHP = 0
-					p.IsFainted = true
-					*log = append(*log, BattleLogEntry{
-						Round:      0,
-						PokemonName: p.Name,
-						Fainted:    true,
-					})
-				}
+			}
+			if p.CurrentHP <= 0 {
+				p.CurrentHP = 0
+				p.IsFainted = true
+				*log = append(*log, BattleLogEntry{
+					Round:       0,
+					PokemonName: p.Name,
+					Fainted:     true,
+				})
 				return false
 			}
 		}
+	}
+
+	// Замешательство (volatile) — может ударить себя и пропустить ход. Логика в volatiles.go.
+	if !volatileConfusion(p, log) {
+		return false
 	}
 
 	return true
@@ -590,68 +498,21 @@ func applyEffectByID(attacker, defender *BattlePokemon, move *BattleMove, round 
 		return 0
 	}
 
-	switch move.EffectID {
-	case 2: // Paralysis
-		if defender.StatusID > 1 {
-			return 0
-		}
-		setStatus(defender, 2, round, log)
-	case 3: // Burn
-		if defender.StatusID > 1 {
-			return 0
-		}
-		setStatus(defender, 3, round, log)
-	case 4: // Freeze
-		if defender.StatusID > 1 {
-			return 0
-		}
-		setStatus(defender, 4, round, log)
-	case 5: // Sleep
-		if defender.StatusID > 1 {
-			return 0
-		}
-		setStatus(defender, 5, round, log)
-		defender.SleepTurns = mathrand.Intn(3) + 1
-	case 6: // Poison
-		if defender.StatusID > 1 {
-			return 0
-		}
-		setStatus(defender, 6, round, log)
-	case 7: // Bad poison
-		if defender.StatusID > 1 {
-			return 0
-		}
-		setStatus(defender, 7, round, log)
-		defender.PoisonTurns = 1
-	case 8: // Flinch
-		defender.Flinched = true
-		*log = append(*log, BattleLogEntry{
-			Round:        round,
-			PokemonName:  defender.Name,
-			PokemonImage: defender.ImageURL,
-		})
-	case 13: // Confusion
-		if defender.Confused {
-			return 0
-		}
-		defender.Confused = true
-		defender.ConfusedTurns = mathrand.Intn(3) + 2
-		*log = append(*log, BattleLogEntry{
-			Round:        round,
-			PokemonName:  defender.Name,
-			PokemonImage: defender.ImageURL,
-			StatusEvent:  "замешательство",
-		})
-	case 14: // Sunny weather
-		return 2
-	case 15: // Rain
-		return 3
-	case 16: // Hail
-		return 4
-	case 17: // Sandstorm
-		return 5
+	id := move.EffectID
+	// Погода (14-17): вернуть id погоды — её ставит setBattleWeather выше по стеку.
+	if w, ok := weatherEffects[id]; ok {
+		return w
 	}
-
+	// Основной статус (2-7): наложение через карточку статуса.
+	if _, ok := statusRegistry[id]; ok {
+		inflictMajorStatus(defender, id, round, log)
+		return 0
+	}
+	// Volatile-статус (8,10,11,13): наложение через реестр volatiles.
+	if fn, ok := inflictVolatile[id]; ok {
+		fn(defender, round, log)
+		return 0
+	}
 	return 0
 }
 
@@ -688,6 +549,9 @@ func setBattleWeather(bs *BattleState, weatherID int, log *[]BattleLogEntry) {
 		Message:     "Погода изменилась: " + weatherNames[weatherID],
 	})
 }
+
+// processLeechSeed / processTrapDamage перенесены в volatiles.go
+// (volatileLeechSeed / volatileTrap).
 
 func applyDrain(attacker *BattlePokemon, move *BattleMove, dmg int, turn int, log *[]BattleLogEntry) {
 	if move.Drain == 0 || dmg <= 0 {
@@ -751,7 +615,7 @@ func accuracyEvasionMultiplier(stage int) float64 {
 
 func loadStatChanges(attackID int) []StatChange {
 	rows, err := db.DB.Query(`
-		SELECT stat_id, stages, target, chance
+		SELECT stat_id, stages, target, chance, COALESCE(req_weather, 0)
 		FROM attack_stat_changes
 		WHERE attack_id = ?
 	`, attackID)
@@ -762,18 +626,22 @@ func loadStatChanges(attackID int) []StatChange {
 	var changes []StatChange
 	for rows.Next() {
 		var sc StatChange
-		if rows.Scan(&sc.StatID, &sc.Stages, &sc.Target, &sc.Chance) == nil {
+		if rows.Scan(&sc.StatID, &sc.Stages, &sc.Target, &sc.Chance, &sc.ReqWeather) == nil {
 			changes = append(changes, sc)
 		}
 	}
 	return changes
 }
 
-func applyStatChanges(attacker, defender *BattlePokemon, move *BattleMove, round int, log *[]BattleLogEntry) {
+func applyStatChanges(attacker, defender *BattlePokemon, move *BattleMove, weatherID, round int, log *[]BattleLogEntry) {
 	if len(move.StatChanges) == 0 {
 		return
 	}
 	for _, sc := range move.StatChanges {
+		// Условие погоды: 0 = любая; иначе строка срабатывает только при нужной погоде.
+		if sc.ReqWeather != 0 && weatherID != sc.ReqWeather {
+			continue
+		}
 		if mathrand.Intn(100) >= sc.Chance {
 			continue
 		}
@@ -813,9 +681,8 @@ func applyStatChanges(attacker, defender *BattlePokemon, move *BattleMove, round
 
 func effectiveSpeed(p *BattlePokemon) int {
 	s := p.Speed
-	if p.StatusID == 2 { // Paralysis halves speed
-		s = s / 2
-	}
+	// Множитель скорости от статуса (паралич ×0.5) — из карточки статуса.
+	s = int(float64(s) * statMultiplier(p.StatusID, 3))
 	stage := p.StatStages[3] // index 3 = speed
 	if stage != 0 {
 		mult := statStageMultiplier(stage)
@@ -857,6 +724,62 @@ func processTurn(bs *BattleState, playerMove *BattleMove) []BattleLogEntry {
 	// Pre-turn status processing
 	playerCanAct := processPreTurnStatus(player, &log)
 	wildCanAct := processPreTurnStatus(wild, &log)
+
+	// По-ходовые volatile-эффекты (семена-пиявки, ловушка) — порядок сохранён.
+	runEndTurnVolatiles(player, wild, &log)
+	if player.IsFainted || wild.IsFainted {
+		playerCanAct = !player.IsFainted
+		wildCanAct = !wild.IsFainted
+		if player.IsFainted {
+			log = append(log, BattleLogEntry{
+				Round:       bs.Turn,
+				PokemonName: player.Name,
+				Fainted:     true,
+			})
+		}
+		if wild.IsFainted {
+			log = append(log, BattleLogEntry{
+				Round:       bs.Turn,
+				PokemonName: wild.Name,
+				Fainted:     true,
+			})
+		}
+		if !playerCanAct && !wildCanAct {
+			return log
+		}
+		// Only one can act — execute their move directly without wild move/turn order
+		var attacker, defender *BattlePokemon
+		var move *BattleMove
+		if playerCanAct {
+			attacker, defender = player, wild
+			move = playerMove
+		} else {
+			attacker, defender = wild, player
+			move = chooseWildMove(wild)
+		}
+		if move.CategoryID != 3 && move.Power > 0 {
+			fainted, wc := executeDamagingMove(attacker, defender, move, bs.BattleWeatherID, bs.Turn, &log)
+			if wc > 0 {
+				setBattleWeather(bs, wc, &log)
+			}
+			if fainted {
+				log = append(log, BattleLogEntry{
+					Round:       bs.Turn,
+					PokemonName: defender.Name,
+					Fainted:     true,
+				})
+			}
+		} else {
+			log = append(log, makeEntry(bs.Turn, attacker, move, 0, false, 1, false))
+			if move.CategoryID == 3 {
+				if wc := applyEffectByID(attacker, defender, move, bs.Turn, &log); wc > 0 {
+					setBattleWeather(bs, wc, &log)
+				}
+				applyStatChanges(attacker, defender, move, bs.BattleWeatherID, bs.Turn, &log)
+			}
+		}
+		return log
+	}
 
 	wildMove := chooseWildMove(wild)
 
@@ -931,7 +854,7 @@ func processTurn(bs *BattleState, playerMove *BattleMove) []BattleLogEntry {
 
 	// Execute first attack
 	if firstCanAct && firstMove.CategoryID != 3 && firstMove.Power > 0 {
-		fainted, wc := executeDamagingMove(first, second, firstMove, bs.Turn, &log)
+		fainted, wc := executeDamagingMove(first, second, firstMove, bs.BattleWeatherID, bs.Turn, &log)
 		if wc > 0 {
 			setBattleWeather(bs, wc, &log)
 		}
@@ -949,14 +872,14 @@ func processTurn(bs *BattleState, playerMove *BattleMove) []BattleLogEntry {
 			if wc := applyEffectByID(first, second, firstMove, bs.Turn, &log); wc > 0 {
 				setBattleWeather(bs, wc, &log)
 			}
-			applyStatChanges(first, second, firstMove, bs.Turn, &log)
+			applyStatChanges(first, second, firstMove, bs.BattleWeatherID, bs.Turn, &log)
 		}
 	}
 
 	// Execute second attack if applicable
 	if secondCanAct && secondMove != nil && !second.IsFainted && !first.IsFainted {
 		if secondMove.CategoryID != 3 && secondMove.Power > 0 {
-			fainted, wc := executeDamagingMove(second, first, secondMove, bs.Turn, &log)
+			fainted, wc := executeDamagingMove(second, first, secondMove, bs.BattleWeatherID, bs.Turn, &log)
 			if wc > 0 {
 				setBattleWeather(bs, wc, &log)
 			}
@@ -973,7 +896,7 @@ func processTurn(bs *BattleState, playerMove *BattleMove) []BattleLogEntry {
 				if wc := applyEffectByID(second, first, secondMove, bs.Turn, &log); wc > 0 {
 					setBattleWeather(bs, wc, &log)
 				}
-				applyStatChanges(second, first, secondMove, bs.Turn, &log)
+				applyStatChanges(second, first, secondMove, bs.BattleWeatherID, bs.Turn, &log)
 			}
 		}
 	}
@@ -1009,7 +932,8 @@ func playerPokemonToBattle(userPokemonID int) *BattlePokemon {
 	row := db.DB.QueryRow(`
 		SELECT up.id, up.pokemon_id, p.name, up.level, up.current_hp, up.max_hp,
 		       up.attack, up.defense, up.speed, up.special_attack, up.special_defense,
-		       p.image_url, p.primary_type_id, p.secondary_type_id, up.status_id
+		       p.image_url, p.primary_type_id, p.secondary_type_id, up.status_id,
+		       COALESCE(up.happiness, 0)
 		FROM user_pokemons up
 		JOIN pokemons p ON up.pokemon_id = p.id
 		WHERE up.id = ?
@@ -1021,7 +945,7 @@ func playerPokemonToBattle(userPokemonID int) *BattlePokemon {
 	err := row.Scan(&bp.ID, &bp.PokemonID, &bp.Name, &bp.Level,
 		&bp.CurrentHP, &bp.MaxHP, &bp.Attack, &bp.Defense, &bp.Speed,
 		&bp.SpecialAttack, &bp.SpecialDefense,
-		&imageURL, &bp.PrimaryTypeID, &secType, &bp.StatusID)
+		&imageURL, &bp.PrimaryTypeID, &secType, &bp.StatusID, &bp.Happiness)
 	if err != nil {
 		return nil
 	}
@@ -1421,6 +1345,13 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if active pokemon is trapped
+	oldActive := &bs.PlayerTeam[bs.ActiveIdx]
+	if oldActive.Trapped {
+		http.Error(w, "Покемон пойман в ловушку и не может быть заменён!", http.StatusBadRequest)
+		return
+	}
+
 	bs.ActiveIdx = newIdx
 	bs.Turn++
 
@@ -1433,6 +1364,11 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Pre-turn status damage for wild pokemon (burn/poison)
 	processPreTurnStatus(wild, &logEntries)
+
+	// Leech seed & trap damage for wild pokemon (volatiles.go)
+	volatileLeechSeed(active, wild, &logEntries)
+	volatileTrap(wild, &logEntries)
+
 	if wild.IsFainted {
 		logEntries = append(logEntries, BattleLogEntry{
 			Round:       bs.Turn,
@@ -1464,7 +1400,7 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 		wildMove := chooseWildMove(wild)
 		if wildMove != nil {
 			if wildMove.CategoryID != 3 && wildMove.Power > 0 {
-				fainted, wc := executeDamagingMove(wild, active, wildMove, bs.Turn, &logEntries)
+				fainted, wc := executeDamagingMove(wild, active, wildMove, bs.BattleWeatherID, bs.Turn, &logEntries)
 				if wc > 0 {
 					setBattleWeather(bs, wc, &logEntries)
 				}
@@ -1480,7 +1416,7 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 				if wc := applyEffectByID(wild, active, wildMove, bs.Turn, &logEntries); wc > 0 {
 					setBattleWeather(bs, wc, &logEntries)
 				}
-				applyStatChanges(wild, active, wildMove, bs.Turn, &logEntries)
+				applyStatChanges(wild, active, wildMove, bs.BattleWeatherID, bs.Turn, &logEntries)
 			}
 		}
 	}
@@ -1528,20 +1464,10 @@ func RunHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	success := mathrand.Float64() < 0.5
-	if !success {
-		resp := BattleResponse{
-			Type: "run_fail",
-			Log:  []BattleLogEntry{{Message: "Не удалось убежать!"}},
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
-	}
-
+	// Капитуляция всегда успешна — бой уже завершён на сервере выше.
 	resp := BattleResponse{
 		Type: "run_success",
-		Log:  []BattleLogEntry{{Message: "Вы убежали!"}},
+		Log:  []BattleLogEntry{{Message: "Вы сдались!"}},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
