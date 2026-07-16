@@ -88,6 +88,7 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/api/battle/move", api.MoveHandler).Methods("POST")
 	r.HandleFunc("/api/battle/switch", api.SwitchHandler).Methods("POST")
 	r.HandleFunc("/api/battle/run", api.RunHandler).Methods("POST")
+	r.HandleFunc("/api/battle/catch", api.CatchHandler).Methods("POST")
 
 	// Pokedex
 	r.HandleFunc("/api/pokedex/pokemon/{id}", api.GetPokemonInfo).Methods("GET")
@@ -105,6 +106,8 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/api/user/pokemon/{id}/evolution", api.GetEvolutionHandler).Methods("GET")
 	r.HandleFunc("/api/user/pokemon/{id}/evolve", api.EvolveHandler).Methods("POST")
 	r.HandleFunc("/api/user/pokemon/{id}/ev", api.DistributeEVHandler).Methods("POST")
+	r.HandleFunc("/api/user/pokemon/{id}/hold", api.HoldItemHandler).Methods("POST")
+	r.HandleFunc("/api/user/pokemon/{id}/unhold", api.UnholdItemHandler).Methods("POST")
 
 	// API для локаций
 	r.HandleFunc("/api/locations/{id}", api.GetLocation).Methods("GET")

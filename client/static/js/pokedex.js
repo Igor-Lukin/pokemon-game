@@ -152,34 +152,30 @@ function showPokemonDetail(pokemon) {
   if (typesSectionElem) typesSectionElem.style.display = "none";
   if (typesGridElem) typesGridElem.style.display = "none";
 
-  // Звёздочки категории силы
+  // Звёздочки категории силы (обычные символы — красятся через CSS)
   const starCount = Math.min(pokemon.category_power, 10);
   const stars =
-    "⭐".repeat(starCount) +
+    "★".repeat(starCount) +
     "☆".repeat(10 - starCount);
 
-  // Базовые статы
+  // Базовые статы — полоски-бары с нормировкой к 255 + число
   const stats = pokemon.base_stats || {};
-  const statsHtml = `
-        <div class="stat-row"><span class="stat-label">HP</span> ${
-          stats.hp || 0
-        }</div>
-        <div class="stat-row"><span class="stat-label">ATK</span> ${
-          stats.attack || 0
-        }</div>
-        <div class="stat-row"><span class="stat-label">DEF</span> ${
-          stats.defense || 0
-        }</div>
-        <div class="stat-row"><span class="stat-label">SATK</span> ${
-          stats.special_attack || 0
-        }</div>
-        <div class="stat-row"><span class="stat-label">SDEF</span> ${
-          stats.special_defense || 0
-        }</div>
-        <div class="stat-row"><span class="stat-label">SPD</span> ${
-          stats.speed || 0
-        }</div>
-    `;
+  const MAX_STAT = 255;
+  const statList = [
+    ["HP", stats.hp],
+    ["ATK", stats.attack],
+    ["DEF", stats.defense],
+    ["SATK", stats.special_attack],
+    ["SDEF", stats.special_defense],
+    ["SPD", stats.speed],
+  ];
+  const statsHtml = statList
+    .map(([label, value]) => {
+      const val = value || 0;
+      const pct = Math.min(100, Math.round((val / MAX_STAT) * 100));
+      return `<div class="stat-row"><span class="stat-label">${label}</span><span class="stat-track"><span class="stat-fill" style="width:${pct}%"></span></span><span class="stat-val">${val}</span></div>`;
+    })
+    .join("");
 
   // Типы покемона (картинки)
   const primaryTypeImg = `/static/images/types/${

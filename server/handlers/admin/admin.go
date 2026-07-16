@@ -427,19 +427,7 @@ func GivePokemonHandler(w http.ResponseWriter, r *http.Request) {
 		uid, _ := strconv.Atoi(userID)
 		pid, _ := strconv.Atoi(pokemonID)
 
-		// ---------- 1. Получаем базовые статы покемона ----------
-		var base [6]int // порядок: HP, Attack, Defense, Speed, SpecialAttack, SpecialDefense
-		err := db.DB.QueryRow(`
-            SELECT base_hp, base_attack, base_defense, base_speed,
-                   base_special_attack, base_special_defense
-            FROM pokemons WHERE id = ?`, pid).Scan(
-			&base[0], &base[1], &base[2], &base[3], &base[4], &base[5])
-		if err != nil {
-			http.Error(w, "Pokemon not found", http.StatusNotFound)
-			return
-		}
-
-		// ---------- 2. Параметры покемона ----------
+		// ---------- 1. Параметры покемона ----------
 		levelStr := r.FormValue("level")
 		level := 1
 		if levelStr != "" {
@@ -467,57 +455,32 @@ func GivePokemonHandler(w http.ResponseWriter, r *http.Request) {
 			parseIV("iv_special_attack"),
 			parseIV("iv_special_defense"),
 		}
-		// EV – все 0
-		ev := [6]int{0, 0, 0, 0, 0, 0}
-		// Количество свободных EV (нераспределённых) – 0
-		availableEV := 0
 
-		// ---------- 3. Множители характера (nature) ----------
+		// ---------- 2. Характер (nature) ----------
 		natureID, _ := strconv.Atoi(r.FormValue("nature_id"))
 		if natureID < 1 {
 			natureID = 1
 		}
-		var natureFactors [6]float64
-		// Функция getNatureFactors (может быть определена в этом же файле или в utils)
-		natureFactors, err = utils.GetNatureFactors(natureID)
+
+		// ---------- 3. Пол экземпляра (роллится ВНЕ единой точки) ----------
+		// db.RollGender — единственный источник пола. Привлекательность и статы
+		// считает единая точка utils.CreateUserPokemon.
+		gender, err := db.RollGender(pid)
 		if err != nil {
-			// Если не удалось загрузить – используем нейтральные 1.0
-			natureFactors = [6]float64{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}
+			// не валим выдачу из-за пола — по умолчанию бесполый
+			gender = db.GenderNeutral
 		}
 
-		// ---------- 4. Множители тренировки (train) – пока все 1.0 ----------
-		train := [6]float64{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}
-
-		// ---------- 5. Вычисляем статы с помощью функции из utils ----------
-		currentHP, maxHP, attack, defense, speed, specialAttack, specialDefense :=
-			utils.CalculateStats(base, iv, ev, level, natureFactors, train)
-
-		// ---------- 6. Вставляем запись в таблицу user_pokemons ----------
-		// Для статуса и характера используем id=1 (healthy, hardy)
-		result, err := db.DB.Exec(`
-            INSERT INTO user_pokemons (
-                user_id, pokemon_id, level, experience,
-                current_hp, max_hp, attack, defense, speed,
-                special_attack, special_defense,
-                iv_hp, iv_attack, iv_defense, iv_speed,
-                iv_special_attack, iv_special_defense,
-                ev_hp, ev_attack, ev_defense, ev_speed,
-                ev_special_attack, ev_special_defense,
-                available_ev, position, status_id, nature_id
-            ) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, ?)`,
-			uid, pid, level, currentHP, maxHP, attack, defense, speed, specialAttack, specialDefense,
-			iv[0], iv[1], iv[2], iv[3], iv[4], iv[5],
-			ev[0], ev[1], ev[2], ev[3], ev[4], ev[5],
-			availableEV, natureID)
+		// ---------- 4. Создание экземпляра через ЕДИНУЮ точку ----------
+		// (та же функция зовётся при ловле — utils.CreateUserPokemon).
+		// ВНИМАНИЕ: помещается в первый свободный слот команды 1..6, иначе в
+		// питомник (раньше admin всегда клал в питомник).
+		userPokemonID, err := utils.CreateUserPokemon(uid, pid, level, iv, natureID, gender, 0, 0, false)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		userPokemonID, _ := result.LastInsertId()
 		log.Printf("Admin: created user_pokemon id=%d (pokemon_id=%d, user_id=%d, level=%d)", userPokemonID, pid, uid, level)
-		if err := db.InitLearnableAttacks(int(userPokemonID), pid, level); err != nil {
-			log.Printf("InitLearnableAttacks error: %v", err)
-		}
 		// Перенаправляем обратно на страницу выдачи покемонов
 		http.Redirect(w, r, "/admin/give_pokemon", http.StatusSeeOther)
 	}

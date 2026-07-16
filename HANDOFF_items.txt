@@ -1,0 +1,249 @@
+====================================================================
+HANDOFF_items — ПРЕДМЕТЫ, фаза 1: ЛОВЛЯ ДИКИХ ПОКЕБОЛАМИ
+(скорми файл ИИ-агенту целиком; это ТЗ на одну механику)
+Автор ТЗ: тимлид. Тема выбрана владельцем. Обновлено: 2026-07-15
+====================================================================
+
+--------------------------------------------------------------------
+0. КАК РАБОТАЕМ (ритм — НЕ менять; то же, что в HANDOFF_moves §0)
+--------------------------------------------------------------------
+Владелец НЕ программист: простой язык, маленькие проверяемые шаги.
+На машине диалога (RDP-сервер) Go НЕТ — компилировать нельзя. Ритм:
+  1) агент правит .go напрямую на диске проекта + меняет данные в БД через
+     python+sqlite3 (Go тут нет, python есть);
+  2) пишет TEST_catch.txt в КОРЕНЬ проекта (что менялось + чек-лист);
+  3) владелец несёт проект на ОСНОВНОЙ ПК (там Go): go build/go vet + сверка
+     поведения, дописывает отчёт в конец;
+  4) владелец говорит «отчёт готов» — читаем, при ошибках правим.
+ВАЖНО: перед каждой правкой БД — бэкап рядом: pokemon.db.bak-before-catch.
+Кодировка python при работе с БД: sys.stdout.reconfigure(encoding='utf-8').
+Через PowerShell в python НЕ слать (BOM ломает stdin) — Bash-героку.
+Боевая БД — ./database/pokemon.db (в КОРНЕ pokemon.db — пустышка 0 байт).
+
+--------------------------------------------------------------------
+1. ЦЕЛЬ И ГРАНИЦЫ ФАЗЫ 1
+--------------------------------------------------------------------
+ЦЕЛЬ: игрок в бою с ДИКИМ покемоном может бросить покебол; при удаче дикий
+ловится и попадает в команду (или в питомник, если команда полна); бол
+тратится; при неудаче дикий делает свой ход.
+
+ФАЗА 1 = плоский множитель бола (обычный/Great/Ultra/Master различаются ЧИСЛОМ).
+Схему проектируем так, чтобы условные болы добавились позже без ломки.
+
+НЕ ДЕЛАЕМ в фазе 1 (это отдельный HANDOFF, фаза 2):
+  - условные болы (Net ×по типу, Dusk ночью, Quick 1-й ход, Timer по ходам,
+    Heavy по весу, Love по полу, Repeat по «уже пойман») и КАРТОЧКА-форма бола
+    (по образцу attack_form.html);
+  - анимация «3 покачивания»;
+  - магазин/валюта, ягоды, held-предметы, камни эволюции.
+Владелец подтвердил именно такой объём.
+
+--------------------------------------------------------------------
+2. ЧТО УЖЕ ЕСТЬ (НЕ переделывать, переиспользовать)
+--------------------------------------------------------------------
+БД:
+  - items(id, name, description, category_id, price, effect_type, effect_value,
+    image_url, sort_order). item_categories: 1 pokeball,2 potion,3 status_healer,
+    4 revive,5 evolution_stone,6 berry,7 key_item,8 candy.
+  - user_items(user_id, item_id, quantity) — инвентарь игрока.
+  - Покебол уже в БД: items.id=1, category_id=1, effect_type='catch_bonus',
+    effect_value=10, image_url='/static/images/items/pokeball.png'.
+  - user_pokemons: экземпляр покемона игрока. Слоты: position 1..6 = КОМАНДА,
+    position 0 или NULL = ПИТОМНИК. Есть колонки gender, attractiveness,
+    iv_*, ev_*, nature_id, status_id и вычисленные статы.
+
+Бэкенд (Go):
+  - server/db/items.go: GetUserInventory, GetItemByID, AddItemToUser,
+    RemoveItemFromUser(userID,itemID,qty) (сам чистит строку при qty<=0).
+  - server/handlers/api/inventory.go: GetInventoryHandler, UseItemHandler
+    (вне боя: heal_hp/heal_status/revive/candy). Ловлю СЮДА НЕ пихать — это бой.
+  - Бой серверный, STATEFUL: карта battleSessions[battleID] под мьютексом
+    battleMu (battle.go). StartBattleHandler кладёт *BattleState; MoveHandler/
+    SwitchHandler/RunHandler берут bs по req.BattleID, меняют, отдают
+    BattleResponse{type, log[], player, wild, team, battle_id, ...}.
+    Тип боя bs.BattleType=="wild".
+  - Дикий строится: wild.go generateWildPokemon -> battle.go wildToBattlePokemon.
+    ВАЖНО: у дикого УЖЕ разыгран пол (bs.WildPokemon.Gender через db.RollGender),
+    есть PokemonID и Level. НО IV и nature_id генерятся в wild.go и ОТБРАСЫВАЮТСЯ
+    (в BattlePokemon их нет). Их надо протянуть — см. §4.
+  - ЕДИНАЯ ТОЧКА СОЗДАНИЯ ЭКЗЕМПЛЯРА — admin.go GivePokemonHandler (строки ~495-532):
+    db.RollGender + db.RollAttractiveness + utils.CalculateStats + INSERT в
+    user_pokemons + db.InitLearnableAttacks. Мандат из HANDOFF_gender_attractiveness:
+    ЛЮБАЯ ловля/разведение ОБЯЗАНЫ звать ТЕ ЖЕ хелперы, НЕ дублировать роллы.
+
+Фронт (Go-templates + JS):
+  - client/static/js/game.js: currentBattleId; startBattle(data); runBattle();
+    endBattle(); surrender-btn -> runBattle; showBattleSwitchMenu (образец мини-меню
+    battle-switch-menu). Ответ боя обрабатывается по result.type + result.log
+    (addBattleLogEntry). Инвентарь-док: loadInventory/useItem (🎒 в шапке).
+  - server/templates/game.html: боевая панель #divVisioFight (локация #divVisioLoc).
+  - client/static/templates/battle_card.html: карточка бойца.
+
+--------------------------------------------------------------------
+3. СХЕМА БД (правки — фаза 1)
+--------------------------------------------------------------------
+(1) Множитель бола. Добавить колонку:
+      ALTER TABLE items ADD COLUMN catch_multiplier INTEGER DEFAULT 100;
+    Семантика: x100. Обычный покебол=100, Great=150, Ultra=200, Master=очень
+    большой (напр. 100000 -> гарант). Для НЕ-болов игнорируется.
+    Проставить покеболу (id=1) catch_multiplier=100.
+    (НЕ переиспользуем effect_value — там 10; чтобы фаза-2 карточка бола села
+     чисто, множитель живёт в отдельной колонке.)
+(2) Базовый шанс поимки у ВИДА. Проверить, есть ли pokemons.catch_rate; если нет:
+      ALTER TABLE pokemons ADD COLUMN catch_rate INTEGER DEFAULT 45;
+    Диапазон канона 0..255 (чем больше — тем легче). 45 — разумный дефолт;
+    владелец сможет крутить по видам позже. Использовать в формуле §5.
+(3) Тестовые болы (для проверки множителя) — можно через админку или python:
+    Great Ball (category 1, effect_type 'catch_bonus', catch_multiplier 150),
+    Ultra Ball (200). Картинки не обязательны (можно pokeball.png).
+Каждый ALTER — под бэкап pokemon.db.bak-before-catch. Проверить схему после.
+
+--------------------------------------------------------------------
+4. ПРОТЯГИВАНИЕ IV/NATURE ДИКОГО (чтобы пойманный был «настоящим»)
+--------------------------------------------------------------------
+Пойманный экземпляр должен сохранять то, ЧТО было в бою: pokemon_id, level,
+gender (уже есть), + IV и nature. Сейчас IV/nature дикого теряются. Сделать:
+  (a) wild.go: в WildPokemonGenerate ДОБАВИТЬ поля IV [6]int (порядок как везде:
+      HP,Atk,Def,Spd,SpAtk,SpDef) и убедиться, что NatureID уже отдаётся (он есть).
+      Заполнить IV из уже разыгранных ivHP..ivSpDef (сейчас они локальные).
+  (b) battle.go BattleState: добавить поля WildIV [6]int, WildNatureID int.
+      В StartBattleHandler после generateWildPokemon записать их в bs
+      (bs.WildIV = wildGen.IV; bs.WildNatureID = wildGen.NatureID).
+      Пол берём из bs.WildPokemon.Gender, уровень из bs.WildPokemon.Level,
+      вид из bs.WildPokemon.PokemonID.
+
+--------------------------------------------------------------------
+5. ФОРМУЛА ЛОВЛИ (фаза 1 — простая, без покачиваний)
+--------------------------------------------------------------------
+Дано: MaxHP, HP=CurrentHP дикого; baseRate=pokemons.catch_rate;
+      ballMult=items.catch_multiplier/100; statusMult по статусу дикого.
+  statusMult: сон(5)/заморозка(4) = 2.5; паралич(2)/ожог(3)/яд(6,7) = 1.5; иначе 1.0.
+Значение:
+  a = ((3*MaxHP - 2*HP) * baseRate * ballMult * statusMult) / (3*MaxHP)
+Исход:
+  - если a >= 255  -> ГАРАНТИРОВАННО поймал;
+  - иначе шанс = a/255, один бросок rand (в [0,1)); < шанс -> поймал, иначе провал.
+Считать в целых аккуратно (float для statusMult/ballMult ок; a — float, сравнить с 255).
+Формулу вынести в отдельную функцию (напр. catchChance(...)) для будущей фазы-2.
+
+--------------------------------------------------------------------
+6. БЭКЕНД — ЧТО НАПИСАТЬ
+--------------------------------------------------------------------
+(A) db-хелпер единой точки создания (устраняет дублирование роллов):
+    В server/db (напр. user_pokemons.go или новый) функция:
+      CreateUserPokemon(userID, pokemonID, level int, iv [6]int, natureID int,
+                        gender string) (userPokemonID int, err error)
+    Внутри: attractiveness := RollAttractiveness(); посчитать статы
+    (utils.CalculateStats с natureFactors по natureID, EV=0, train=1.0);
+    подобрать position (см. ниже); INSERT в user_pokemons (те же колонки, что в
+    GivePokemonHandler); вызвать InitLearnableAttacks(id, pokemonID, level).
+    Position: SELECT COUNT(*) team = position 1..6; если <6 — занять
+    MAX(position)+1 в диапазоне 1..6 (первый свободный слот, как nursery.TakeToTeam);
+    иначе position=0 (питомник).
+    !!! ОТРЕФАКТОРИТЬ admin.go GivePokemonHandler на вызов этого же хелпера
+        (роллит gender там же RollGender; передаёт iv/nature/level). Одна точка правды.
+    (Если CalculateStats в utils требует natureFactors — переиспользуй
+     utils.GetNatureFactors(natureID), как в GivePokemonHandler.)
+
+(B) Новый обработчик боя: server/handlers/api/catch.go
+    func CatchHandler(w,r):
+      - auth (userID из сессии, как в других хендлерах);
+      - decode {battle_id string, item_id int};
+      - battleMu.Lock/defer Unlock; bs := battleSessions[battle_id]; нет -> 404;
+        bs.BattleType!="wild" -> 400 «ловить можно только диких»;
+        дикий уже повержен -> 400;
+      - проверить, что item_id ЕСТЬ у игрока (GetUserInventory) и это БОЛ
+        (category_id==1 ИЛИ effect_type=='catch_bonus'); иначе 400/409;
+      - СПИСАТЬ бол СРАЗУ: RemoveItemFromUser(userID,item_id,1) (тратится и при провале!);
+      - множитель: GetItemByID -> catch_multiplier (нужно добавить это поле в
+        db.Item и в SELECT'ы items.go);
+      - baseRate из pokemons.catch_rate по bs.WildPokemon.PokemonID;
+      - посчитать catchChance -> успех/провал (rand как в бою; в battle.go rand
+        уже используется).
+      УСПЕХ:
+        - newID, _ := db.CreateUserPokemon(userID, bs.WildPokemon.PokemonID,
+            bs.WildPokemon.Level, bs.WildIV, bs.WildNatureID, bs.WildPokemon.Gender);
+        - завершить бой: delete(battleSessions, battle_id);
+        - ответ BattleResponse{Type:"catch_success", Log: [<имя> пойман!],
+          Wild: bs.WildPokemon}; (флаг «ушёл в питомник» — в лог, если команда полна).
+      ПРОВАЛ:
+        - дикий делает СВОЙ ход. НЕ дублировать боёвку: найди в battle.go функцию
+          хода противника (та, что MoveHandler зовёт для реакции дикого — enemy/AI
+          turn) и вызови её на bs; собрать её log. Если после неё активный игрока
+          пал/бой кончился — обработать как в MoveHandler (тип боя, смена и т.п.).
+          Если единой функции нет — минимально: дикий бьёт активного игрока одной
+          своей атакой через ту же executeDamagingMove-цепочку (согласуй с battle.go,
+          НЕ переписывай движок).
+        - ответ BattleResponse{Type:"catch_fail", Log:[...вырвался!... + ход дикого],
+          Player: активный игрока, Wild: bs.WildPokemon, ...}.
+      ЛОГИ: писать в стиле существующих BattleLogEntry.
+
+(C) routes.go: добавить рядом с боем
+      r.HandleFunc("/api/battle/catch", api.CatchHandler).Methods("POST")
+
+--------------------------------------------------------------------
+7. ФРОНТ — ЧТО НАПИСАТЬ (game.js + game.html/css)
+--------------------------------------------------------------------
+  - В боевой панели добавить кнопку «🎯 Поймать» (рядом со «Сдаться»/ходами).
+  - Клик: GET /api/inventory -> отфильтровать болы (category_id==1). Пусто ->
+    сообщение «Нет покеболов». Иначе показать мини-меню выбора бола (по образцу
+    showBattleSwitchMenu/#battle-switch-menu): иконка + имя + количество.
+  - Выбор бола -> POST /api/battle/catch {battle_id: currentBattleId, item_id}.
+    Обработать result.log (addBattleLogEntry) и result.type:
+      "catch_success": setBattleStatus(«<имя> пойман!»); обновить команду
+        (loadTeam, если есть); endBattle() (кнопка «Закрыть»);
+      "catch_fail": отрисовать ход дикого как в обычном ответе боя (обновить HP
+        игрока/дикого из result.player/result.wild); бой продолжается;
+        если игрока пал — та же ветка, что при обычном обмороке.
+  - (Опц.) показать остаток болов в подписи кнопки.
+  - Не ломать существующие ходы/switch/run.
+
+--------------------------------------------------------------------
+8. ТЕСТ-ДАННЫЕ И ПРОВЕРКА (DoD)
+--------------------------------------------------------------------
+Перед тестом (python или админка): у тест-игрока в user_items положить
+покеболов (item_id=1, qty напр. 10) + Great/Ultra для множителя. Взять локацию
+с дикими; сбить HP дикого; желательно навести статус (сон) для проверки statusMult.
+
+DoD (осн. ПК, обязателен ЖИВОЙ прогон — билд+vet это НЕ «готово»):
+  [ ] go build -o server.exe ./server + go vet ./... — зелёные;
+  [ ] бой с диким -> бросок покебола -> ПОЙМАЛ: покемон появился в команде
+      (или в питомнике при полной команде) с верным видом/уровнем/полом, атаки
+      проинициализированы (InitLearnableAttacks), статы совпадают с расчётом;
+  [ ] бол СПИСАЛСЯ (user_items.quantity -1), и при промахе тоже;
+  [ ] ПРОВАЛ: дикий сделал ход, HP обновились, бой продолжается;
+  [ ] множитель работает: Ultra ловит заметно чаще обычного на том же HP;
+  [ ] admin выдача покемона по-прежнему работает (рефактор на CreateUserPokemon
+      не сломал единую точку).
+
+--------------------------------------------------------------------
+9. ГРАБЛИ / РИСКИ (читать перед стартом)
+--------------------------------------------------------------------
+  - ЕДИНАЯ ТОЧКА СОЗДАНИЯ: не плодить роллы; и ловля, и admin-выдача зовут
+    db.CreateUserPokemon (мандат HANDOFF_gender_attractiveness). Пол дикого уже
+    разыгран в бою — брать bs.WildPokemon.Gender, НЕ роллить заново.
+  - position: 1..6 команда, 0/NULL питомник; при полной команде — В ПИТОМНИК,
+    не терять и не перезаписывать чужой слот.
+  - Всё чтение/запись battleSessions — под battleMu.
+  - Бол тратится ДО броска (и при провале). Списал -> потом считаешь исход.
+  - Главный интеграционный риск — «ход дикого при провале»: переиспользуй
+    существующую turn-логику battle.go, не пиши свой обмен ударами.
+  - Формула: аккуратно с целыми/float; статус дикого читается из
+    bs.WildPokemon.StatusID (у дикого при старте 0 — трактовать как «нет статуса»).
+  - Go на RDP НЕТ: только правки файлов + правки БД (python, utf-8, bash-героку,
+    бэкап). Отчёт -> TEST_catch.txt в корень, чек-лист из §8.
+
+--------------------------------------------------------------------
+10. КРАТКИЙ ЧЕК-ЛИСТ ФАЙЛОВ
+--------------------------------------------------------------------
+БД:        items.catch_multiplier (+покебол=100, тест-болы 150/200),
+           pokemons.catch_rate (дефолт 45), user_items тест-болы.
+Go:        wild.go (IV в WildPokemonGenerate); battle.go (BattleState.WildIV/
+           WildNatureID + запись в StartBattleHandler); db/items.go (catch_multiplier
+           в Item + SELECT'ы); db CreateUserPokemon (+рефактор admin.go
+           GivePokemonHandler на него); handlers/api/catch.go (CatchHandler);
+           routes.go (/api/battle/catch).
+Фронт:     game.js (кнопка 🎯 + ball-picker + обработка catch_success/catch_fail);
+           game.html/game.css (кнопка/мини-меню).
+Отчёт:     TEST_catch.txt (корень).
+====================================================================

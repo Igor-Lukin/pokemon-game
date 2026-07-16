@@ -49,6 +49,7 @@ type Attack struct {
 	EffectStatusID sql.NullInt64
 	EffectChance   int
 	Drain          int
+	HealPercent    int
 	CritRate       int
 	HitsMin        int
 	HitsMax        int
@@ -218,6 +219,7 @@ func CreateAttackHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		drain, _ := strconv.Atoi(r.FormValue("drain"))
+		healPercent, _ := strconv.Atoi(r.FormValue("heal_percent"))
 		neverMisses := r.FormValue("never_misses") == "on"
 		critRate, _ := strconv.Atoi(r.FormValue("crit_rate"))
 		hitsMin, _ := strconv.Atoi(r.FormValue("hits_min"))
@@ -227,11 +229,11 @@ func CreateAttackHandler(w http.ResponseWriter, r *http.Request) {
             INSERT INTO attacks (
                 name, eng_name, type_id, power, accuracy, pp, category_id, target_id,
                 priority, description, contact, sound, effect_status_id, effect_chance,
-                drain, never_misses, crit_rate, hits_min, hits_max, disabled
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                drain, never_misses, crit_rate, hits_min, hits_max, disabled, heal_percent
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			name, engName, typeIDInt, powerVal, accuracyVal, ppVal, categoryIDInt, targetIDInt,
 			priorityVal, description, contact, sound, effectStatusIDVal, effectChanceInt, drain, neverMisses,
-			critRate, hitsMin, hitsMax, r.FormValue("disabled") == "on")
+			critRate, hitsMin, hitsMax, r.FormValue("disabled") == "on", healPercent)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -270,12 +272,12 @@ func EditAttackHandler(w http.ResponseWriter, r *http.Request) {
                    priority, description, contact, sound, effect_status_id, effect_chance,
                    COALESCE(drain, 0), COALESCE(never_misses, 0),
                    COALESCE(crit_rate, 0), COALESCE(hits_min, 1), COALESCE(hits_max, 1),
-                   COALESCE(disabled, 0)
+                   COALESCE(disabled, 0), COALESCE(heal_percent, 0)
             FROM attacks WHERE id = ?`, id).Scan(
 			&atk.ID, &atk.Name, &atk.EngName, &atk.TypeID, &power, &accuracy, &pp,
 			&atk.CategoryID, &atk.TargetID, &atk.Priority, &atk.Description,
 			&atk.Contact, &atk.Sound, &atk.EffectStatusID, &atk.EffectChance, &atk.Drain, &atk.NeverMisses,
-			&atk.CritRate, &atk.HitsMin, &atk.HitsMax, &atk.Disabled)
+			&atk.CritRate, &atk.HitsMin, &atk.HitsMax, &atk.Disabled, &atk.HealPercent)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "Attack not found", http.StatusNotFound)
@@ -361,6 +363,7 @@ func EditAttackHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		drain, _ := strconv.Atoi(r.FormValue("drain"))
+		healPercent, _ := strconv.Atoi(r.FormValue("heal_percent"))
 		neverMisses := r.FormValue("never_misses") == "on"
 		critRate, _ := strconv.Atoi(r.FormValue("crit_rate"))
 		hitsMin, _ := strconv.Atoi(r.FormValue("hits_min"))
@@ -370,11 +373,11 @@ func EditAttackHandler(w http.ResponseWriter, r *http.Request) {
             UPDATE attacks SET
                 name=?, eng_name=?, type_id=?, power=?, accuracy=?, pp=?, category_id=?, target_id=?,
                 priority=?, description=?, contact=?, sound=?, effect_status_id=?, effect_chance=?,
-                drain=?, never_misses=?, crit_rate=?, hits_min=?, hits_max=?, disabled=?
+                drain=?, never_misses=?, crit_rate=?, hits_min=?, hits_max=?, disabled=?, heal_percent=?
             WHERE id=?`,
 			name, engName, typeIDInt, powerVal, accuracyVal, ppVal, categoryIDInt, targetIDInt,
 			priorityVal, description, contact, sound, effectStatusIDVal, effectChanceInt, drain, neverMisses,
-			critRate, hitsMin, hitsMax, r.FormValue("disabled") == "on", id)
+			critRate, hitsMin, hitsMax, r.FormValue("disabled") == "on", healPercent, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

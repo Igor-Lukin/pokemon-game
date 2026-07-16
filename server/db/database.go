@@ -226,6 +226,8 @@ func createTables() {
             position INTEGER DEFAULT 0,
             status_id INTEGER,
             nature_id INTEGER,
+            gender TEXT,            -- пол экземпляра: 'M'/'F'/'N' (см. RollGender)
+            attractiveness TEXT,    -- буква привлекательности: 'A'/'B'/'C' (см. RollAttractiveness)
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY(user_id) REFERENCES users(id),
             FOREIGN KEY(pokemon_id) REFERENCES pokemons(id),
@@ -307,12 +309,18 @@ func createTables() {
 	DB.Exec("ALTER TABLE locations ADD COLUMN region_id INTEGER DEFAULT 1 REFERENCES regions(id)")
 	DB.Exec("ALTER TABLE user_pokemon_learnable_attacks ADD COLUMN current_pp INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN happiness INTEGER DEFAULT 0")
+	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN gender TEXT")         // пол экземпляра 'M'/'F'/'N'
+	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN attractiveness TEXT") // буква привлекательности 'A'/'B'/'C'
 	DB.Exec("ALTER TABLE attacks ADD COLUMN never_misses INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN recoil INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN drain INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN crit_rate INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN hits_min INTEGER DEFAULT 1")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN hits_max INTEGER DEFAULT 1")
+	DB.Exec("ALTER TABLE attacks ADD COLUMN heal_percent INTEGER DEFAULT 0")
+
+	// Статус "Проклят" (volatile, id 12) — накладывается атакой "Проклятье".
+	DB.Exec("INSERT OR IGNORE INTO statuses (id, name, description) VALUES (12, 'Проклят', 'Теряет 1/4 макс. HP каждый раунд')")
 	DB.Exec("ALTER TABLE regions ADD COLUMN current_weather_id INTEGER DEFAULT 1 REFERENCES weather(id)")
 
 	// Copy recoil → drain with negated values (recoil was positive, drain negative = отдача)

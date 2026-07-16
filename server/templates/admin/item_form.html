@@ -9,8 +9,11 @@
 {{range .Categories}}<option value="{{.ID}}" {{if $.Item}}{{if eq $.Item.CategoryID .ID}}selected{{end}}{{end}}>{{.Name}}</option>{{end}}
 </select></p>
 <p>Цена: <input type="number" name="price" value="{{if .Item}}{{.Item.Price}}{{else}}0{{end}}"></p>
-<p>Тип эфф.: <select name="effect_type"><option value="">—</option><option value="heal_hp" {{if eq .Item.EffectType "heal_hp"}}selected{{end}}>heal_hp</option><option value="heal_status" {{if eq .Item.EffectType "heal_status"}}selected{{end}}>heal_status</option><option value="revive" {{if eq .Item.EffectType "revive"}}selected{{end}}>revive</option><option value="catch_bonus" {{if eq .Item.EffectType "catch_bonus"}}selected{{end}}>catch_bonus</option><option value="evolve" {{if eq .Item.EffectType "evolve"}}selected{{end}}>evolve</option></select></p>
-<p>Значение эфф.: <input type="number" name="effect_value" value="{{if .Item}}{{.Item.EffectValue}}{{else}}0{{end}}"></p>
+<p>Тип эфф.: <select name="effect_type"><option value="">—</option><option value="heal_hp" {{if $.Item}}{{if eq $.Item.EffectType "heal_hp"}}selected{{end}}{{end}}>heal_hp</option><option value="heal_status" {{if $.Item}}{{if eq $.Item.EffectType "heal_status"}}selected{{end}}{{end}}>heal_status</option><option value="revive" {{if $.Item}}{{if eq $.Item.EffectType "revive"}}selected{{end}}{{end}}>revive</option><option value="catch_bonus" {{if $.Item}}{{if eq $.Item.EffectType "catch_bonus"}}selected{{end}}{{end}}>catch_bonus</option><option value="evolve" {{if $.Item}}{{if eq $.Item.EffectType "evolve"}}selected{{end}}{{end}}>evolve</option><option value="type_boost" {{if $.Item}}{{if eq $.Item.EffectType "type_boost"}}selected{{end}}{{end}}>type_boost (надеваемый)</option></select></p>
+<p>Значение эфф.: <input type="number" name="effect_value" value="{{if .Item}}{{.Item.EffectValue}}{{else}}0{{end}}"> <small>для type_boost: множитель ×100 (120 = ×1.2)</small></p>
+<p>Тип предмета (для надеваемых): <select name="type_id"><option value="">— нет —</option>
+{{range .Types}}<option value="{{.ID}}" {{if $.Item}}{{if eq $.Item.TypeID .ID}}selected{{end}}{{end}}>{{.Name}}</option>{{end}}
+</select> <small>совпадение с типом покемона включает эффект</small></p>
 <p>URL иконки: <input name="image_url" value="{{if .Item}}{{.Item.ImageURL}}{{end}}" style="width:300px"></p>
 <button>Сохранить</button>
 </form>

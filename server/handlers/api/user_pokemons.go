@@ -55,6 +55,8 @@ type TeamPokemon struct {
 	AvailableEV      int               `json:"available_ev"`
 	Position         int               `json:"position"`
 	StatusID         int               `json:"status_id"`
+	Gender           string            `json:"gender"`         // 'M'/'F'/'N' (значок ♂/♀ на фронте)
+	Attractiveness   string            `json:"attractiveness"` // 'A'/'B'/'C' (для будущего питомника)
 	NatureID         int               `json:"nature_id"`
 	NatureName       string            `json:"nature_name"`
 	IncreasedStat    string            `json:"increased_stat"`
@@ -64,6 +66,11 @@ type TeamPokemon struct {
 	SecondaryTypeID  *int              `json:"secondary_type_id,omitempty"`
 	AbilityName      string            `json:"ability_name"`
 	ExperienceGroup  int               `json:"experience_group"`
+	HeldItemID          *int           `json:"held_item_id,omitempty"`
+	HeldItemName        string         `json:"held_item_name,omitempty"`
+	HeldItemImage       string         `json:"held_item_image,omitempty"`
+	HeldItemTypeID      int            `json:"held_item_type_id,omitempty"`
+	HeldItemDescription string         `json:"held_item_description,omitempty"`
 	Moves            []TeamPokemonMove `json:"moves"`
 }
 
@@ -83,7 +90,9 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
                up.iv_special_attack, up.iv_special_defense,
                up.ev_hp, up.ev_attack, up.ev_defense, up.ev_speed,
                up.ev_special_attack, up.ev_special_defense, up.available_ev,
-               up.position, up.status_id, up.nature_id, n.name,
+               up.position, up.status_id,
+               COALESCE(up.gender, ''), COALESCE(up.attractiveness, ''),
+               up.nature_id, n.name,
                COALESCE(n.increased_stat, ''),
                COALESCE(n.decreased_stat, ''),
                 p.image_url,
@@ -92,10 +101,13 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
                 p.experience_group,
                 COALESCE((SELECT a.name FROM pokemon_abilities pa
                  JOIN abilities a ON pa.ability_id = a.id
-                 WHERE pa.pokemon_id = p.id AND pa.is_hidden = 0 LIMIT 1), '') as ability_name
+                 WHERE pa.pokemon_id = p.id AND pa.is_hidden = 0 LIMIT 1), '') as ability_name,
+                up.held_item_id, COALESCE(hi.name, ''), COALESCE(hi.image_url, ''),
+                COALESCE(hi.type_id, 0), COALESCE(hi.description, '')
         FROM user_pokemons up
         JOIN pokemons p ON up.pokemon_id = p.id
         LEFT JOIN natures n ON up.nature_id = n.id
+        LEFT JOIN items hi ON up.held_item_id = hi.id
         WHERE up.user_id = ? AND up.position BETWEEN 1 AND 6
         ORDER BY up.position`, userID)
 	if err != nil {
@@ -110,6 +122,7 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
 		var nickname sql.NullString
 		var imageURL sql.NullString
 		var secondaryTypeID sql.NullInt64
+		var heldItemID sql.NullInt64
 		if err := rows.Scan(
 			&t.ID, &t.PokemonID, &t.Name, &nickname, &t.Level, &t.Experience,
 			&t.CurrentHP, &t.MaxHP, &t.Attack, &t.Defense, &t.Speed,
@@ -118,12 +131,20 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
 			&t.IVSpecialAttack, &t.IVSpecialDefense,
 			&t.EVHP, &t.EVAttack, &t.EVDefense, &t.EVSpeed,
 			&t.EVSpecialAttack, &t.EVSpecialDefense, &t.AvailableEV,
-			&t.Position, &t.StatusID, &t.NatureID, &t.NatureName,
+			&t.Position, &t.StatusID,
+			&t.Gender, &t.Attractiveness,
+			&t.NatureID, &t.NatureName,
 			&t.IncreasedStat, &t.DecreasedStat,
 			&imageURL,
-			&t.PrimaryTypeID, &secondaryTypeID, &t.ExperienceGroup, &t.AbilityName); err != nil {
+			&t.PrimaryTypeID, &secondaryTypeID, &t.ExperienceGroup, &t.AbilityName,
+			&heldItemID, &t.HeldItemName, &t.HeldItemImage, &t.HeldItemTypeID,
+			&t.HeldItemDescription); err != nil {
 			log.Printf("Scan error: %v", err)
 			continue
+		}
+		if heldItemID.Valid {
+			hid := int(heldItemID.Int64)
+			t.HeldItemID = &hid
 		}
 		if nickname.Valid {
 			t.Nickname = &nickname.String

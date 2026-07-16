@@ -300,6 +300,14 @@ function loadTeam() {
                             <div class="progressbar barEV"><div style="width: ${((p.ev_special_attack || 0) / 126) * 100}%;" title="${p.ev_special_attack || 0}/126"></div></div>
                             <div class="button btnEvAdd greennumber justicon" style="visibility: ${evPlusAttr};" data-stat="special_attack" data-pokid="${p.id}"><span class="icon icomoon icon-plus">+</span></div>
                         </div>
+                        <div class="statContainer">
+                            <div class="statTitle">Спец.защита</div>
+                            <div class="statVal${nc('special_defense')}">${p.special_defense}</div>
+                            <div class="statTren"></div>
+                            <div class="button btnEvSub rednumber justicon" style="visibility: hidden;"><span class="icon icomoon icon-minus">+</span></div>
+                            <div class="progressbar barEV"><div style="width: ${((p.ev_special_defense || 0) / 126) * 100}%;" title="${p.ev_special_defense || 0}/126"></div></div>
+                            <div class="button btnEvAdd greennumber justicon" style="visibility: ${evPlusAttr};" data-stat="special_defense" data-pokid="${p.id}"><span class="icon icomoon icon-plus">+</span></div>
+                        </div>
                         <div class="statContainer evfree">
                             <div class="button btnEV greennumber justicon" style="display: none;"><span class="icon icomoon icon-check"></span></div>
                             <div class="button btnEV rednumber justicon" style="display: none;"><span class="icon icomoon icon-x"></span></div>
@@ -323,7 +331,7 @@ function loadTeam() {
                                     </div>
                                     <div class="lvl">${p.level}</div>
                                 </div>
-                                <div class="boxright"><div class="icons antioverlaybug">${statusIconHtml(p.status_id)}</div><div class="icons2 antioverlaybug"><span class="icon icomoon icon-star-fill starter" style="display: none;"></span></div><div class="items antioverlaybug"></div></div>
+                                <div class="boxright"><div class="icons antioverlaybug">${statusIconHtml(p.status_id)}</div><div class="icons2 antioverlaybug"><span class="icon icomoon icon-star-fill starter" style="display: none;"></span></div><div class="items antioverlaybug held-slot clickable" data-pok-id="${p.id}" data-held-id="${p.held_item_id || ''}" data-ptype1="${p.primary_type_id || ''}" data-ptype2="${p.secondary_type_id || ''}" title="${p.held_item_id ? (p.held_item_description || p.held_item_name || '').replace(/"/g, '&quot;') : 'Надеть предмет'}">${heldSlotHtml(p)}</div></div>
                                 <div class="bars">
                                     <div class="progressbar barHP max" title="${p.current_hp} / ${p.max_hp}"><div style="width: ${hpPercent}%;"></div></div>
                                     <div class="progressbar barEXP" title="EXP: ${p.experience} / ${expNeeded}"><div style="width: ${expPercent}%;"></div></div>
@@ -362,6 +370,7 @@ function loadTeam() {
       bindMoveClickEvents();
       bindBoxLeftEvents();
       bindEvPlusEvents();
+      bindHeldSlotEvents();
       teamLoading = false;
     })
     .catch((err) => {
@@ -370,6 +379,138 @@ function loadTeam() {
       console.error(err);
       teamLoading = false;
     });
+}
+
+// ---- Надеваемые (held) предметы ----
+
+// Разметка слота надетого предмета внутри карточки покемона.
+function heldSlotHtml(p) {
+  if (p.held_item_id) {
+    const img = p.held_item_image || "/static/images/items/41.png";
+    return `<span class="held-item"><img class="held-item-img" src="${img}" alt="${p.held_item_name || ''}"></span>`;
+  }
+  return `<span class="held-item-add">+</span>`;
+}
+
+function bindHeldSlotEvents() {
+  document.querySelectorAll("#team-list .held-slot").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const pokId = parseInt(el.dataset.pokId);
+      const heldId = el.dataset.heldId ? parseInt(el.dataset.heldId) : 0;
+      const pt1 = el.dataset.ptype1 ? parseInt(el.dataset.ptype1) : 0;
+      const pt2 = el.dataset.ptype2 ? parseInt(el.dataset.ptype2) : 0;
+      openHeldPicker(pokId, heldId, [pt1, pt2].filter(Boolean));
+    });
+  });
+}
+
+// Мини-меню выбора надеваемого предмета из инвентаря.
+async function openHeldPicker(pokId, currentHeldId, pokeTypes) {
+  const overlay = document.createElement("div");
+  overlay.className = "inv-pokemon-select-overlay";
+  overlay.innerHTML = `
+    <div class="inv-pokemon-select held-picker">
+      <div class="inv-pokemon-select-header">
+        <span>Надеваемый предмет</span>
+        <span class="inv-pokemon-select-close">✖</span>
+      </div>
+      <div class="held-picker-body"><div class="inv-loading">Загрузка...</div></div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector(".inv-pokemon-select-close").addEventListener("click", close);
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) close(); });
+
+  const body = overlay.querySelector(".held-picker-body");
+  let items = [];
+  try {
+    const resp = await fetch("/api/inventory");
+    if (!resp.ok) throw new Error("Failed");
+    const all = await resp.json();
+    items = all.filter((i) => i.category_name === "held" || i.effect_type === "type_boost");
+  } catch (err) {
+    console.error(err);
+    body.innerHTML = '<div class="inv-empty">Ошибка загрузки</div>';
+    return;
+  }
+
+  let html = "";
+  if (currentHeldId) {
+    html += `<div class="held-opt held-remove" data-action="unhold">
+      <span class="held-opt-name">Снять предмет</span></div>`;
+  }
+  if (items.length === 0) {
+    html += '<div class="inv-empty">Нет надеваемых предметов</div>';
+  } else {
+    items.forEach((it) => {
+      const match = it.type_id && pokeTypes.includes(it.type_id);
+      const hint = it.type_id
+        ? (match
+            ? '<span class="held-hint ok">даст эффект</span>'
+            : '<span class="held-hint no">не подходит по типу</span>')
+        : "";
+      const equipped = it.id === currentHeldId ? ' held-opt-equipped' : "";
+      const typeIcon = it.type_id
+        ? `<img class="held-opt-type" src="/static/images/types/${it.type_id}.png">`
+        : "";
+      html += `<div class="held-opt${equipped}" data-item-id="${it.id}">
+        <img class="held-opt-img" src="${it.image_url || '/static/images/items/41.png'}" alt="${it.name}">
+        <span class="held-opt-name">${it.name}${typeIcon}</span>
+        <span class="held-opt-qty">×${it.quantity}</span>
+        ${hint}
+      </div>`;
+    });
+  }
+  body.innerHTML = html;
+
+  body.querySelectorAll(".held-opt").forEach((row) => {
+    row.addEventListener("click", async () => {
+      if (row.dataset.action === "unhold") {
+        await unholdHeldItem(pokId);
+      } else {
+        await holdHeldItem(pokId, parseInt(row.dataset.itemId));
+      }
+      close();
+    });
+  });
+}
+
+async function holdHeldItem(pokId, itemId) {
+  try {
+    const resp = await fetch(`/api/user/pokemon/${pokId}/hold`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ item_id: itemId }),
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      alert(t || "Ошибка");
+      return;
+    }
+    loadTeam();
+    if (typeof loadInventory === "function" && document.getElementById("inventory-list")) loadInventory();
+  } catch (err) {
+    console.error(err);
+    alert("Ошибка при надевании предмета");
+  }
+}
+
+async function unholdHeldItem(pokId) {
+  try {
+    const resp = await fetch(`/api/user/pokemon/${pokId}/unhold`, { method: "POST" });
+    if (!resp.ok) {
+      const t = await resp.text();
+      alert(t || "Ошибка");
+      return;
+    }
+    loadTeam();
+    if (typeof loadInventory === "function" && document.getElementById("inventory-list")) loadInventory();
+  } catch (err) {
+    console.error(err);
+    alert("Ошибка при снятии предмета");
+  }
 }
 
 function bindCardEvents() {
@@ -1264,14 +1405,40 @@ async function createBattleCard(pokemon, isPlayer) {
     iconsDiv.innerHTML = statusIconHtml(pokemon.status_id) + (pokemon.leech_seeded ? leechSeedIconHtml() : "") + (pokemon.trapped ? trapIconHtml() : "") + statStageIconHtml(pokemon.stat_stages);
   }
 
+  // Надетый предмет в бою (только отображение).
+  const itemsDiv = card.querySelector(".boxright .items");
+  if (itemsDiv) {
+    if (pokemon.held_item_id) {
+      const heldImg = pokemon.held_item_image || "/static/images/items/41.png";
+      const heldTitle = (pokemon.held_item_description || pokemon.held_item_name || "").replace(/"/g, "&quot;");
+      itemsDiv.innerHTML = `<span class="held-item" title="${heldTitle}"><img class="held-item-img" src="${heldImg}" alt="${pokemon.held_item_name || ''}"></span>`;
+    } else {
+      itemsDiv.innerHTML = "";
+    }
+  }
+
   const movesContainer = card.querySelector(".moves");
   if (movesContainer) {
     movesContainer.innerHTML = "";
     if (isPlayer && pokemon.moves && pokemon.moves.length) {
+      // Блок/форс ходов (block_moves.go): Овации форсят один ход, Запрет/
+      // Подстрекательство блокируют. Серые = нельзя, подсветка = форс.
+      const encoreId = pokemon.encore_move_id || 0;
+      const disabledId = pokemon.disabled_move_id || 0;
+      const tormented = !!pokemon.tormented;
+      const lastUsedId = pokemon.last_used_move_id || 0;
+      const isBattleBlocked = (id) =>
+        (disabledId && id === disabledId) ||
+        (tormented && lastUsedId && id === lastUsedId) ||
+        (encoreId && id !== encoreId);
       pokemon.moves.forEach((atk) => {
         const moveBox = document.createElement("div");
         moveBox.className = "moveBox";
         moveBox.dataset.attackId = atk.id;
+        const blocked = isBattleBlocked(atk.id);
+        const forced = encoreId && atk.id === encoreId;
+        if (blocked) moveBox.style.opacity = "0.4";
+        if (forced) moveBox.style.outline = "2px solid #e8a33d";
         const disabledIcon = atk.disabled ? '<span class="attack-disabled" title="Атака не работает">✖</span>' : '';
         moveBox.innerHTML = `
           <div class="divMove">
@@ -1287,9 +1454,19 @@ async function createBattleCard(pokemon, isPlayer) {
         `;
         if (isPlayer && !pokemon.is_fainted) {
           const infoEl = moveBox.querySelector(".divMoveInfo");
-          if (infoEl) {
+          if (infoEl && !blocked) {
             infoEl.style.cursor = "pointer";
-            infoEl.addEventListener("click", (e) => { e.stopPropagation(); performMove(atk.id); });
+            infoEl.addEventListener("click", (e) => {
+              e.stopPropagation();
+              // Подставной ход/Разнонаправленный ток: сначала выбрать сменщика.
+              if (SWITCH_MOVE_IDS.includes(atk.id)) {
+                showSwitchMoveMenu(atk.id, infoEl);
+              } else {
+                performMove(atk.id);
+              }
+            });
+          } else if (infoEl && blocked) {
+            infoEl.style.cursor = "not-allowed";
           }
           const typEl = moveBox.querySelector(".divMoveTyp");
           if (typEl) {
@@ -1382,13 +1559,9 @@ async function performSwitch(userPokemonId) {
 
     (result.log || []).forEach((entry) => addBattleLogEntry(entry));
 
-    // Update weather if changed
+    // Update weather if changed (иконка обновляется и по логу; тут — финальная синхронизация со счётчиком)
     if (result.weather_id != null) {
-      const weatherEl = document.querySelector("#divFightWeather .iconweather");
-      if (weatherEl) {
-        weatherEl.className = "iconweather w" + result.weather_id;
-        weatherEl.title = result.weather_name || "";
-      }
+      updateWeatherIcon(result.weather_id, result.weather_turns, result.weather_name);
     }
 
     // Re-render the player card
@@ -1409,9 +1582,65 @@ async function performSwitch(userPokemonId) {
 let lastBattleRound = 0;
 let currentRoundEl = null;
 
+// Обновить иконку погоды в бою + мелкий счётчик оставшихся ходов.
+function updateWeatherIcon(weatherId, turns, name) {
+  const container = document.getElementById("divFightWeather");
+  if (!container) return;
+  const iconEl = container.querySelector(".iconweather");
+  if (iconEl) {
+    iconEl.className = "iconweather w" + weatherId;
+    if (name != null) iconEl.title = name;
+  }
+  let turnsEl = container.querySelector(".weather-turns");
+  if (!turnsEl) {
+    turnsEl = document.createElement("span");
+    turnsEl.className = "weather-turns";
+    container.appendChild(turnsEl);
+  }
+  // число показываем только для активной погоды (не «обычная»=1) и turns>0
+  if (weatherId && weatherId !== 1 && turns > 0) {
+    turnsEl.textContent = turns;
+    turnsEl.style.display = "";
+  } else {
+    turnsEl.style.display = "none";
+  }
+}
+
 function addBattleLogEntry(entry) {
   const log = document.getElementById("divFightLog");
   if (!log) return;
+
+  // Смена погоды — показываем ПОД атакой (в теле раунда) + обновляем иконку сразу.
+  if (entry.weather_id) {
+    if (entry.round !== lastBattleRound) {
+      lastBattleRound = entry.round;
+      const prevNew = log.querySelector(".round-header.new");
+      if (prevNew) prevNew.classList.remove("new");
+      currentRoundEl = document.createElement("div");
+      currentRoundEl.className = "round-entry";
+      const headerDiv = document.createElement("div");
+      headerDiv.className = "round-header new";
+      headerDiv.textContent = entry.round;
+      currentRoundEl.appendChild(headerDiv);
+      const bodyDiv = document.createElement("div");
+      bodyDiv.className = "round-body";
+      currentRoundEl.appendChild(bodyDiv);
+      log.appendChild(currentRoundEl);
+    }
+    const body = currentRoundEl ? currentRoundEl.querySelector(".round-body") : null;
+    const wEl = document.createElement("div");
+    wEl.className = "turn-weather";
+    wEl.textContent = entry.message || "Погода изменилась";
+    if (body) {
+      body.appendChild(wEl);
+    } else {
+      wEl.className = "log-system";
+      log.appendChild(wEl);
+    }
+    updateWeatherIcon(entry.weather_id, entry.weather_turns);
+    log.scrollTop = log.scrollHeight;
+    return;
+  }
 
   // System message (run, etc.)
   if (entry.message) {
@@ -1692,11 +1921,9 @@ async function startBattle(data) {
 
   initBattleSwitchTriggers();
 
-  // Погода
-  const weatherEl = document.querySelector("#divFightWeather .iconweather");
-  if (weatherEl && data.weather_id) {
-    weatherEl.className = "iconweather w" + data.weather_id;
-    weatherEl.title = data.weather_name || "";
+  // Погода (иконка + счётчик ходов при старте боя)
+  if (data.weather_id) {
+    updateWeatherIcon(data.weather_id, data.weather_turns, data.weather_name);
   }
 
   setBattleStatus("ВАШ ХОД");
@@ -1714,16 +1941,37 @@ async function startBattle(data) {
 }
 
 // Выполнить ход
-async function performMove(attackId) {
+async function performMove(attackId, switchTo) {
   if (!currentBattleId) return;
   try {
+    const body = { battle_id: currentBattleId, attack_id: attackId };
+    if (switchTo) body.switch_to = switchTo;
     const resp = await fetch("/api/battle/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ battle_id: currentBattleId, attack_id: attackId }),
+      body: JSON.stringify(body),
     });
     if (!resp.ok) throw new Error("Move failed");
     const result = await resp.json();
+
+    // Ход со сменой (Подставной ход/Ток): активный покемон изменился —
+    // перерисовываем карточку игрока целиком, HP дикого обновляем как обычно.
+    if (switchTo && result.type === "turn" && result.player) {
+      (result.log || []).forEach((entry) => addBattleLogEntry(entry));
+      updateBattleCardHp("divFightH", result.wild);
+      if (result.wild.is_fainted) updateBattleCardFainted("divFightH", result.wild);
+      const containerI = document.getElementById("divFightI");
+      if (containerI) {
+        containerI.innerHTML = "";
+        const card = await createBattleCard(result.player, true);
+        containerI.appendChild(card);
+        initBattleSwitchTriggers();
+      }
+      if (result.weather_id != null) {
+        updateWeatherIcon(result.weather_id, result.weather_turns, result.weather_name);
+      }
+      return;
+    }
 
     // Update HP bars
     updateBattleCardHp("divFightI", result.player);
@@ -1734,13 +1982,9 @@ async function performMove(attackId) {
     // Log entries
     (result.log || []).forEach((entry) => addBattleLogEntry(entry));
 
-    // Update weather if changed
+    // Update weather if changed (иконка обновляется и по логу; тут — финальная синхронизация со счётчиком)
     if (result.weather_id != null) {
-      const weatherEl = document.querySelector("#divFightWeather .iconweather");
-      if (weatherEl) {
-        weatherEl.className = "iconweather w" + result.weather_id;
-        weatherEl.title = result.weather_name || "";
-      }
+      updateWeatherIcon(result.weather_id, result.weather_turns, result.weather_name);
     }
 
     // Handle result type
@@ -1873,6 +2117,111 @@ if (surrenderBtn) {
   });
 }
 
+// Обработчик кнопки «🎯 Поймать» — открыть выбор покебола
+const catchBtn = document.getElementById("catch-btn");
+if (catchBtn) {
+  catchBtn.addEventListener("click", () => {
+    if (!battleActive || !currentBattleId) return;
+    showBallPickerMenu(catchBtn);
+  });
+}
+
+// showBallPickerMenu — выбрать покебол из инвентаря (категория 1) и бросить.
+function showBallPickerMenu(anchorEl) {
+  fetch("/api/inventory")
+    .then((r) => r.json())
+    .then((inv) => {
+      const balls = (inv || []).filter((it) => it.category_id === 1 && it.quantity > 0);
+      if (balls.length === 0) {
+        setBattleStatus("Нет покеболов!");
+        return;
+      }
+      const menu = document.getElementById("battle-switch-menu");
+      menu.innerHTML = "";
+      menu.style.maxHeight = "50vh";
+      menu.style.overflowY = "auto";
+      balls.forEach((b) => {
+        const item = document.createElement("div");
+        item.className = "ctx-item";
+        if (b.description) item.title = b.description;
+        const img = b.image_url || "/static/images/items/pokeball.png";
+        const hint = b.description ? `<div style="color:#888;font-size:10px;margin-left:30px">${b.description}</div>` : "";
+        item.innerHTML = `<div><img src="${img}" style="width:24px;height:24px;vertical-align:middle;margin-right:6px"> ${b.name} <span style="color:#888;font-size:11px">×${b.quantity}</span></div>${hint}`;
+        item.addEventListener("click", () => {
+          menu.style.display = "none";
+          performCatch(b.id);
+        });
+        menu.appendChild(item);
+      });
+
+      const rect = anchorEl.getBoundingClientRect();
+      menu.style.left = (rect.left + rect.width / 2) + "px";
+      menu.style.top = (rect.bottom + 4) + "px";
+      menu.style.display = "block";
+      const mr = menu.getBoundingClientRect();
+      if (mr.left < 0) menu.style.left = "4px";
+      if (mr.right > window.innerWidth) menu.style.left = (window.innerWidth - mr.width - 4) + "px";
+      if (mr.bottom > window.innerHeight) menu.style.top = (rect.top - mr.height - 4) + "px";
+      const close = (e) => {
+        if (!menu.contains(e.target) && e.target !== anchorEl) {
+          menu.style.display = "none";
+          document.removeEventListener("click", close);
+        }
+      };
+      setTimeout(() => document.addEventListener("click", close), 0);
+    })
+    .catch((err) => console.error("Ball picker error:", err));
+}
+
+// performCatch — бросок покебола по дикому.
+async function performCatch(itemId) {
+  if (!currentBattleId) return;
+  try {
+    const resp = await fetch("/api/battle/catch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battle_id: currentBattleId, item_id: itemId }),
+    });
+    if (!resp.ok) {
+      const msg = await resp.text();
+      setBattleStatus(msg || "Не удалось бросить покебол");
+      return;
+    }
+    const result = await resp.json();
+    (result.log || []).forEach((entry) => addBattleLogEntry(entry));
+
+    if (result.type === "catch_success") {
+      if (result.wild) updateBattleCardFainted("divFightH", result.wild);
+      setBattleStatus("ПОЙМАН!", "#2b8a3e");
+      setSurrenderButton("Закрыть");
+      if (typeof loadTeam === "function") loadTeam();
+      setTimeout(endBattle, 2000);
+      return;
+    }
+
+    // catch_fail / need_switch / defeat — дикий сделал свой ход
+    if (result.player) {
+      updateBattleCardHp("divFightI", result.player);
+      if (result.player.is_fainted) updateBattleCardFainted("divFightI", result.player);
+    }
+    if (result.wild) updateBattleCardHp("divFightH", result.wild);
+    if (result.weather_id != null) {
+      updateWeatherIcon(result.weather_id, result.weather_turns, result.weather_name);
+    }
+
+    if (result.type === "defeat") {
+      setBattleStatus("ПОРАЖЕНИЕ!");
+      setSurrenderButton("Закрыть");
+      addBattleLogMessage("Поражение! Все покемоны без сознания!");
+      setTimeout(endBattle, 2000);
+    } else if (result.type === "need_switch") {
+      if (result.team) renderTeamSelection(result.team);
+    }
+  } catch (err) {
+    console.error("Catch error:", err);
+  }
+}
+
 function showBattleSwitchMenu(ballEl) {
   const activeId = parseInt(ballEl.closest(".poke")?.dataset?.pokemonId);
   if (!activeId) return;
@@ -1928,6 +2277,55 @@ function initBattleSwitchTriggers() {
     el.addEventListener("click", h);
     el._switchHandler = h;
   });
+}
+
+// Ходы с выбором покемона команды: Подставной ход(209), Разнонаправленный ток(311),
+// Эстафета(551), Рука помощи(443, +Атака), Ароматный шлейф(423, +СпЗащита).
+const SWITCH_MOVE_IDS = [209, 311, 551, 443, 423];
+
+// showSwitchMoveMenu — при клике по switch-ходу показать список команды; по
+// выбору выполнить ход со сменой (performMove с switch_to). Если менять некого —
+// просто бьём без смены.
+function showSwitchMoveMenu(atkId, anchorEl) {
+  const activeId = parseInt(document.querySelector("#divFightI .poke")?.dataset?.pokemonId);
+  fetch("/api/user/team")
+    .then(r => r.json())
+    .then(team => {
+      const alive = team.filter(p => p.current_hp > 0 && !p.is_fainted && p.id !== activeId);
+      if (alive.length === 0) {
+        performMove(atkId); // некому меняться — обычный удар
+        return;
+      }
+      const menu = document.getElementById("battle-switch-menu");
+      menu.innerHTML = "";
+      alive.forEach(p => {
+        const item = document.createElement("div");
+        item.className = "ctx-item";
+        const miniSrc = p.image_url ? p.image_url.replace("/normal/", "/mini/") : "/static/images/default.png";
+        item.innerHTML = `<img src="${miniSrc}" style="width:24px;height:24px;vertical-align:middle;margin-right:6px"> ${p.name} <span style="color:#888;font-size:11px">Ур.${p.level}</span>`;
+        item.addEventListener("click", () => {
+          menu.style.display = "none";
+          performMove(atkId, p.id);
+        });
+        menu.appendChild(item);
+      });
+      const rect = anchorEl.getBoundingClientRect();
+      menu.style.left = (rect.left + rect.width / 2) + "px";
+      menu.style.top = (rect.bottom + 4) + "px";
+      menu.style.display = "block";
+      const mr = menu.getBoundingClientRect();
+      if (mr.left < 0) menu.style.left = "4px";
+      if (mr.right > window.innerWidth) menu.style.left = (window.innerWidth - mr.width - 4) + "px";
+      if (mr.bottom > window.innerHeight) menu.style.top = (rect.top - mr.height - 4) + "px";
+      const close = (e) => {
+        if (!menu.contains(e.target) && e.target !== anchorEl) {
+          menu.style.display = "none";
+          document.removeEventListener("click", close);
+        }
+      };
+      setTimeout(() => document.addEventListener("click", close), 0);
+    })
+    .catch(err => console.error("Switch-move menu error:", err));
 }
 
 // ===================================================================

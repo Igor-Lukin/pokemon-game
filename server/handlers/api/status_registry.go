@@ -19,6 +19,7 @@ import mathrand "math/rand"
 type StatusDef struct {
 	Name        string                                    // 1. Имя — как показывать в логе (именительный падеж)
 	TickWord    string                                    // 1б. форма для сообщения об уроне ("получает урон от <TickWord>")
+	SkipMessage string                                    // 1в. сообщение при пропуске хода из-за статуса ("Покемон парализован")
 	ImmuneTypes []int                                     // 2. ИммунныТипы — типы, на которых статус не действует
 	Duration    int                                       // 3. Длительность — сколько ходов живёт (0 = до лечения)
 	OnTurn      func(p *BattlePokemon) int                // 4. КаждыйХод — изменение HP за ход (- урон / + лечение)
@@ -88,8 +89,9 @@ var statusRegistry = map[int]StatusDef{
 
 	// 2 — Паралич: скорость носителя ×0.5; 25% шанс пропустить ход.
 	2: {
-		Name:     "паралич",
-		StatMult: map[int]float64{3: 0.5}, // Скорость ×0.5
+		Name:        "паралич",
+		SkipMessage: "Покемон парализован",
+		StatMult:    map[int]float64{3: 0.5}, // Скорость ×0.5
 		CanAct: func(p *BattlePokemon, log *[]BattleLogEntry) bool {
 			if mathrand.Intn(100) < 25 {
 				return false // парализован, ход пропущен
@@ -100,7 +102,8 @@ var statusRegistry = map[int]StatusDef{
 
 	// 4 — Заморозка: 20% шанс оттаять (и ходить), иначе пропуск хода.
 	4: {
-		Name: "заморозка",
+		Name:        "заморозка",
+		SkipMessage: "Покемон заморожен",
 		CanAct: func(p *BattlePokemon, log *[]BattleLogEntry) bool {
 			if mathrand.Intn(100) < 20 {
 				p.StatusID = 1
@@ -117,8 +120,9 @@ var statusRegistry = map[int]StatusDef{
 
 	// 5 — Сон: счётчик SleepTurns; при обнулении просыпается и ходит.
 	5: {
-		Name:      "сон",
-		OnInflict: func(p *BattlePokemon) { p.SleepTurns = mathrand.Intn(3) + 1 },
+		Name:        "сон",
+		SkipMessage: "Покемон спит",
+		OnInflict:   func(p *BattlePokemon) { p.SleepTurns = mathrand.Intn(3) + 1 },
 		CanAct: func(p *BattlePokemon, log *[]BattleLogEntry) bool {
 			if p.SleepTurns > 0 {
 				p.SleepTurns--

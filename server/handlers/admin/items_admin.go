@@ -148,11 +148,17 @@ func CreateItemHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		types, err := db.GetAllTypes()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		tmpl := template.Must(template.ParseFiles("./server/templates/admin/item_form.html"))
 		tmpl.Execute(w, struct {
 			Categories []db.Category
+			Types      []db.Category
 			Item       *db.Item
-		}{cats, nil})
+		}{cats, types, nil})
 		return
 	}
 
@@ -163,12 +169,13 @@ func CreateItemHandler(w http.ResponseWriter, r *http.Request) {
 	effectType := r.FormValue("effect_type")
 	effectValue, _ := strconv.Atoi(r.FormValue("effect_value"))
 	imageURL := r.FormValue("image_url")
+	typeID, _ := strconv.Atoi(r.FormValue("type_id"))
 
 	if name == "" || categoryID == 0 {
 		http.Error(w, "Name and category are required", http.StatusBadRequest)
 		return
 	}
-	if err := db.CreateItem(name, description, categoryID, price, effectType, effectValue, imageURL); err != nil {
+	if err := db.CreateItem(name, description, categoryID, price, effectType, effectValue, imageURL, typeID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -202,11 +209,17 @@ func EditItemHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		types, err := db.GetAllTypes()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		tmpl := template.Must(template.ParseFiles("./server/templates/admin/item_form.html"))
 		tmpl.Execute(w, struct {
 			Categories []db.Category
+			Types      []db.Category
 			Item       *db.Item
-		}{cats, item})
+		}{cats, types, item})
 		return
 	}
 
@@ -217,12 +230,13 @@ func EditItemHandler(w http.ResponseWriter, r *http.Request) {
 	effectType := r.FormValue("effect_type")
 	effectValue, _ := strconv.Atoi(r.FormValue("effect_value"))
 	imageURL := r.FormValue("image_url")
+	typeID, _ := strconv.Atoi(r.FormValue("type_id"))
 
 	if name == "" || categoryID == 0 {
 		http.Error(w, "Name and category are required", http.StatusBadRequest)
 		return
 	}
-	if err := db.UpdateItem(id, name, description, categoryID, price, effectType, effectValue, imageURL); err != nil {
+	if err := db.UpdateItem(id, name, description, categoryID, price, effectType, effectValue, imageURL, typeID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
