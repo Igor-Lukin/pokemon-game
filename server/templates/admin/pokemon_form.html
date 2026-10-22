@@ -253,12 +253,16 @@
     <table border="1">
       <tr>
         <th>Name</th>
+        <th>Slot</th>
         <th>Hidden</th>
         <th>Action</th>
       </tr>
       {{range .Abilities}}
       <tr>
         <td>{{.Name}}</td>
+        <td>
+          {{if eq .Slot 1}}1 (базовая X){{else if eq .Slot 2}}2 (базовая Y){{else if eq .Slot 3}}3 (скрытая){{else}}—{{end}}
+        </td>
         <td>{{if .IsHidden}}Yes{{else}}No{{end}}</td>
         <td>
           <form
@@ -292,7 +296,14 @@
         <option value="{{.ID}}">{{.Name}}</option>
         {{end}}
       </select>
-      <label><input type="checkbox" name="is_hidden" /> Hidden ability</label>
+      <label>
+        Slot:
+        <select name="slot">
+          <option value="1">1 — базовая X</option>
+          <option value="2">2 — базовая Y</option>
+          <option value="3">3 — скрытая</option>
+        </select>
+      </label>
       <button type="submit">Add</button>
     </form>
 

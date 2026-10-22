@@ -1,0 +1,113 @@
+====================================================================
+TEST_npc_dialogue — отчёт агента по потоку A (NPC + диалоги)
+Дата: 2026-07-17. ТЗ: HANDOFF_npc_dialogue.txt.
+====================================================================
+
+Go на этой машине (RDP) НЕТ — правил файлы + БД (python, utf-8, bash-heredoc).
+Билд/vet и живой прогон — на ОСНОВНОМ ПК. Чек-лист DoD — в конце, заполнить там.
+
+--------------------------------------------------------------------
+ЧТО СДЕЛАНО (по §-разделам ТЗ)
+--------------------------------------------------------------------
+
+[БД] Бэкап: database/pokemon.db.bak-before-dialogue (сделан ДО правок).
+  - server/db/database.go:
+    * +CREATE TABLE dialogue_nodes (id, npc_id, node_key, speaker_text, is_start)
+    * +CREATE TABLE dialogue_options (id, node_id, sort_order, option_text,
+       next_node_id, action_type, action_param, condition_flag)  — поля под квесты
+       (action_param/condition_flag) ЗАВЕДЕНЫ, логика НЕ реализована.
+    * +идемпотентные ALTER npc: team_mode('random') / team_size(6) / min_level(5) /
+       max_level(10). (Существующий паттерн: DB.Exec без обработки ошибки = идемпотентно.)
+  - Живая БД: те же таблицы/колонки применены python-ом (проверка PRAGMA — колонки
+    добавлялись только если их нет). При старте Go CREATE TABLE IF NOT EXISTS — no-op.
+
+[БД тест-данные] Эталонный диалог для NPC «Ричи» (id=1, локация 2), §7:
+  - Узел 1 START (is_start=1): «Привет! Хочешь тренировочный бой?»
+      опция 1 «Да, давай»       -> action_type='battle'
+      опция 2 «Расскажи о себе»  -> next_node_id=2 (узел ABOUT)
+      опция 3 «В другой раз»     -> action_type='close'
+  - Узел 2 ABOUT: «Я тренирую покемонов уже много лет.»
+      опция 4 «Понятно»          -> next_node_id=1 (возврат в START)
+  (Сид идемпотентен: повторный прогон не плодит дубли.)
+
+[Player API] server/handlers/api/dialogue.go (новый):
+  - GET  /api/npc/{id}/dialogue     -> NpcDialogueStartHandler
+      отдаёт {npc_id, npc_name, node_id, text, options:[{id,text}]}.
+      Нет стартового узла -> {node_id:0, text:"…", options:[]} (клиент даст «Закрыть»).
+  - POST /api/npc/dialogue/option {option_id} -> NpcDialogueOptionHandler
+      приоритет §3: action=='battle' -> {kind:"battle", npc_id};
+                    next_node_id!=NULL -> {kind:"node", node_id, text, options[]};
+                    иначе -> {kind:"close"}.
+  - server/handlers/api/location.go: в NPC добавлен has_dialogue (EXISTS стартового узла).
+
+[Роуты] server/routes/routes.go:
+  - +GET /api/npc/{id}/dialogue, +POST /api/npc/dialogue/option (рядом с /api/battle/*).
+  - +6 admin-маршрутов /admin/npc/dialogue/{node,option}/{add,edit,delete}.
+  (Проверено: /api/npc/dialogue/option и /api/npc/{id}/dialogue не конфликтуют —
+   4 сегмента, последний литерал 'option' != 'dialogue', + разные методы.)
+
+[Админка] server/handlers/admin/dialogue.go (новый) + npc.go + npc_form.html:
+  - Блок «Команда для боя»: team_mode(select random/fixed), team_size, min_level,
+    max_level — сохраняются в EditNPC POST (валидация 1..6, max>=min). Команда НЕ
+    генерируется (это поток B).
+  - Блок «Диалог» (только на странице редактирования существующего NPC): список узлов,
+    у каждого — правка текста/ключа/is_start (radio-семантика: при отметке нового
+    стартового старый снимается), список опций (текст, sort_order, next_node -> select
+    из узлов ЭТОГО NPC, action_type -> нет/battle/close), формы add/edit/delete узла и
+    опции.
+  - Гварды: ровно один is_start (clearStartFlag); next_node_id опции валидируется —
+    обязан ссылаться на узел того же NPC (иначе 400); удаление узла чистит его опции и
+    обнуляет next_node_id-ссылки на него.
+  - DeleteNPC: каскад вручную — сначала опции узлов NPC, затем узлы, затем сам NPC.
+
+[Фронт] game.html + game.js + game.css:
+  - game.html: +док #dialogue-dock по образцу team/inventory-dock (divDockPanels/Title/
+    Content: #dialogue-npc-name, #dialogue-text, #dialogue-options).
+  - game.js:
+    * .npc-item теперь `npc-clickable` + data-has-dialogue; клик — делегирование на
+      #npc-list по .npc-item[data-id] -> openDialogue(npcId).
+    * openDialogue -> GET, renderDialogueNode(имя/реплика/кнопки), show + positionDialogueDock.
+    * chooseOption -> POST; kind: node -> перерисовать ту же панель; close -> закрыть;
+      battle -> закрыть + startTrainerBattle(npc_id).
+    * startTrainerBattle(npcId) — ЗАГЛУШКА (alert «Тренировочный бой скоро будет!»),
+      помечена TODO(поток B) — ЕДИНСТВЕННАЯ точка стыка, поток B перепишет тело.
+    * positionDialogueDock() — центр экрана (не перекрывает боевую панель); добавлен в
+      общий resize-хук.
+    * loadLocation при входе вызывает closeDialogue() — смена локации закрывает диалог.
+  - game.css: +#dialogue-dock (380px), .dialogue-text, .dialogue-option (кнопка-ответ в
+    стиле каталога, ховер-сепия). .npc-item уже был cursor:pointer + ховер.
+
+--------------------------------------------------------------------
+ПРОВЕРЕНО НА ЭТОЙ МАШИНЕ (без Go)
+--------------------------------------------------------------------
+Симуляция SQL всех хендлеров на живой БД (python) — совпадает с §7:
+  - start: узел 1 + 3 опции;
+  - opt1 -> battle, opt2 -> node 2, opt3 -> close, opt4(ABOUT) -> node 1 (возврат);
+  - has_dialogue для Ричи = 1;
+  - loadNPCDialogue (админ) отдаёт 2 узла + опции с текстом целевого узла.
+Конфликтов Go-имён нет (grep по api/ и admin/).
+
+--------------------------------------------------------------------
+DoD — ЗАПОЛНИТЬ НА ОСНОВНОМ ПК (живой прогон обязателен)
+-------------------------------------------------------------------
+  [x] go build -o server.exe ./server + go vet ./... — зелёные
+  [x] на локации «Дорога к городу» в «Персонажах» Ричи кликабелен
+  [x] клик по Ричи -> открылся док с именем NPC, репликой и кнопками
+  [x] «Расскажи о себе» -> реплика ABOUT; «Понятно» -> возврат в START
+  [x] «В другой раз» -> диалог закрылся
+  [x] «Да, давай» -> заглушка (alert «бой скоро»/startTrainerBattle) БЕЗ падения
+  [x] смена локации закрывает открытый диалог; переходы не сломаны
+  [x] админка /admin/npc/edit?id=1: узлы/опции создаются/редактируются/удаляются;
+      is_start единственный; next_node ссылается только на узлы этого NPC;
+      поля команды (team_mode/size/min/max) сохраняются
+  [x] удаление NPC чистит его узлы/опции (каскад)
+
+ОТЧЁТ ВЛАДЕЛЬЦА (дописать сюда после прогона):
+  go build: ok
+  go vet: ok
+  диалог Ричи: работает (start->about->start, close, battle-заглушка)
+  админка узлов/опций: создание/редактирование/удаление — ок
+  удаление NPC с каскадом: ок
+  замечания: нет
+
+====================================================================

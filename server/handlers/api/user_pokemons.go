@@ -65,6 +65,7 @@ type TeamPokemon struct {
 	PrimaryTypeID    int               `json:"primary_type_id"`
 	SecondaryTypeID  *int              `json:"secondary_type_id,omitempty"`
 	AbilityName      string            `json:"ability_name"`
+	AbilityDescription string          `json:"ability_description"`
 	ExperienceGroup  int               `json:"experience_group"`
 	HeldItemID          *int           `json:"held_item_id,omitempty"`
 	HeldItemName        string         `json:"held_item_name,omitempty"`
@@ -99,9 +100,10 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
                 p.primary_type_id,
                 p.secondary_type_id,
                 p.experience_group,
-                COALESCE((SELECT a.name FROM pokemon_abilities pa
-                 JOIN abilities a ON pa.ability_id = a.id
-                 WHERE pa.pokemon_id = p.id AND pa.is_hidden = 0 LIMIT 1), '') as ability_name,
+                COALESCE((SELECT a.name FROM abilities a
+                 WHERE a.id = up.ability_id), '') as ability_name,
+                COALESCE((SELECT a.description FROM abilities a
+                 WHERE a.id = up.ability_id), '') as ability_description,
                 up.held_item_id, COALESCE(hi.name, ''), COALESCE(hi.image_url, ''),
                 COALESCE(hi.type_id, 0), COALESCE(hi.description, '')
         FROM user_pokemons up
@@ -137,6 +139,7 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
 			&t.IncreasedStat, &t.DecreasedStat,
 			&imageURL,
 			&t.PrimaryTypeID, &secondaryTypeID, &t.ExperienceGroup, &t.AbilityName,
+			&t.AbilityDescription,
 			&heldItemID, &t.HeldItemName, &t.HeldItemImage, &t.HeldItemTypeID,
 			&t.HeldItemDescription); err != nil {
 			log.Printf("Scan error: %v", err)

@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Карточка тренера — большой аватар + вкладки</title>
+<style>
+  :root{
+    --pk-paper:#fdf9f0; --pk-paper-2:#f6efe0; --pk-paper-3:#f0e7d3;
+    --pk-ink:#40342a; --pk-ink-soft:#5c4c3a; --pk-ink-faint:#8a7860;
+    --pk-line:#e2d6bd; --pk-line-2:#d8c9a8;
+    --pk-sepia:#9a6b43; --pk-sepia-2:#b58a3c;
+    --pk-serif:Georgia,"Times New Roman",serif;
+    --pk-shadow:0 2px 10px rgba(120,95,55,.12);
+    --avh:520px;                 /* высота аватара (регулируется ползунком) */
+    --avw:calc(var(--avh) * .66);/* портретная пропорция */
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; padding:24px; background:var(--pk-paper-3); font-family:var(--pk-serif); color:var(--pk-ink);}
+  h1{font-size:22px; color:var(--pk-sepia); margin:0 0 4px;}
+  .hint{color:var(--pk-ink-soft); font-size:14px; margin-bottom:18px;}
+  .toolbar{
+    position:sticky; top:0; z-index:10; background:var(--pk-paper);
+    border:1px solid var(--pk-line-2); box-shadow:var(--pk-shadow);
+    padding:10px 14px; margin-bottom:24px; display:flex; align-items:center; gap:14px; flex-wrap:wrap;
+  }
+  .toolbar label{font-size:14px; color:var(--pk-ink-soft);}
+  .toolbar input[type=range]{width:280px;}
+  .toolbar .val{font-weight:700; color:var(--pk-sepia); min-width:60px;}
+
+  .take-label{font-size:15px; color:var(--pk-sepia); font-weight:700; letter-spacing:1px; margin:26px 0 10px;}
+
+  .dock{
+    background:var(--pk-paper); border:1px solid var(--pk-line-2);
+    box-shadow:var(--pk-shadow); padding:14px 16px; display:inline-block;
+  }
+  .dock-title{
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:18px; font-weight:700; letter-spacing:1px; color:var(--pk-sepia);
+    padding-bottom:8px; margin-bottom:12px; border-bottom:1px solid var(--pk-line);
+  }
+  .dock-title .x{color:var(--pk-ink-faint);}
+
+  /* элементы */
+  .badge{font-family:Arial,sans-serif; font-size:12px; padding:3px 10px; border-radius:10px; border:1px solid transparent; white-space:nowrap;}
+  .badge.on{background:#e2f3e0; color:#2f7d32; border-color:#b7dfb2;}
+  .badge.off{background:var(--pk-paper-3); color:var(--pk-ink-faint); border-color:var(--pk-line-2);}
+  .role{background:var(--pk-paper-2); border:1px solid var(--pk-line-2); color:var(--pk-sepia); padding:3px 12px; font-size:13px; white-space:nowrap;}
+  .region{font-size:14px; color:var(--pk-ink-soft);}
+  .username{font-size:26px; font-weight:700; color:var(--pk-sepia);}
+  .status{font-size:15px; font-style:italic; color:var(--pk-ink); background:var(--pk-paper-2); border:1px dashed var(--pk-line-2); padding:9px 12px;}
+  .avatar{
+    width:var(--avw); height:var(--avh); flex:0 0 auto;
+    background:var(--pk-paper-2); border:1px solid var(--pk-line-2);
+    display:flex; align-items:flex-end; justify-content:center; overflow:hidden;
+  }
+  .avatar svg{width:88%; height:92%; opacity:.4;}
+
+  /* вкладки */
+  .tabs{display:flex; gap:2px;}
+  .tab{
+    font-size:13px; padding:8px 16px; cursor:pointer; font-family:Arial,sans-serif;
+    background:var(--pk-paper-2); border:1px solid var(--pk-line-2); border-bottom:none;
+    color:var(--pk-ink-soft); user-select:none;
+  }
+  .tab.act{background:var(--pk-paper); color:var(--pk-sepia); font-weight:700;}
+  .tabbody{border:1px solid var(--pk-line-2); padding:14px; flex:1;}
+  .panel{display:none;} .panel.act{display:block;}
+
+  .sec-title{font-size:12px; letter-spacing:1px; text-transform:uppercase; color:var(--pk-sepia); margin-bottom:8px;}
+  .tiles{display:flex; flex-wrap:wrap; gap:12px;}
+  .tile{width:70px; display:flex; flex-direction:column; align-items:center; text-align:center;}
+  .tile .box{width:52px; height:52px; display:flex; align-items:center; justify-content:center; font-size:28px; background:var(--pk-paper-2); border:1px solid var(--pk-line);}
+  .tile .cap{font-family:Arial,sans-serif; font-size:11px; color:var(--pk-ink-soft); margin-top:4px; line-height:1.15;}
+  .friends{display:flex; flex-direction:column; gap:4px;}
+  .friend{display:flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid transparent; cursor:pointer;}
+  .friend:hover{background:var(--pk-paper-3); border-color:var(--pk-line);}
+  .dot{width:10px; height:10px; border-radius:50%; display:inline-block;}
+  .dot.on{background:#52a852;} .dot.off{background:#b9ad96;}
+  .friend .nm{font-size:15px;}
+
+  /* ---- Компоновка A: аватар слева, справа шапка + вкладки ---- */
+  .takeA .body{display:flex; gap:18px; align-items:stretch;}
+  .takeA .right{display:flex; flex-direction:column; min-width:360px; flex:1;}
+  .takeA .row1{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px;}
+  .takeA .meta{display:flex; gap:14px; align-items:center; margin-bottom:12px;}
+  .takeA .status{margin-bottom:16px;}
+  .takeA .tabwrap{display:flex; flex-direction:column; flex:1;}
+
+  /* ---- Компоновка B: шапка сверху на всю ширину, ниже аватар + вкладки ---- */
+  .takeB .head{padding-bottom:12px; margin-bottom:14px; border-bottom:1px solid var(--pk-line);}
+  .takeB .row1{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:8px;}
+  .takeB .meta{display:flex; gap:14px; align-items:center; margin-bottom:10px;}
+  .takeB .body{display:flex; gap:18px; align-items:stretch;}
+  .takeB .tabwrap{display:flex; flex-direction:column; flex:1; min-width:360px;}
+</style>
+</head>
+<body>
+  <h1>Карточка тренера — крупный аватар + вкладки</h1>
+  <div class="hint">Данные-примеры: игрок «test», Гим лидер, Джотто. Вкладки кликаются. Аватар — заглушка-силуэт (реальный аватар с одеждой — отдельное ТЗ). Подбери размер аватара ползунком и выбери компоновку.</div>
+
+  <div class="toolbar">
+    <label>Высота аватара:</label>
+    <input type="range" id="avh" min="400" max="700" step="10" value="520">
+    <span class="val" id="avhVal">520px</span>
+    <span style="color:var(--pk-ink-faint);font-size:13px;">(ширина авто-портрет ≈ 66%)</span>
+  </div>
+
+  <!-- ===================== Компоновка A ===================== -->
+  <div class="take-label">Компоновка A — аватар слева, справа шапка и вкладки</div>
+  <div class="dock takeA">
+    <div class="dock-title"><span>Карточка тренера</span><span class="x">✖</span></div>
+    <div class="body">
+      <div class="avatar"></div>
+      <div class="right">
+        <div class="row1">
+          <span class="username">test</span>
+          <span class="badge on">● онлайн</span>
+          <span class="role">Гим лидер</span>
+        </div>
+        <div class="meta"><span class="region">📍 Джотто</span></div>
+        <div class="status">«Я никого не боюсь!»</div>
+        <div class="tabwrap">
+          <div class="tabs">
+            <div class="tab act" data-tab="a1">Награды</div>
+            <div class="tab" data-tab="a2">Желаемые</div>
+            <div class="tab" data-tab="a3">Друзья</div>
+          </div>
+          <div class="tabbody">
+            <div class="panel act" data-tab="a1">
+              <div class="tiles">
+                <div class="tile"><div class="box">🏅</div><div class="cap">Значок Скалы</div></div>
+                <div class="tile"><div class="box">🏆</div><div class="cap">Кубок Лиги</div></div>
+              </div>
+            </div>
+            <div class="panel" data-tab="a2">
+              <div class="tiles">
+                <div class="tile"><div class="box">🐢</div><div class="cap">Венозавр</div></div>
+                <div class="tile"><div class="box">🦎</div><div class="cap">Чаризард</div></div>
+                <div class="tile"><div class="box">🐉</div><div class="cap">Бластойз</div></div>
+              </div>
+            </div>
+            <div class="panel" data-tab="a3">
+              <div class="friends">
+                <div class="friend"><span class="dot on"></span><span class="nm">aiTest</span></div>
+                <div class="friend"><span class="dot off"></span><span class="nm">admin</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Компоновка B ===================== -->
+  <div class="take-label">Компоновка B — шапка сверху во всю ширину, ниже аватар и вкладки</div>
+  <div class="dock takeB">
+    <div class="dock-title"><span>Карточка тренера</span><span class="x">✖</span></div>
+    <div class="head">
+      <div class="row1">
+        <span class="username">test</span>
+        <span class="badge on">● онлайн</span>
+        <span class="role">Гим лидер</span>
+        <span class="region">📍 Джотто</span>
+      </div>
+      <div class="status">«Я никого не боюсь!»</div>
+    </div>
+    <div class="body">
+      <div class="avatar"></div>
+      <div class="tabwrap">
+        <div class="tabs">
+          <div class="tab act" data-tab="b1">Награды</div>
+          <div class="tab" data-tab="b2">Желаемые</div>
+          <div class="tab" data-tab="b3">Друзья</div>
+        </div>
+        <div class="tabbody">
+          <div class="panel act" data-tab="b1">
+            <div class="tiles">
+              <div class="tile"><div class="box">🏅</div><div class="cap">Значок Скалы</div></div>
+              <div class="tile"><div class="box">🏆</div><div class="cap">Кубок Лиги</div></div>
+            </div>
+          </div>
+          <div class="panel" data-tab="b2">
+            <div class="tiles">
+              <div class="tile"><div class="box">🐢</div><div class="cap">Венозавр</div></div>
+              <div class="tile"><div class="box">🦎</div><div class="cap">Чаризард</div></div>
+              <div class="tile"><div class="box">🐉</div><div class="cap">Бластойз</div></div>
+            </div>
+          </div>
+          <div class="panel" data-tab="b3">
+            <div class="friends">
+              <div class="friend"><span class="dot on"></span><span class="nm">aiTest</span></div>
+              <div class="friend"><span class="dot off"></span><span class="nm">admin</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <template id="silh">
+    <svg viewBox="0 0 100 128" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="50" cy="34" r="22" fill="#9a6b43"/>
+      <path d="M6 128 C6 84 30 66 50 66 C70 66 94 84 94 128 Z" fill="#9a6b43"/>
+    </svg>
+  </template>
+  <script>
+    // силуэт во все аватары
+    const svg = document.getElementById('silh').innerHTML;
+    document.querySelectorAll('.avatar').forEach(a => a.innerHTML = svg);
+
+    // ползунок размера
+    const avh = document.getElementById('avh'), avhVal = document.getElementById('avhVal');
+    avh.addEventListener('input', () => {
+      document.documentElement.style.setProperty('--avh', avh.value + 'px');
+      avhVal.textContent = avh.value + 'px';
+    });
+
+    // вкладки
+    document.querySelectorAll('.tab').forEach(t => {
+      t.addEventListener('click', () => {
+        const wrap = t.closest('.tabwrap');
+        wrap.querySelectorAll('.tab').forEach(x => x.classList.remove('act'));
+        wrap.querySelectorAll('.panel').forEach(p => p.classList.remove('act'));
+        t.classList.add('act');
+        wrap.querySelector('.panel[data-tab="'+t.dataset.tab+'"]').classList.add('act');
+      });
+    });
+  </script>
+</body>
+</html>

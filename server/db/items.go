@@ -56,6 +56,7 @@ func GetUserInventory(userID int) ([]UserItem, error) {
 		JOIN items i ON ui.item_id = i.id
 		LEFT JOIN item_categories ic ON i.category_id = ic.id
 		WHERE ui.user_id = ? AND ui.quantity > 0
+		  AND COALESCE(i.is_award, 0) = 0
 		ORDER BY i.category_id, i.id
 	`, userID)
 	if err != nil {

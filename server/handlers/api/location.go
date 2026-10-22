@@ -25,8 +25,9 @@ type Exit struct {
 }
 
 type NPC struct {
-	ID   int    `json:"id"`
-	Name string `json:"name"`
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	HasDialogue bool   `json:"has_dialogue"` // есть стартовый узел диалога (клиент подсветит/кликабельно)
 }
 
 func GetLocation(w http.ResponseWriter, r *http.Request) {
@@ -60,13 +61,18 @@ func GetLocation(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// NPC
-	rowsNPC, err := db.DB.Query("SELECT id, name FROM npc WHERE location_id = ?", id)
+	// NPC (+признак наличия стартового узла диалога).
+	rowsNPC, err := db.DB.Query(`
+		SELECT n.id, n.name,
+		       EXISTS(SELECT 1 FROM dialogue_nodes d WHERE d.npc_id = n.id AND d.is_start = 1)
+		FROM npc n WHERE n.location_id = ?`, id)
 	if err == nil {
 		defer rowsNPC.Close()
 		for rowsNPC.Next() {
 			var npc NPC
-			rowsNPC.Scan(&npc.ID, &npc.Name)
+			var hasDialogue int
+			rowsNPC.Scan(&npc.ID, &npc.Name, &hasDialogue)
+			npc.HasDialogue = hasDialogue == 1
 			loc.NPCs = append(loc.NPCs, npc)
 		}
 	}

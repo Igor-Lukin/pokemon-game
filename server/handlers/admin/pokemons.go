@@ -219,10 +219,11 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
 		// внутри GET-блока после загрузки основных данных
 		// Загружаем способности покемона
 		abilityRows, err := db.DB.Query(`
-		SELECT a.id, a.name, pa.is_hidden 
+		SELECT a.id, a.name, pa.is_hidden, COALESCE(pa.slot, 0)
 		FROM pokemon_abilities pa
 		JOIN abilities a ON pa.ability_id = a.id
-		WHERE pa.pokemon_id = ?`, id)
+		WHERE pa.pokemon_id = ?
+		ORDER BY COALESCE(pa.slot, 99), a.name`, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -232,11 +233,12 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
 			ID       int
 			Name     string
 			IsHidden bool
+			Slot     int // 1=базовая X, 2=базовая Y, 3=скрытая, 0=не задан
 		}
 		var abilities []PokemonAbility
 		for abilityRows.Next() {
 			var ab PokemonAbility
-			if err := abilityRows.Scan(&ab.ID, &ab.Name, &ab.IsHidden); err != nil {
+			if err := abilityRows.Scan(&ab.ID, &ab.Name, &ab.IsHidden, &ab.Slot); err != nil {
 				continue
 			}
 			abilities = append(abilities, ab)
@@ -539,9 +541,15 @@ func AddPokemonAbilityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	pokemonID := r.FormValue("pokemon_id")
 	abilityID := r.FormValue("ability_id")
-	isHidden := r.FormValue("is_hidden") == "on"
+	// Слот ведёт согласованность: 1=базовая X, 2=базовая Y, 3=скрытая. is_hidden
+	// выводится из слота (slot=3 <=> is_hidden=1) — держим синхронно (§7 ТЗ).
+	slot, _ := strconv.Atoi(r.FormValue("slot"))
+	if slot < 1 || slot > 3 {
+		slot = 1
+	}
+	isHidden := slot == 3
 	// Логируем
-	log.Printf("AddAbility: pokemonID=%s, abilityID=%s, isHidden=%v", pokemonID, abilityID, isHidden)
+	log.Printf("AddAbility: pokemonID=%s, abilityID=%s, slot=%d, isHidden=%v", pokemonID, abilityID, slot, isHidden)
 	if pokemonID == "" || abilityID == "" {
 		log.Println("Missing parameters")
 		http.Error(w, "Missing parameters", http.StatusBadRequest)
@@ -567,7 +575,7 @@ func AddPokemonAbilityHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Ability already assigned", http.StatusConflict)
 		return
 	}
-	_, err = db.DB.Exec("INSERT INTO pokemon_abilities (pokemon_id, ability_id, is_hidden) VALUES (?, ?, ?)", pID, aID, isHidden)
+	_, err = db.DB.Exec("INSERT INTO pokemon_abilities (pokemon_id, ability_id, is_hidden, slot) VALUES (?, ?, ?, ?)", pID, aID, isHidden, slot)
 	if err != nil {
 		log.Printf("DB error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

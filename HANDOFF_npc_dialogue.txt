@@ -1,0 +1,278 @@
+====================================================================
+HANDOFF_npc_dialogue — NPC НА ЛОКАЦИИ + СИСТЕМА ДИАЛОГОВ (поток A)
+(скорми файл ИИ-агенту целиком; это ТЗ на одну подсистему)
+Автор ТЗ: тимлид. Тема выбрана владельцем. Обновлено: 2026-07-17
+Родственный поток B (тренерский бой) — HANDOFF_npc_battle.txt (пишется отдельно).
+====================================================================
+
+--------------------------------------------------------------------
+0. КАК РАБОТАЕМ (ритм — НЕ менять; то же, что в HANDOFF_moves §0)
+--------------------------------------------------------------------
+Владелец НЕ программист: простой язык, маленькие проверяемые шаги.
+На машине диалога (RDP-сервер) Go НЕТ — компилировать нельзя. Ритм:
+  1) агент правит .go/.js/.html/.css напрямую на диске проекта + меняет данные в
+     БД через python+sqlite3 (Go тут нет, python есть);
+  2) пишет TEST_npc_dialogue.txt в КОРЕНЬ проекта (что менялось + чек-лист);
+  3) владелец несёт проект на ОСНОВНОЙ ПК (там Go): go build/go vet + сверка
+     поведения, дописывает отчёт в конец;
+  4) владелец говорит «отчёт готов» — читаем, при ошибках правим.
+ВАЖНО: перед каждой правкой БД — бэкап рядом: pokemon.db.bak-before-dialogue.
+Кодировка python при работе с БД: sys.stdout.reconfigure(encoding='utf-8').
+Через PowerShell в python НЕ слать (BOM ломает stdin) — Bash-героку.
+Боевая БД — ./database/pokemon.db (в КОРНЕ pokemon.db — пустышка 0 байт).
+
+--------------------------------------------------------------------
+1. ЦЕЛЬ И ГРАНИЦЫ ПОТОКА A
+--------------------------------------------------------------------
+ЦЕЛЬ: игрок видит персонажей (NPC) на локации; кликает по NPC -> открывается
+диалоговое окно (всплывающий док, как «Команда»/«Рюкзак»): реплика NPC + кнопки-
+ответы. Ответы ведут по цепочке узлов (ветвящийся диалог) или завершают разговор.
+Диалог хранится в БД и редактируется в админке. Схема сразу расширяема под
+КВЕСТЫ (условия/действия), но квесты в этом потоке НЕ реализуем.
+
+ПРИМЕР ДИАЛОГА (эталон для теста): NPC говорит «Хочешь тренировочный бой?»;
+варианты: «Да, давай» (действие 'battle') и «В другой раз» (действие 'close').
+
+ГРАНИЦА С ПОТОКОМ B: сам БОЙ и генерацию команды NPC делает поток B. В этом
+потоке действие опции 'battle' доводится ТОЛЬКО до серверного сигнала
+{kind:'battle', npc_id} и заглушки на клиенте (тост «бой скоро»). Поток B заменит
+заглушку на реальный старт боя. Поля команды NPC в схеме/админке завести здесь
+(§3, §6), но НЕ генерировать команду и НЕ трогать боевой движок.
+
+НЕ ДЕЛАЕМ в потоке A:
+  - боевой движок vs команда, ИИ-смену, условие победы (это поток B);
+  - квесты: условия показа опций (condition_flag), действия give_item/set_flag/
+    start_quest — только ЗАКЛАДКА полей в схеме, без логики;
+  - награды/опыт (владелец: наград нет, опыт никому не начисляется).
+Владелец подтвердил именно такой объём.
+
+--------------------------------------------------------------------
+2. ЧТО УЖЕ ЕСТЬ (НЕ переделывать, переиспользовать)
+--------------------------------------------------------------------
+БД:
+  - npc(id, name, location_id) — есть, привязка к локации. FK на locations(id).
+  - Миграции живут в server/db/database.go: срез строк CREATE TABLE IF NOT EXISTS
+    прогоняется при старте (идемпотентно). Новые таблицы добавлять СЮДА.
+
+Бэкенд (Go):
+  - server/handlers/api/location.go GetLocation (маршрут GET /api/locations/{id},
+    gorilla/mux): уже отдаёт JSON локации, включая loc.NPCs []NPC{id,name} —
+    SELECT id,name FROM npc WHERE location_id=?. Сюда можно добавить признак
+    «есть диалог» (см. §4).
+  - server/handlers/admin/npc.go: полный CRUD NPC (список/создание/редакт/удаление),
+    шаблоны server/templates/admin/npc.html и npc_form.html. Маршруты
+    /admin/npc[/create|/edit|/delete] в routes.go (~строки 72-76). Диалог-редактор
+    навешиваем на страницу редактирования NPC (npc_form.html).
+  - Маршруты регистрируются в server/routes/routes.go (r.HandleFunc(...).Methods(...)).
+    Боевые эндпоинты /api/battle/* — там же (образец группировки).
+
+Фронт (JS + Go-templates):
+  - client/static/js/game.js: loadLocation(locationId) (~строка 65) делает
+    GET /api/locations/{id} и рендерит NPC в #npc-list как
+    `<div class="npc-item" data-id="${npc.id}" data-type="${npc.type}">${npc.name}</div>`.
+    ВНИМАНИЕ: клика по npc-item сейчас НЕТ, а npc.type в JSON пока не приходит
+    (data-type = "undefined") — это задел, можно наполнить (§4/§5).
+  - Доки (всплывающие окна) — единый паттерн в game.html:
+    `<div class="divDockPanels" id="...-dock">` с .divDockPanelsArrow / ...Title /
+    ...Content; в game.js на каждый док — positionXDock() + показ/скрытие через
+    style.display "block"/"none", репозиция в общем resize-обработчике (~строки
+    900-914). Готовые доки-образцы: team-dock, inventory-dock, trainer-dock,
+    diary-dock, nursery-panel. ДИАЛОГ делаем таким же доком #dialogue-dock.
+  - Экран локации: панель «🧙 ПЕРСОНАЖИ» уже есть в game.html (~строки 57-60):
+    .npc-block > .panel-header + .npc-list#npc-list (плейсхолдер «Загрузка...»).
+  - Версионирование статики: game.js/pokedex.js подключены как /static/js/xxx.js?v={{.Version}}.
+
+--------------------------------------------------------------------
+3. СХЕМА БД (поток A)
+--------------------------------------------------------------------
+Все правки — под бэкап pokemon.db.bak-before-dialogue. Новые таблицы — в срез
+database.go (CREATE TABLE IF NOT EXISTS). ALTER для npc — идемпотентно (проверить
+PRAGMA table_info(npc), добавлять колонку только если её нет).
+
+(1) Расширение npc — поля команды для боя (ЗАВОДИМ здесь, использует поток B):
+      ALTER TABLE npc ADD COLUMN team_mode TEXT DEFAULT 'random';  -- 'random'|'fixed'
+      ALTER TABLE npc ADD COLUMN team_size INTEGER DEFAULT 6;       -- 1..6
+      ALTER TABLE npc ADD COLUMN min_level INTEGER DEFAULT 5;
+      ALTER TABLE npc ADD COLUMN max_level INTEGER DEFAULT 10;
+    (В потоке A эти поля только редактируются в админке; команда НЕ генерируется.)
+
+(2) Узлы диалога (реплики NPC):
+      CREATE TABLE IF NOT EXISTS dialogue_nodes (
+        id INTEGER PRIMARY KEY,
+        npc_id INTEGER NOT NULL,
+        node_key TEXT,               -- удобный ключ узла в рамках NPC (для авторинга/квестов)
+        speaker_text TEXT NOT NULL,  -- что говорит NPC
+        is_start INTEGER DEFAULT 0,  -- 1 = стартовый узел NPC (ровно один на NPC)
+        FOREIGN KEY(npc_id) REFERENCES npc(id)
+      );
+
+(3) Опции (ответы игрока) — рёбра графа:
+      CREATE TABLE IF NOT EXISTS dialogue_options (
+        id INTEGER PRIMARY KEY,
+        node_id INTEGER NOT NULL,    -- к какому узлу относится ответ
+        sort_order INTEGER DEFAULT 0,
+        option_text TEXT NOT NULL,   -- текст кнопки-ответа
+        next_node_id INTEGER,        -- куда ведёт (NULL = конец после действия)
+        action_type TEXT,            -- NULL | 'battle' | 'close' (позже: give_item/set_flag/start_quest)
+        action_param TEXT,           -- параметр действия (на будущее, сейчас NULL)
+        condition_flag TEXT,         -- НА БУДУЩЕЕ (квесты): показывать опцию при условии; сейчас NULL/игнор
+        FOREIGN KEY(node_id) REFERENCES dialogue_nodes(id)
+      );
+
+Семантика разрешения опции (сервер, приоритет):
+  - action_type == 'battle'  -> сигнал боя (поток B), диалог закрыть;
+  - иначе next_node_id != NULL -> перейти в этот узел (продолжение цепочки);
+  - иначе (action 'close' или пусто и next пуст) -> завершить диалог.
+
+--------------------------------------------------------------------
+4. БЭКЕНД — PLAYER API (диалоги)
+--------------------------------------------------------------------
+Новый файл server/handlers/api/dialogue.go. Все ответы JSON. Auth — как в других
+api-хендлерах (userID из сессии; для чтения диалога строго не обязателен, но
+держи единообразно).
+
+(A) GET /api/npc/{id}/dialogue  -> стартовый узел NPC:
+    - найти dialogue_nodes: npc_id=? AND is_start=1 (первый). Если нет стартового —
+      вернуть {npc_id, npc_name, node_id:0, text:"...", options:[]} (клиент покажет
+      «…» + одну кнопку «Закрыть»);
+    - собрать опции узла (ORDER BY sort_order, id), отдать только видимые
+      (condition_flag сейчас игнорируем — все видимы);
+    - ответ: {npc_id, npc_name, node_id, text, options:[{id, text}]}.
+
+(B) POST /api/npc/dialogue/option  {option_id int}  -> разрешение выбора:
+    - загрузить опцию по id (+ через node узнать npc_id); нет -> 404;
+    - применить приоритет из §3:
+        action=='battle' -> {kind:"battle", npc_id};      // заглушка B
+        next_node_id!=NULL -> загрузить узел + его опции ->
+            {kind:"node", node_id, text, options:[{id,text}]};
+        иначе -> {kind:"close"}.
+    - ответ всегда с полем kind ("node" | "battle" | "close").
+
+(C) (Опц., желательно) в GetLocation добавить признак кликабельности: для каждого
+    NPC отдавать has_dialogue bool (EXISTS стартового узла) ЛИБО type-строку.
+    Клиент по нему подсветит/включит клик. Если проще — считать ВСЕ NPC
+    кликабельными (у NPC без диалога откроется дефолтный «…»). Согласуй минимально.
+
+Маршруты в routes.go (рядом с /api/battle/*):
+    r.HandleFunc("/api/npc/{id}/dialogue", api.NpcDialogueStartHandler).Methods("GET")
+    r.HandleFunc("/api/npc/dialogue/option", api.NpcDialogueOptionHandler).Methods("POST")
+
+--------------------------------------------------------------------
+5. ФРОНТ — ДИАЛОГОВЫЙ ДОК (game.html + game.js + game.css)
+--------------------------------------------------------------------
+(A) game.html: добавить док #dialogue-dock ПО ОБРАЗЦУ team-dock/inventory-dock
+    (divDockPanels/Arrow/Title/Content). В Title — имя NPC; в Content — блок
+    реплики #dialogue-text и контейнер кнопок #dialogue-options.
+
+(B) game.js:
+    - Сделать .npc-item кликабельными. В рендере #npc-list (в loadLocation) навесить
+      обработчик (делегирование на #npc-list по .npc-item[data-id]).
+    - openDialogue(npcId): GET /api/npc/{id}/dialogue -> renderDialogueNode(data);
+      показать #dialogue-dock (style.display='block' + positionDialogueDock()).
+    - renderDialogueNode({npc_name,text,options}): заголовок = npc_name, #dialogue-text
+      = text, отрисовать кнопки по options (каждая -> chooseOption(option.id)).
+    - chooseOption(optionId): POST /api/npc/dialogue/option {option_id} -> по result.kind:
+        "node"  -> renderDialogueNode(result) (та же панель, новая реплика);
+        "close" -> закрыть #dialogue-dock;
+        "battle"-> ЗАГЛУШКА: закрыть док + тост/лог «Тренировочный бой скоро будет!»
+                   (поток B заменит на реальный старт боя — оставь тут явный TODO-маркер
+                   и вызови функцию-заглушку startTrainerBattle(result.npc_id), которую
+                   B перепишет).
+    - positionDialogueDock() + добавить строку в общий resize-обработчик (как у
+      прочих доков ~строки 900-914). Позиционировать по центру/от иконки локации —
+      согласуй с существующими доками, не перекрывай боевую панель.
+    - Не ломать loadLocation/переходы между локациями (при смене локации закрывать
+      открытый диалог).
+
+(C) game.css: стили #dialogue-dock, .dialogue-option (кнопка-ответ) в стиле
+    каталога (эталон — токены --pk-*/game.css из потоков [2]/[4]); .npc-item
+    сделать визуально кликабельным (курсор/ховер).
+
+--------------------------------------------------------------------
+6. АДМИНКА — РЕДАКТОР ДИАЛОГОВ (npc_form.html + admin/npc.go)
+--------------------------------------------------------------------
+Расширить страницу редактирования NPC (EditNonPlayerCharacterHandler GET/POST,
+шаблон npc_form.html). Полноценный граф-редактор НЕ нужен — достаточно рабочих форм.
+
+(A) Блок «Команда для боя» (поля из §3.1): team_mode (select random/fixed),
+    team_size, min_level, max_level. Сохранять в npc. (Использует поток B.)
+    Таблицу фиксированной команды npc_pokemons поток B заведёт сам — здесь НЕ надо.
+
+(B) Блок «Диалог»: под NPC показать список его узлов (dialogue_nodes), у каждого —
+    текст, отметка is_start (radio: ровно один стартовый), и список его опций
+    (option_text, next_node -> select из узлов ЭТОГО NPC, action_type -> select
+    [нет / battle / close]). Формы:
+      - добавить узел (speaker_text, node_key, is_start);
+      - редактировать/удалить узел;
+      - добавить опцию к узлу (option_text, next_node_id, action_type, sort_order);
+      - редактировать/удалить опцию.
+    Реализация — по образцу существующих admin-CRUD (напр. pokemons attack/ability
+    add/remove: отдельные POST-хендлеры + маршруты /admin/npc/dialogue/...).
+    Новые хендлеры в admin/npc.go (или новый admin/dialogue.go) + маршруты в routes.go.
+    checkAdmin(r) — как во всех admin-хендлерах.
+
+(C) Гварды авторинга: у NPC ровно один is_start=1 (при отметке нового — снять
+    старый); next_node_id опции обязан ссылаться на узел того же NPC; удаление узла
+    чистит его опции и обнуляет ссылки next_node_id на него.
+
+--------------------------------------------------------------------
+7. ТЕСТ-ДАННЫЕ И ПРОВЕРКА (DoD)
+--------------------------------------------------------------------
+Тест-данные (через админку ИЛИ python, под бэкап): взять NPC на стартовой локации;
+собрать эталонный диалог:
+  - узел START (is_start=1): «Привет! Хочешь тренировочный бой?»
+      опция 1 «Да, давай»    -> action_type='battle'
+      опция 2 «Расскажи о себе» -> next_node_id = узлу ABOUT (проверка цепочки)
+      опция 3 «В другой раз»  -> action_type='close'
+  - узел ABOUT: «Я тренирую покемонов уже много лет.»
+      опция «Понятно» -> next_node_id = START (возврат) ИЛИ 'close'.
+
+DoD (осн. ПК, обязателен ЖИВОЙ прогон — билд+vet это НЕ «готово»):
+  [ ] go build -o server.exe ./server + go vet ./... — зелёные;
+  [ ] на локации в «Персонажах» NPC кликабельны;
+  [ ] клик по NPC -> открылся диалоговый док с именем NPC, репликой и кнопками;
+  [ ] «Расскажи о себе» -> реплика ABOUT (цепочка узлов работает), возврат назад;
+  [ ] «В другой раз» -> диалог закрылся;
+  [ ] «Да, давай» -> заглушка (тост «бой скоро» / вызов startTrainerBattle-стаба),
+      БЕЗ падения — точка стыка для потока B;
+  [ ] смена локации закрывает открытый диалог; переходы не сломаны;
+  [ ] админка: узлы/опции создаются, редактируются, удаляются; is_start
+      единственный; next_node ссылается только на узлы этого NPC.
+
+--------------------------------------------------------------------
+8. ГРАБЛИ / РИСКИ (читать перед стартом)
+--------------------------------------------------------------------
+  - Расширяемость под квесты — ОБЯЗАТЕЛЬНА в схеме (action_type/action_param/
+    condition_flag), но логику квестов НЕ писать. Не «зашивать» бой в диалог кодом —
+    только через action_type='battle' (данные, не хардкод).
+  - Точка стыка с потоком B — ОДНА: клиентская функция startTrainerBattle(npcId)
+    (заглушка) + серверный {kind:'battle', npc_id}. Пометь её явным TODO, чтобы B
+    её нашёл и заменил. Не дублировать боевую логику здесь.
+  - Доки: строго по существующему паттерну (positionXDock + display + resize-хук),
+    иначе разъедется позиционирование. Не перекрывать боевую панель #divVisioFight.
+  - npc.type/data-type в JS сейчас "undefined" — не полагайся на него вслепую;
+    если вводишь has_dialogue/type — заполни его в GetLocation.
+  - Идемпотентность миграций: ALTER npc только если колонки нет (PRAGMA table_info);
+    CREATE TABLE IF NOT EXISTS. Всё — под бэкап pokemon.db.bak-before-dialogue.
+  - Целостность: удаление NPC должно чистить его dialogue_nodes/options (каскад
+    вручную в DeleteNonPlayerCharacterHandler — там сейчас только DELETE FROM npc).
+  - Go на RDP НЕТ: только правки файлов + БД (python, utf-8, bash-героку, бэкап).
+    Отчёт -> TEST_npc_dialogue.txt в корень, чек-лист из §7.
+
+--------------------------------------------------------------------
+9. КРАТКИЙ ЧЕК-ЛИСТ ФАЙЛОВ
+--------------------------------------------------------------------
+БД:        database.go (+CREATE dialogue_nodes/dialogue_options; +ALTER npc
+           team_mode/team_size/min_level/max_level, идемпотентно); тест-диалог.
+Go:        handlers/api/dialogue.go (NpcDialogueStartHandler, NpcDialogueOptionHandler);
+           handlers/api/location.go (опц. has_dialogue/type в NPC);
+           handlers/admin/npc.go (или admin/dialogue.go: CRUD узлов/опций +
+           поля команды; каскадное удаление в DeleteNonPlayerCharacterHandler);
+           routes.go (2 player-маршрута + admin-маршруты диалога).
+Фронт:     game.html (#dialogue-dock по образцу доков); game.js (клик по .npc-item,
+           openDialogue/renderDialogueNode/chooseOption/positionDialogueDock +
+           resize-хук + заглушка startTrainerBattle); game.css (док, .dialogue-option,
+           .npc-item кликабельный).
+Админка:   templates/admin/npc_form.html (блоки «Команда для боя» и «Диалог»).
+Отчёт:     TEST_npc_dialogue.txt (корень).
+====================================================================

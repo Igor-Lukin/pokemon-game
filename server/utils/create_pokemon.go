@@ -109,6 +109,13 @@ func CreateUserPokemon(userID, pokemonID, level int, iv [6]int, natureID int, ge
 	}
 	userPokemonID, _ := result.LastInsertId()
 
+	// Способность экземпляра: СЛУЧАЙНАЯ базовая вида (скрытая при обычном создании
+	// не выпадает). Единая точка => ловля/выдача/вылупление получают её автоматически.
+	// Нет базовых у вида -> NULL (покемон без способности).
+	if err := db.AssignBasicAbility(int(userPokemonID), pokemonID); err != nil {
+		log.Printf("CreateUserPokemon: AssignBasicAbility error: %v", err)
+	}
+
 	if err := db.InitLearnableAttacks(int(userPokemonID), pokemonID, level); err != nil {
 		log.Printf("CreateUserPokemon: InitLearnableAttacks error: %v", err)
 	}

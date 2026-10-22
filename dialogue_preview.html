@@ -1,0 +1,997 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Диалог NPC — превью вариантов</title>
+    <!-- Настоящие стили игры, чтобы фон был как на реальной странице -->
+    <link rel="stylesheet" href="client/static/css/game.css" />
+    <link rel="stylesheet" href="client/static/css/pokedex.css" />
+    <style>
+      /* ============ Панель переключения вариантов (только для превью) ============ */
+      .pv-toolbar {
+        position: fixed;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 200;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        justify-content: center;
+        background: rgba(64, 52, 42, 0.92);
+        padding: 8px 10px;
+        border-radius: 10px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        max-width: 96vw;
+      }
+      .pv-toolbar button {
+        font-family: var(--pk-serif, Georgia, serif);
+        font-size: 13px;
+        font-weight: 600;
+        color: #f3e9d6;
+        background: #6b5640;
+        border: 1px solid #8a7860;
+        border-radius: 7px;
+        padding: 6px 11px;
+        cursor: pointer;
+        transition: all 0.15s ease;
+      }
+      .pv-toolbar button:hover { background: #806a4f; }
+      .pv-toolbar button.active {
+        background: var(--pk-sepia, #9a6b43);
+        border-color: var(--pk-sepia-2, #b58a3c);
+        color: #fff;
+      }
+      .pv-hint {
+        position: fixed;
+        bottom: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 200;
+        background: rgba(64, 52, 42, 0.9);
+        color: #f3e9d6;
+        font-family: var(--pk-serif, Georgia, serif);
+        font-size: 13px;
+        padding: 6px 14px;
+        border-radius: 8px;
+        max-width: 92vw;
+        text-align: center;
+      }
+
+      /* Каждый вариант скрыт; активный показывается через [data-variant] на body */
+      .pv-variant { display: none; }
+      body[data-variant="1"] .pv-v1,
+      body[data-variant="2"] .pv-v2,
+      body[data-variant="3"] .pv-v3,
+      body[data-variant="4"] .pv-v4,
+      body[data-variant="5"] .pv-v5,
+      body[data-variant="6"] .pv-v6,
+      body[data-variant="7"] .pv-v7,
+      body[data-variant="8"] .pv-v8,
+      body[data-variant="9"] .pv-v9,
+      body[data-variant="10"] .pv-v10 { display: block; }
+
+      /* Вариант 11 — встроен в панель «Персонажи»: подменяет список NPC.
+         Для всех остальных вариантов встроенный диалог скрыт. */
+      #pv-embedded { display: none; }
+      body[data-variant="11"] #pv-embedded { display: flex; }
+      body[data-variant="11"] #npc-list { display: none; }
+
+      .pv-tag {
+        position: fixed;
+        top: 66px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 190;
+        background: var(--pk-sepia, #9a6b43);
+        color: #fff;
+        font-family: var(--pk-serif, Georgia, serif);
+        font-size: 12px;
+        letter-spacing: 0.5px;
+        padding: 3px 12px;
+        border-radius: 20px;
+      }
+
+      /* ============ ВАРИАНТ 1 — Классический док (как сейчас) ============ */
+      .pv-v1 {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 100;
+        width: 380px;
+        max-width: 92vw;
+        background: var(--pk-paper);
+        border: 1px solid var(--pk-line-2);
+        box-shadow: var(--pk-shadow);
+        padding: 10px 12px 14px;
+      }
+      .pv-v1 .d-title {
+        font-family: var(--pk-serif);
+        font-size: 18px;
+        font-weight: 700;
+        color: var(--pk-sepia);
+        letter-spacing: 1px;
+        margin-bottom: 8px;
+      }
+      .pv-v1 .d-text {
+        font-family: var(--pk-serif);
+        font-size: 15px;
+        line-height: 1.4;
+        color: var(--pk-ink);
+        background: var(--pk-paper-2);
+        border: 1px solid var(--pk-line);
+        padding: 12px 14px;
+        margin-bottom: 12px;
+      }
+      .pv-v1 .d-opts { display: flex; flex-direction: column; gap: 8px; }
+      .pv-v1 .d-opt {
+        padding: 10px 14px;
+        cursor: pointer;
+        border: 1px solid var(--pk-line-2);
+        background: var(--pk-paper);
+        box-shadow: 0 1px 2px rgba(120, 95, 55, 0.08);
+        transition: all 0.18s ease;
+        font-weight: 600;
+        color: var(--pk-ink-soft);
+      }
+      .pv-v1 .d-opt:hover {
+        color: #fff;
+        background: var(--pk-sepia);
+        border-color: var(--pk-sepia);
+      }
+
+      /* ============ ВАРИАНТ 2 — RPG-панель снизу с портретом ============ */
+      .pv-v2 {
+        position: fixed;
+        left: 50%;
+        bottom: 0;
+        transform: translateX(-50%);
+        z-index: 100;
+        width: 1100px;
+        max-width: 100vw;
+        box-sizing: border-box;
+        display: flex;
+        gap: 16px;
+        align-items: stretch;
+        background: linear-gradient(180deg, #fdf9f0 0%, #f4ead4 100%);
+        border-top: 3px solid var(--pk-sepia);
+        border-left: 1px solid var(--pk-line-2);
+        border-right: 1px solid var(--pk-line-2);
+        box-shadow: 0 -6px 24px rgba(120, 95, 55, 0.25);
+        padding: 16px 22px 18px;
+      }
+      .pv-v2 .d-portrait {
+        flex: 0 0 92px;
+        width: 92px;
+        height: 92px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 50% 35%, #fff 0%, #efe2c7 70%, #e0cfa8 100%);
+        border: 3px solid var(--pk-sepia);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 46px;
+        box-shadow: inset 0 2px 6px rgba(120, 95, 55, 0.2);
+      }
+      .pv-v2 .d-main { flex: 1 1 auto; min-width: 0; }
+      .pv-v2 .d-name {
+        display: inline-block;
+        font-family: var(--pk-serif);
+        font-weight: 700;
+        font-size: 15px;
+        color: #fff;
+        background: var(--pk-sepia);
+        padding: 2px 14px;
+        border-radius: 12px;
+        margin-bottom: 8px;
+      }
+      .pv-v2 .d-text {
+        font-family: var(--pk-serif);
+        font-size: 17px;
+        line-height: 1.45;
+        color: var(--pk-ink);
+        margin-bottom: 12px;
+      }
+      .pv-v2 .d-opts { display: flex; flex-wrap: wrap; gap: 10px; }
+      .pv-v2 .d-opt {
+        flex: 1 1 200px;
+        padding: 11px 16px;
+        cursor: pointer;
+        border: 1px solid var(--pk-line-2);
+        background: var(--pk-paper);
+        font-weight: 600;
+        color: var(--pk-ink-soft);
+        border-radius: 6px;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .pv-v2 .d-opt::before { content: "▸"; color: var(--pk-sepia); font-weight: 700; }
+      .pv-v2 .d-opt:hover {
+        color: #fff;
+        background: var(--pk-sepia);
+        border-color: var(--pk-sepia);
+      }
+      .pv-v2 .d-opt:hover::before { color: #fff; }
+
+      /* ============ ВАРИАНТ 3 — Модальное окно с затемнением ============ */
+      .pv-v3 {
+        position: fixed;
+        inset: 0;
+        z-index: 100;
+        background: rgba(45, 34, 24, 0.55);
+        backdrop-filter: blur(1.5px);
+      }
+      .pv-v3 .d-card {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 420px;
+        max-width: 92vw;
+        background: var(--pk-paper);
+        border: 1px solid var(--pk-line-2);
+        border-radius: 14px;
+        box-shadow: 0 18px 50px rgba(0, 0, 0, 0.4);
+        padding: 56px 26px 26px;
+        text-align: center;
+      }
+      .pv-v3 .d-avatar {
+        position: absolute;
+        top: -44px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 50% 35%, #fff 0%, #efe2c7 70%, #e0cfa8 100%);
+        border: 4px solid var(--pk-paper);
+        box-shadow: 0 4px 14px rgba(120, 95, 55, 0.35);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 44px;
+      }
+      .pv-v3 .d-name {
+        font-family: var(--pk-serif);
+        font-weight: 700;
+        font-size: 20px;
+        color: var(--pk-sepia);
+        letter-spacing: 0.5px;
+        margin-bottom: 10px;
+      }
+      .pv-v3 .d-text {
+        font-family: var(--pk-serif);
+        font-size: 16px;
+        line-height: 1.5;
+        color: var(--pk-ink);
+        margin-bottom: 20px;
+      }
+      .pv-v3 .d-opts { display: flex; flex-direction: column; gap: 10px; }
+      .pv-v3 .d-opt {
+        padding: 12px 16px;
+        cursor: pointer;
+        border: 1px solid var(--pk-line-2);
+        background: var(--pk-paper-2);
+        font-weight: 600;
+        color: var(--pk-ink-soft);
+        border-radius: 8px;
+        transition: all 0.15s ease;
+      }
+      .pv-v3 .d-opt:hover {
+        color: #fff;
+        background: var(--pk-sepia);
+        border-color: var(--pk-sepia);
+        transform: translateY(-1px);
+      }
+
+      /* ============ ВАРИАНТ 4 — Речевой пузырь у персонажа ============ */
+      .pv-v4 {
+        position: fixed;
+        left: 300px;
+        top: 210px;
+        z-index: 100;
+        width: 340px;
+        max-width: 80vw;
+      }
+      .pv-v4 .d-bubble {
+        position: relative;
+        background: var(--pk-paper);
+        border: 2px solid var(--pk-sepia);
+        border-radius: 14px;
+        padding: 14px 16px;
+        box-shadow: 0 8px 24px rgba(120, 95, 55, 0.25);
+      }
+      .pv-v4 .d-bubble::after {
+        content: "";
+        position: absolute;
+        left: 40px;
+        bottom: -14px;
+        border: 8px solid transparent;
+        border-top-color: var(--pk-sepia);
+        border-bottom: 0;
+      }
+      .pv-v4 .d-name {
+        font-family: var(--pk-serif);
+        font-weight: 700;
+        font-size: 14px;
+        color: var(--pk-sepia);
+        margin-bottom: 4px;
+      }
+      .pv-v4 .d-text {
+        font-family: var(--pk-serif);
+        font-size: 15px;
+        line-height: 1.4;
+        color: var(--pk-ink);
+        margin-bottom: 12px;
+      }
+      .pv-v4 .d-opts { display: flex; flex-wrap: wrap; gap: 7px; }
+      .pv-v4 .d-opt {
+        padding: 7px 13px;
+        cursor: pointer;
+        border: 1px solid var(--pk-line-2);
+        background: var(--pk-paper-2);
+        font-weight: 600;
+        font-size: 13px;
+        color: var(--pk-ink-soft);
+        border-radius: 16px;
+        transition: all 0.15s ease;
+      }
+      .pv-v4 .d-opt:hover {
+        color: #fff;
+        background: var(--pk-sepia);
+        border-color: var(--pk-sepia);
+      }
+
+      /* ============ ВАРИАНТ 5 — Пергамент-свиток ============ */
+      .pv-v5 {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 100;
+        width: 400px;
+        max-width: 92vw;
+        background:
+          radial-gradient(ellipse at top, #fbf3e0 0%, #f2e6cc 100%);
+        border: 1px double var(--pk-sepia);
+        box-shadow: 0 10px 34px rgba(120, 95, 55, 0.3),
+          inset 0 0 0 6px rgba(255, 255, 255, 0.4),
+          inset 0 0 0 7px var(--pk-line-2);
+        padding: 26px 30px;
+      }
+      .pv-v5 .d-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        border-bottom: 1px solid var(--pk-line-2);
+        padding-bottom: 10px;
+        margin-bottom: 12px;
+      }
+      .pv-v5 .d-portrait {
+        width: 44px; height: 44px; font-size: 26px;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .pv-v5 .d-name {
+        font-family: var(--pk-serif);
+        font-weight: 700;
+        font-size: 18px;
+        color: var(--pk-sepia);
+        letter-spacing: 1px;
+      }
+      .pv-v5 .d-text {
+        font-family: var(--pk-serif);
+        font-size: 15px;
+        font-style: italic;
+        line-height: 1.5;
+        color: var(--pk-ink);
+        margin-bottom: 16px;
+      }
+      .pv-v5 .d-opts { display: flex; flex-direction: column; gap: 2px; }
+      .pv-v5 .d-opt {
+        padding: 9px 6px 9px 22px;
+        cursor: pointer;
+        position: relative;
+        font-family: var(--pk-serif);
+        font-weight: 600;
+        color: var(--pk-ink-soft);
+        border-bottom: 1px dashed var(--pk-line);
+        transition: all 0.15s ease;
+      }
+      .pv-v5 .d-opt::before {
+        content: "❧";
+        position: absolute;
+        left: 2px;
+        color: var(--pk-sepia-2);
+      }
+      .pv-v5 .d-opt:hover { color: var(--pk-sepia); padding-left: 26px; }
+
+      /* ============ ВАРИАНТ 6 — Покедекс / терминал ============ */
+      .pv-v6 {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 100;
+        width: 400px;
+        max-width: 92vw;
+        background: #2a2f3a;
+        border-radius: 16px;
+        border-top: 5px solid #c0392b;
+        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+        padding: 16px;
+      }
+      .pv-v6 .d-screen {
+        background: #0d1a12;
+        border: 2px solid #163d28;
+        border-radius: 8px;
+        padding: 16px 18px;
+        box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.6);
+        font-family: "Consolas", "Courier New", monospace;
+      }
+      .pv-v6 .d-name {
+        color: #8affa9;
+        font-size: 13px;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        text-shadow: 0 0 6px rgba(138, 255, 169, 0.6);
+      }
+      .pv-v6 .d-name::before { content: "> "; }
+      .pv-v6 .d-text {
+        color: #cfe8d5;
+        font-size: 15px;
+        line-height: 1.5;
+        margin-bottom: 16px;
+      }
+      .pv-v6 .d-opts { display: flex; flex-direction: column; gap: 8px; }
+      .pv-v6 .d-opt {
+        padding: 9px 12px;
+        cursor: pointer;
+        border: 1px solid #2e7d4f;
+        background: rgba(46, 125, 79, 0.12);
+        color: #8affa9;
+        font-family: inherit;
+        font-size: 14px;
+        border-radius: 5px;
+        transition: all 0.12s ease;
+      }
+      .pv-v6 .d-opt::before { content: "▸ "; }
+      .pv-v6 .d-opt:hover {
+        background: #8affa9;
+        color: #0d1a12;
+        box-shadow: 0 0 12px rgba(138, 255, 169, 0.5);
+      }
+
+      /* ============ ВАРИАНТ 7 — Визуальная новелла (портрет + панель) ============ */
+      .pv-v7 { position: fixed; inset: 0; z-index: 100; pointer-events: none; }
+      .pv-v7 .d-hero {
+        position: absolute;
+        left: 40px;
+        bottom: 0;
+        width: 260px;
+        height: 300px;
+        background: radial-gradient(circle at 50% 30%, #f6ead0 0%, #e6d3ab 60%, #d8c191 100%);
+        border-radius: 130px 130px 0 0;
+        border: 3px solid var(--pk-sepia);
+        border-bottom: 0;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 40px;
+        font-size: 120px;
+        box-shadow: 0 -8px 30px rgba(120, 95, 55, 0.25);
+      }
+      .pv-v7 .d-panel {
+        pointer-events: auto;
+        position: absolute;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        width: 780px;
+        max-width: 94vw;
+        box-sizing: border-box;
+        background: rgba(253, 249, 240, 0.96);
+        border: 2px solid var(--pk-sepia);
+        border-radius: 14px;
+        box-shadow: 0 12px 34px rgba(0, 0, 0, 0.28);
+        padding: 18px 26px 20px 160px;
+      }
+      .pv-v7 .d-name {
+        position: absolute;
+        top: -16px;
+        left: 130px;
+        font-family: var(--pk-serif);
+        font-weight: 700;
+        font-size: 16px;
+        color: #fff;
+        background: var(--pk-sepia);
+        padding: 3px 18px;
+        border-radius: 14px;
+      }
+      .pv-v7 .d-text {
+        font-family: var(--pk-serif);
+        font-size: 18px;
+        line-height: 1.5;
+        color: var(--pk-ink);
+        margin-bottom: 14px;
+        min-height: 48px;
+      }
+      .pv-v7 .d-opts { display: flex; flex-direction: column; gap: 7px; }
+      .pv-v7 .d-opt {
+        padding: 9px 16px;
+        cursor: pointer;
+        border: 1px solid var(--pk-line-2);
+        background: var(--pk-paper);
+        font-weight: 600;
+        color: var(--pk-ink-soft);
+        border-radius: 7px;
+        transition: all 0.15s ease;
+      }
+      .pv-v7 .d-opt:hover { color: #fff; background: var(--pk-sepia); border-color: var(--pk-sepia); }
+
+      /* ============ ВАРИАНТ 8 — Мессенджер (чат-пузыри + быстрые ответы) ============ */
+      .pv-v8 {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 100;
+        width: 360px;
+        max-width: 92vw;
+        background: var(--pk-paper);
+        border: 1px solid var(--pk-line-2);
+        border-radius: 14px;
+        box-shadow: 0 16px 44px rgba(0, 0, 0, 0.3);
+        overflow: hidden;
+      }
+      .pv-v8 .d-head {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        background: var(--pk-sepia);
+        color: #fff;
+        padding: 10px 14px;
+      }
+      .pv-v8 .d-ava {
+        width: 34px; height: 34px; border-radius: 50%;
+        background: #fff2; display: flex; align-items: center; justify-content: center;
+        font-size: 20px;
+      }
+      .pv-v8 .d-name { font-family: var(--pk-serif); font-weight: 700; font-size: 15px; }
+      .pv-v8 .d-status { font-size: 11px; opacity: 0.85; }
+      .pv-v8 .d-body {
+        background: var(--pk-paper-2);
+        padding: 16px 14px;
+        min-height: 70px;
+      }
+      .pv-v8 .d-bubble {
+        display: inline-block;
+        background: var(--pk-paper);
+        border: 1px solid var(--pk-line-2);
+        border-radius: 4px 14px 14px 14px;
+        padding: 10px 14px;
+        font-size: 15px;
+        color: var(--pk-ink);
+        line-height: 1.4;
+        box-shadow: 0 1px 3px rgba(120, 95, 55, 0.12);
+        max-width: 85%;
+      }
+      .pv-v8 .d-opts {
+        display: flex; flex-wrap: wrap; gap: 7px;
+        padding: 12px 14px;
+        border-top: 1px solid var(--pk-line);
+        background: var(--pk-paper);
+      }
+      .pv-v8 .d-opt {
+        padding: 7px 14px;
+        cursor: pointer;
+        border: 1px solid var(--pk-sepia);
+        color: var(--pk-sepia);
+        background: transparent;
+        font-weight: 600;
+        font-size: 13px;
+        border-radius: 16px;
+        transition: all 0.15s ease;
+      }
+      .pv-v8 .d-opt:hover { background: var(--pk-sepia); color: #fff; }
+
+      /* ============ ВАРИАНТ 9 — Комикс ============ */
+      .pv-v9 {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 100;
+        width: 400px;
+        max-width: 92vw;
+      }
+      .pv-v9 .d-balloon {
+        position: relative;
+        background: #fffdf5;
+        border: 3px solid #2b2b2b;
+        border-radius: 22px;
+        padding: 18px 22px;
+        box-shadow: 6px 6px 0 #2b2b2b;
+      }
+      .pv-v9 .d-balloon::after {
+        content: "";
+        position: absolute;
+        left: 48px;
+        bottom: -22px;
+        border: 12px solid transparent;
+        border-top-color: #2b2b2b;
+        border-bottom: 0;
+      }
+      .pv-v9 .d-name {
+        display: inline-block;
+        font-family: "Comic Sans MS", var(--pk-serif);
+        font-weight: 700;
+        font-size: 15px;
+        color: #fff;
+        background: #2b2b2b;
+        padding: 2px 12px;
+        border-radius: 10px;
+        margin-bottom: 8px;
+      }
+      .pv-v9 .d-text {
+        font-family: "Comic Sans MS", var(--pk-serif);
+        font-size: 18px;
+        font-weight: 600;
+        line-height: 1.35;
+        color: #2b2b2b;
+        margin-bottom: 14px;
+      }
+      .pv-v9 .d-opts { display: flex; flex-direction: column; gap: 9px; }
+      .pv-v9 .d-opt {
+        padding: 9px 14px;
+        cursor: pointer;
+        border: 2px solid #2b2b2b;
+        background: #ffe9a8;
+        font-family: "Comic Sans MS", var(--pk-serif);
+        font-weight: 700;
+        color: #2b2b2b;
+        border-radius: 10px;
+        box-shadow: 3px 3px 0 #2b2b2b;
+        transition: all 0.1s ease;
+      }
+      .pv-v9 .d-opt:hover { background: var(--pk-sepia-2); transform: translate(1px, 1px); box-shadow: 2px 2px 0 #2b2b2b; }
+
+      /* ============ ВАРИАНТ 10 — Правая выезжающая панель (drawer) ============ */
+      .pv-v10 {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 100;
+        width: 340px;
+        max-width: 86vw;
+        box-sizing: border-box;
+        background: var(--pk-paper);
+        border-left: 3px solid var(--pk-sepia);
+        box-shadow: -10px 0 30px rgba(120, 95, 55, 0.25);
+        display: flex;
+        flex-direction: column;
+        padding: 22px 20px;
+      }
+      .pv-v10 .d-portrait {
+        width: 84px; height: 84px; margin: 0 auto 10px;
+        border-radius: 50%;
+        background: radial-gradient(circle at 50% 35%, #fff 0%, #efe2c7 70%, #e0cfa8 100%);
+        border: 3px solid var(--pk-sepia);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 42px;
+      }
+      .pv-v10 .d-name {
+        text-align: center;
+        font-family: var(--pk-serif);
+        font-weight: 700;
+        font-size: 19px;
+        color: var(--pk-sepia);
+        margin-bottom: 12px;
+      }
+      .pv-v10 .d-text {
+        font-family: var(--pk-serif);
+        font-size: 15px;
+        line-height: 1.5;
+        color: var(--pk-ink);
+        background: var(--pk-paper-2);
+        border: 1px solid var(--pk-line);
+        border-radius: 8px;
+        padding: 12px 14px;
+        margin-bottom: 16px;
+      }
+      .pv-v10 .d-opts { display: flex; flex-direction: column; gap: 9px; margin-top: auto; }
+      .pv-v10 .d-opt {
+        padding: 11px 14px;
+        cursor: pointer;
+        border: 1px solid var(--pk-line-2);
+        background: var(--pk-paper);
+        font-weight: 600;
+        color: var(--pk-ink-soft);
+        border-radius: 8px;
+        text-align: center;
+        transition: all 0.15s ease;
+      }
+      .pv-v10 .d-opt:hover { color: #fff; background: var(--pk-sepia); border-color: var(--pk-sepia); }
+    </style>
+  </head>
+
+  <body id="body" data-variant="2">
+    <!-- ================= НАСТОЯЩИЙ ФОН СТРАНИЦЫ ================= -->
+    <div class="app-wrapper">
+      <div class="game-header">
+        <div class="header-left"></div>
+        <div class="header-center">
+          <div class="header-icon">👤</div>
+          <div class="header-icon">🐾</div>
+          <div class="header-icon">🎒</div>
+          <div class="header-icon">📦</div>
+          <div class="header-icon">✉️</div>
+          <div class="header-icon">📘</div>
+          <div class="header-icon">🌿</div>
+          <div class="header-icon">📔</div>
+        </div>
+        <div class="header-right">
+          <span class="username">Тренер</span>
+          <div class="header-icon help-icon">❓</div>
+          <div class="header-icon exit-icon">✖️</div>
+        </div>
+      </div>
+
+      <div id="divGameContent">
+        <div id="divVisios">
+          <div id="divVisioLoc" class="location-panel">
+            <div class="exits-block">
+              <div class="panel-header">🚪 ПЕРЕХОДЫ</div>
+              <div class="location-links" id="location-links">
+                <div class="location-link">Площадь Голденрода</div>
+                <div class="location-link">Покецентр</div>
+              </div>
+            </div>
+            <div class="description-block">
+              <h2 id="location-name">Дорога к городу</h2>
+              <div class="location-description">
+                Пыльная дорога, ведущая к городу. Вдоль обочины стоят редкие
+                деревья, где-то в траве шуршат покемоны.
+              </div>
+              <div class="location-image" id="location-image"></div>
+            </div>
+            <div class="npc-block">
+              <div class="panel-header" id="pv-npc-header">🧙 ПЕРСОНАЖИ</div>
+              <div class="npc-list" id="npc-list">
+                <div class="npc-item npc-clickable">Ричи</div>
+                <div class="npc-item npc-clickable">Тренер Ли</div>
+              </div>
+              <!-- Вариант 11: диалог встроен в панель (финальный вид) -->
+              <div class="npc-dialogue" id="pv-embedded">
+                <div class="npc-dialogue-head">
+                  <div class="npc-dialogue-portrait">🧙</div>
+                  <div class="npc-dialogue-name">Ричи</div>
+                </div>
+                <div class="npc-dialogue-text">Привет! Хочешь тренировочный бой?</div>
+                <div class="npc-dialogue-options">
+                  <div class="npc-dialogue-option">Да, давай</div>
+                  <div class="npc-dialogue-option">Расскажи о себе</div>
+                  <div class="npc-dialogue-option">В другой раз</div>
+                </div>
+                <div class="npc-dialogue-back">← Назад к персонажам</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="chat-panel">
+          <div class="chat-block">
+            <div class="chat-messages" id="chat-messages">
+              <div class="message">
+                <span class="sender">Система:</span><span class="text">Добро пожаловать в чат!</span>
+              </div>
+              <div class="message">
+                <span class="sender">Тренер Ли:</span><span class="text">Кто хочет сразиться?</span>
+              </div>
+            </div>
+            <div class="chat-inputs">
+              <input type="text" class="recipient-input" value="все" />
+              <input type="text" class="message-input" placeholder="💬 Введите сообщение..." />
+              <button class="send-btn">→</button>
+            </div>
+          </div>
+          <div class="users-block">
+            <div class="panel-header">👥 ИГРОКИ ОНЛАЙН</div>
+            <div class="user-list">
+              <div class="user">Игрок1</div>
+              <div class="user">Игрок2</div>
+              <div class="user">Тренер Ли</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= ПЕРЕКЛЮЧАТЕЛЬ ВАРИАНТОВ ================= -->
+    <div class="pv-toolbar">
+      <button data-v="1">1. Классический док (сейчас)</button>
+      <button data-v="2">2. RPG-панель снизу</button>
+      <button data-v="3">3. Модалка с затемнением</button>
+      <button data-v="4">4. Речевой пузырь</button>
+      <button data-v="5">5. Пергамент-свиток</button>
+      <button data-v="6">6. Покедекс/терминал</button>
+      <button data-v="7">7. Визуальная новелла</button>
+      <button data-v="8">8. Мессенджер</button>
+      <button data-v="9">9. Комикс</button>
+      <button data-v="10">10. Правый drawer</button>
+      <button data-v="11">★ 11. Встроен в панель (финал)</button>
+    </div>
+    <div class="pv-tag" id="pv-tag"></div>
+    <div class="pv-hint">Переключай варианты кнопками сверху. Фон — реальная страница игры.</div>
+
+    <!-- ================= ВАРИАНТЫ ДИАЛОГА ================= -->
+
+    <!-- 1. Классический док -->
+    <div class="pv-variant pv-v1">
+      <div class="d-title">Ричи</div>
+      <div class="d-text">Привет! Хочешь тренировочный бой?</div>
+      <div class="d-opts">
+        <div class="d-opt">Да, давай</div>
+        <div class="d-opt">Расскажи о себе</div>
+        <div class="d-opt">В другой раз</div>
+      </div>
+    </div>
+
+    <!-- 2. RPG-панель снизу -->
+    <div class="pv-variant pv-v2">
+      <div class="d-portrait">🧙</div>
+      <div class="d-main">
+        <div class="d-name">Ричи</div>
+        <div class="d-text">Привет! Хочешь тренировочный бой?</div>
+        <div class="d-opts">
+          <div class="d-opt">Да, давай</div>
+          <div class="d-opt">Расскажи о себе</div>
+          <div class="d-opt">В другой раз</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Модалка с затемнением -->
+    <div class="pv-variant pv-v3">
+      <div class="d-card">
+        <div class="d-avatar">🧙</div>
+        <div class="d-name">Ричи</div>
+        <div class="d-text">Привет! Хочешь тренировочный бой?</div>
+        <div class="d-opts">
+          <div class="d-opt">Да, давай</div>
+          <div class="d-opt">Расскажи о себе</div>
+          <div class="d-opt">В другой раз</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Речевой пузырь -->
+    <div class="pv-variant pv-v4">
+      <div class="d-bubble">
+        <div class="d-name">🧙 Ричи</div>
+        <div class="d-text">Привет! Хочешь тренировочный бой?</div>
+        <div class="d-opts">
+          <div class="d-opt">Да, давай</div>
+          <div class="d-opt">Расскажи о себе</div>
+          <div class="d-opt">В другой раз</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Пергамент-свиток -->
+    <div class="pv-variant pv-v5">
+      <div class="d-head">
+        <div class="d-portrait">🧙</div>
+        <div class="d-name">Ричи</div>
+      </div>
+      <div class="d-text">«Привет! Хочешь тренировочный бой?»</div>
+      <div class="d-opts">
+        <div class="d-opt">Да, давай</div>
+        <div class="d-opt">Расскажи о себе</div>
+        <div class="d-opt">В другой раз</div>
+      </div>
+    </div>
+
+    <!-- 6. Покедекс / терминал -->
+    <div class="pv-variant pv-v6">
+      <div class="d-screen">
+        <div class="d-name">Ричи</div>
+        <div class="d-text">Привет! Хочешь тренировочный бой?</div>
+        <div class="d-opts">
+          <div class="d-opt">Да, давай</div>
+          <div class="d-opt">Расскажи о себе</div>
+          <div class="d-opt">В другой раз</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Визуальная новелла -->
+    <div class="pv-variant pv-v7">
+      <div class="d-hero">🧙</div>
+      <div class="d-panel">
+        <div class="d-name">Ричи</div>
+        <div class="d-text">Привет! Хочешь тренировочный бой?</div>
+        <div class="d-opts">
+          <div class="d-opt">Да, давай</div>
+          <div class="d-opt">Расскажи о себе</div>
+          <div class="d-opt">В другой раз</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 8. Мессенджер -->
+    <div class="pv-variant pv-v8">
+      <div class="d-head">
+        <div class="d-ava">🧙</div>
+        <div>
+          <div class="d-name">Ричи</div>
+          <div class="d-status">в сети</div>
+        </div>
+      </div>
+      <div class="d-body">
+        <div class="d-bubble">Привет! Хочешь тренировочный бой?</div>
+      </div>
+      <div class="d-opts">
+        <div class="d-opt">Да, давай</div>
+        <div class="d-opt">Расскажи о себе</div>
+        <div class="d-opt">В другой раз</div>
+      </div>
+    </div>
+
+    <!-- 9. Комикс -->
+    <div class="pv-variant pv-v9">
+      <div class="d-balloon">
+        <div class="d-name">Ричи</div>
+        <div class="d-text">Привет! Хочешь тренировочный бой?</div>
+        <div class="d-opts">
+          <div class="d-opt">Да, давай</div>
+          <div class="d-opt">Расскажи о себе</div>
+          <div class="d-opt">В другой раз</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 10. Правый drawer -->
+    <div class="pv-variant pv-v10">
+      <div class="d-portrait">🧙</div>
+      <div class="d-name">Ричи</div>
+      <div class="d-text">Привет! Хочешь тренировочный бой?</div>
+      <div class="d-opts">
+        <div class="d-opt">Да, давай</div>
+        <div class="d-opt">Расскажи о себе</div>
+        <div class="d-opt">В другой раз</div>
+      </div>
+    </div>
+
+    <script>
+      const tags = {
+        1: "Вариант 1 — Классический док (текущий)",
+        2: "Вариант 2 — RPG-панель снизу с портретом",
+        3: "Вариант 3 — Модальное окно с затемнением фона",
+        4: "Вариант 4 — Речевой пузырь у персонажа",
+        5: "Вариант 5 — Пергамент-свиток",
+        6: "Вариант 6 — Покедекс / терминал",
+        7: "Вариант 7 — Визуальная новелла (портрет + панель)",
+        8: "Вариант 8 — Мессенджер (чат-пузыри + быстрые ответы)",
+        9: "Вариант 9 — Комикс",
+        10: "Вариант 10 — Правая выезжающая панель (drawer)",
+        11: "★ Вариант 11 — Диалог встроен в панель «Персонажи» (финал, реализовано)",
+      };
+      const body = document.getElementById("body");
+      const tag = document.getElementById("pv-tag");
+      const buttons = document.querySelectorAll(".pv-toolbar button");
+      function setVariant(v) {
+        body.setAttribute("data-variant", v);
+        tag.textContent = tags[v];
+        buttons.forEach((b) => b.classList.toggle("active", b.dataset.v === String(v)));
+      }
+      buttons.forEach((b) => b.addEventListener("click", () => setVariant(b.dataset.v)));
+      setVariant("11");
+    </script>
+  </body>
+</html>

@@ -91,6 +91,10 @@ func applyEntryHazards(bs *BattleState, p *BattlePokemon, side *SideState, round
 	if p == nil || p.IsFainted {
 		return false
 	}
+	// [ability hook] Способность при ВЫХОДЕ покемона на поле. Единый choke-point всех
+	// входов после старта: смена игрока (SwitchHandler/switch-ход), смена/замена врага,
+	// вход следующего врага после обморока (handleEnemyFaint). Пусто => no-op (регрессия).
+	abilityOnSwitchIn(bs, p, log)
 	types := getPokemonTypes(p)
 	grounded := !hasTypeID(types, typeFlying)
 

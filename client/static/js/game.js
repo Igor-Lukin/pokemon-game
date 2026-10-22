@@ -63,12 +63,16 @@ async function getCurrentUserLocation() {
 }
 
 async function loadLocation(locationId) {
+  // При смене локации закрываем открытый диалог (если модуль уже инициализирован).
+  if (typeof closeDialogue === "function") closeDialogue();
   try {
     const response = await fetch(`/api/locations/${locationId}`);
     if (!response.ok) throw new Error("Location not found");
     const location = await response.json();
     updateUI(location);
     currentLocationId = location.id;
+    // Онлайн-панель [17]: перезапустить поллинг под новую локацию.
+    if (typeof restartOnlinePolling === "function") restartOnlinePolling();
   } catch (error) {
     console.error("Failed to load location:", error);
     document.getElementById("location-name").textContent = "Ошибка загрузки";
@@ -99,7 +103,7 @@ function updateUI(location) {
     npcContainer.innerHTML = location.npcs
       .map(
         (npc) =>
-          `<div class="npc-item" data-id="${npc.id}" data-type="${npc.type}">${npc.name}</div>`
+          `<div class="npc-item npc-clickable" data-id="${npc.id}" data-has-dialogue="${npc.has_dialogue ? 1 : 0}">${npc.name}</div>`
       )
       .join("");
   } else {
@@ -317,7 +321,7 @@ function loadTeam() {
                 `;
 
         html += `
-                    <div class="poke pokemonBoxCard minimized" data-pok-id="${p.id}">
+                    <div class="poke pokemonBoxCard minimized" data-pok-id="${p.id}" data-species-id="${p.pokemon_id}">
                         <div class="minicardContainer">
                             <div class="minicard">
                                 <div class="rank txtgray2"></div>
@@ -355,7 +359,11 @@ function loadTeam() {
                                   }a${p.iv_attack || 0}d${p.iv_defense || 0}s${
           p.iv_speed || 0
         }sa${p.iv_special_attack || 0}sd${p.iv_special_defense || 0}.0A</span>
-                                  <div class="divAbility"><span>${
+                                  <div class="divAbility clickable" title="Описание способности" data-ability-name="${(
+                                    p.ability_name || ""
+                                  ).replace(/"/g, "&quot;")}" data-ability-desc="${(
+          p.ability_description || ""
+        ).replace(/"/g, "&quot;")}"><span>${
                                     p.ability_name || "Способность"
                                   }</span></div>
                                 </div>
@@ -682,9 +690,12 @@ function bindBoxLeftEvents() {
       e.stopPropagation();
       const card = this.closest(".poke");
       const pokId = card ? card.dataset.pokId : null;
+      // Вид (species) нужен покедексу — он про ВИД, а не про экземпляр
+      const speciesId = card ? card.dataset.speciesId : null;
 
       ctx.querySelectorAll(".ctx-item").forEach((item) => {
         item.dataset.pokId = pokId || "";
+        item.dataset.speciesId = speciesId || "";
       });
 
       const ball = this.querySelector(".ball");
@@ -786,6 +797,46 @@ function showAttackInfoPopup(move, moveBox) {
   popup.style.display = "block";
 }
 
+// Мини-окно описания способности (по образцу showAttackInfoPopup)
+function showAbilityInfo(name, description, anchorEl) {
+  const popup = document.getElementById("ability-info-popup");
+  if (!popup) return;
+
+  popup.querySelector("#abi-name").textContent = name || "Способность";
+  popup.querySelector("#abi-description").textContent =
+    (description && description.trim()) ? description : "Нет описания";
+
+  // Показать до замера, иначе offsetWidth/Height = 0
+  popup.style.display = "block";
+
+  const anchor = anchorEl || document.getElementById("team-dock");
+  if (anchor) {
+    const rect = anchor.getBoundingClientRect();
+    const w = popup.offsetWidth || 310;
+    const h = popup.offsetHeight || 120;
+    let left = rect.left;
+    let top = rect.bottom + 8;
+    if (left + w > window.innerWidth - 5) left = window.innerWidth - w - 5;
+    if (left < 5) left = 5;
+    if (top + h > window.innerHeight - 5) top = rect.top - h - 8;
+    if (top < 5) top = 5;
+    popup.style.left = left + "px";
+    popup.style.top = top + "px";
+  }
+}
+
+document.addEventListener("click", function abilityInfoClick(e) {
+  const el = e.target.closest(".divAbility");
+  if (!el) return;
+  e.stopPropagation();
+  showAbilityInfo(el.dataset.abilityName, el.dataset.abilityDesc, el);
+});
+
+document.getElementById("ability-info-close")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  document.getElementById("ability-info-popup").style.display = "none";
+});
+
 function showLearnableList(userPokemonId, replacePosition) {
   const popup = document.getElementById("learnable-list-popup");
   const body = document.getElementById("learnable-list-body");
@@ -863,6 +914,12 @@ async function learnAttack(userPokemonId, learnableId, replacePosition) {
 document.addEventListener("click", (e) => {
   const aiPopup = document.getElementById("attack-info-popup");
   const llPopup = document.getElementById("learnable-list-popup");
+  const abPopup = document.getElementById("ability-info-popup");
+  if (abPopup && abPopup.style.display === "block") {
+    if (!abPopup.contains(e.target) && !e.target.closest(".divAbility")) {
+      abPopup.style.display = "none";
+    }
+  }
   if (aiPopup && aiPopup.style.display === "block") {
     if (!aiPopup.contains(e.target) && !e.target.closest(".moveBox") && !e.target.closest(".attack-block")) {
       aiPopup.style.display = "none";
@@ -909,7 +966,149 @@ window.addEventListener("resize", () => {
   if (inventoryDock && inventoryDock.style.display === "block") {
     positionInventoryDock();
   }
+  if (trainerDock && trainerDock.style.display === "block") {
+    positionTrainerDock();
+  }
 });
+
+// ===================================================================
+// ДИАЛОГ С NPC (поток A)
+// Диалог не всплывает отдельным окном, а подменяет содержимое панели
+// «Персонажи»: скрываем список NPC и сервисы, показываем реплику и ответы,
+// «← Назад» возвращает список.
+// ===================================================================
+const npcDialogueEl = document.getElementById("npc-dialogue");
+const npcPanelHeader = document.getElementById("npc-panel-header");
+const dialoguePortraitEl = document.getElementById("dialogue-portrait");
+const dialogueNameEl = document.getElementById("dialogue-npc-name");
+const dialogueTextEl = document.getElementById("dialogue-text");
+const dialogueOptionsEl = document.getElementById("dialogue-options");
+const dialogueCloseBtn = document.getElementById("dialogue-close");
+const locationServicesEl = document.getElementById("location-services");
+
+// closeDialogue — вернуть панель к списку персонажей.
+function closeDialogue() {
+  if (npcDialogueEl) npcDialogueEl.style.display = "none";
+  const list = document.getElementById("npc-list");
+  if (list) list.style.display = "";
+  // Сервисы возвращаем только если они есть на локации.
+  if (locationServicesEl) {
+    locationServicesEl.style.display =
+      locationHasHealing || locationHasNursery ? "flex" : "none";
+  }
+  if (npcPanelHeader) npcPanelHeader.textContent = "🧙 ПЕРСОНАЖИ";
+}
+
+async function openDialogue(npcId) {
+  if (!npcDialogueEl) return;
+  try {
+    const resp = await fetch(`/api/npc/${npcId}/dialogue`);
+    if (!resp.ok) throw new Error("dialogue fetch failed: " + resp.status);
+    const data = await resp.json();
+    renderDialogueNode(data);
+    // Подменяем содержимое панели: прячем список и сервисы, показываем диалог.
+    const list = document.getElementById("npc-list");
+    if (list) list.style.display = "none";
+    if (locationServicesEl) locationServicesEl.style.display = "none";
+    npcDialogueEl.style.display = "flex";
+  } catch (err) {
+    console.error("openDialogue error:", err);
+  }
+}
+
+// renderDialogueNode рисует реплику NPC и кнопки-ответы внутри панели.
+function renderDialogueNode(data) {
+  const npcName = data.npc_name || "NPC";
+  if (dialogueNameEl) dialogueNameEl.textContent = npcName;
+  if (npcPanelHeader) npcPanelHeader.textContent = "🧙 " + npcName.toUpperCase();
+  if (dialogueTextEl) dialogueTextEl.textContent = data.text || "…";
+  if (!dialogueOptionsEl) return;
+  dialogueOptionsEl.innerHTML = "";
+  const options = data.options || [];
+  if (options.length === 0) {
+    // Нет опций (например, у NPC нет диалога) — одна кнопка «Закрыть».
+    const btn = document.createElement("div");
+    btn.className = "npc-dialogue-option";
+    btn.textContent = "Закрыть";
+    btn.addEventListener("click", closeDialogue);
+    dialogueOptionsEl.appendChild(btn);
+  } else {
+    options.forEach((opt) => {
+      const btn = document.createElement("div");
+      btn.className = "npc-dialogue-option";
+      btn.textContent = opt.text;
+      btn.addEventListener("click", () => chooseOption(opt.id));
+      dialogueOptionsEl.appendChild(btn);
+    });
+  }
+}
+
+// chooseOption отправляет выбор на сервер и обрабатывает результат по result.kind.
+async function chooseOption(optionId) {
+  try {
+    const resp = await fetch("/api/npc/dialogue/option", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ option_id: optionId }),
+    });
+    if (!resp.ok) throw new Error("option fetch failed: " + resp.status);
+    const result = await resp.json();
+    switch (result.kind) {
+      case "node":
+        renderDialogueNode(result); // та же панель, новая реплика
+        break;
+      case "battle":
+        // Поток B: старт тренерского боя vs команда NPC.
+        closeDialogue();
+        startTrainerBattle(result.npc_id);
+        break;
+      case "close":
+      default:
+        closeDialogue();
+        break;
+    }
+  } catch (err) {
+    console.error("chooseOption error:", err);
+  }
+}
+
+// Старт тренерского боя vs команда NPC (поток B). Точка входа — опция диалога
+// с action='battle' (сервер вернул {kind:'battle', npc_id}). Переиспользует общий
+// рендер боя startBattle.
+async function startTrainerBattle(npcId) {
+  try {
+    const resp = await fetch("/api/battle/trainer/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ npc_id: npcId }),
+    });
+    if (!resp.ok) {
+      const msg = await resp.text();
+      alert(msg || "Не удалось начать бой");
+      return;
+    }
+    const data = await resp.json();
+    startBattle(data);
+  } catch (err) {
+    console.error("startTrainerBattle error:", err);
+    alert("Не удалось начать бой");
+  }
+}
+
+// Клик по NPC на локации (делегирование на #npc-list по .npc-item[data-id]).
+const npcListEl = document.getElementById("npc-list");
+if (npcListEl) {
+  npcListEl.addEventListener("click", (e) => {
+    const item = e.target.closest(".npc-item[data-id]");
+    if (!item) return;
+    const npcId = parseInt(item.dataset.id, 10);
+    if (!isNaN(npcId)) openDialogue(npcId);
+  });
+}
+
+if (dialogueCloseBtn) {
+  dialogueCloseBtn.addEventListener("click", closeDialogue);
+}
 
 // ===================================================================
 // ДНЕВНИК ТРЕНЕРА
@@ -1181,7 +1380,7 @@ function showQuantitySelector(itemId, maxQty) {
       </div>
       <div class="inv-qty-selector">
         <button class="inv-qty-btn inv-qty-minus" ${qty <= 1 ? "disabled" : ""}>−</button>
-        <span class="inv-qty-value">${qty}</span>
+        <input type="number" class="inv-qty-value inv-qty-input" min="1" max="${maxQty}" step="1" value="${qty}">
         <button class="inv-qty-btn inv-qty-plus" ${qty >= maxQty ? "disabled" : ""}>+</button>
       </div>
       <div class="inv-qty-max">Максимум: ${maxQty}</div>
@@ -1194,23 +1393,45 @@ function showQuantitySelector(itemId, maxQty) {
   const minusBtn = overlay.querySelector(".inv-qty-minus");
   const plusBtn = overlay.querySelector(".inv-qty-plus");
 
-  minusBtn.addEventListener("click", () => {
-    if (qty > 1) { qty--; valEl.textContent = qty; }
+  // Единая точка правды: qty. setQty клампит в [1..maxQty] и синхронизирует поле+кнопки.
+  const setQty = (val, writeField) => {
+    let n = parseInt(val, 10);
+    if (isNaN(n) || n < 1) n = 1;
+    if (n > maxQty) n = maxQty;
+    qty = n;
+    if (writeField) valEl.value = String(qty);
     minusBtn.disabled = qty <= 1;
     plusBtn.disabled = qty >= maxQty;
+  };
+
+  const confirm = () => {
+    setQty(valEl.value, true);
+    overlay.remove();
+    showPokemonForItemUse(itemId, "candy", qty);
+  };
+
+  minusBtn.addEventListener("click", () => setQty(qty - 1, true));
+  plusBtn.addEventListener("click", () => setQty(qty + 1, true));
+
+  // Ввод: клампим только кнопки/значение, поле не переписываем на каждый символ
+  // (иначе нельзя набрать «100» — «10» станет максимумом при maxQty<100).
+  valEl.addEventListener("input", () => setQty(valEl.value, false));
+  // Ушли из поля / Enter — привести поле к валидному значению
+  valEl.addEventListener("blur", () => setQty(valEl.value, true));
+  valEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      confirm();
+    }
   });
-  plusBtn.addEventListener("click", () => {
-    if (qty < maxQty) { qty++; valEl.textContent = qty; }
-    minusBtn.disabled = qty <= 1;
-    plusBtn.disabled = qty >= maxQty;
-  });
+  valEl.addEventListener("click", (e) => e.stopPropagation());
 
   overlay.querySelector(".inv-pokemon-select-close").addEventListener("click", () => overlay.remove());
   overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
-  overlay.querySelector(".inv-qty-confirm").addEventListener("click", () => {
-    overlay.remove();
-    showPokemonForItemUse(itemId, "candy", qty);
-  });
+  overlay.querySelector(".inv-qty-confirm").addEventListener("click", confirm);
+
+  valEl.focus();
+  valEl.select();
 }
 
 async function showPokemonForItemUse(itemId, effectType, quantity) {
@@ -1318,6 +1539,218 @@ if (inventoryCloseBtn) {
 const searchInput = document.getElementById("inv-search-input");
 if (searchInput) {
   searchInput.addEventListener("input", () => renderInventory(cachedItems));
+}
+
+// ===================================================================
+// КАРТОЧКА ТРЕНЕРА (профиль)
+// ===================================================================
+const trainerDock = document.getElementById("trainer-dock");
+const trainerArrow = document.getElementById("trainer-dock-arrow");
+const trainerIcon = document.getElementById("profile-icon");
+const trainerCloseBtn = document.getElementById("trainer-close");
+
+function positionTrainerDock() {
+  if (!trainerDock || !trainerIcon) return;
+  const rect = trainerIcon.getBoundingClientRect();
+  let left = rect.right - trainerDock.offsetWidth;
+  let top = rect.bottom + 5;
+  if (left < 10) left = 10;
+  if (left + trainerDock.offsetWidth > window.innerWidth - 10) {
+    left = window.innerWidth - trainerDock.offsetWidth - 10;
+  }
+  trainerDock.style.left = left + "px";
+  trainerDock.style.top = top + "px";
+  if (trainerArrow) {
+    const arrowOffset = rect.left + rect.width / 2 - left - 10;
+    trainerArrow.style.marginLeft = arrowOffset + "px";
+  }
+}
+
+function openTrainerModal(userId) {
+  if (!trainerDock) return;
+  trainerDock.style.display = "block";
+  positionTrainerDock();
+  loadProfile(userId);
+}
+
+function closeTrainerModal() {
+  if (trainerDock) trainerDock.style.display = "none";
+}
+
+function tcEsc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+// userId: null/undefined -> своя карточка (/api/profile), иначе чужая read-only.
+async function loadProfile(userId) {
+  const card = document.getElementById("trainer-card");
+  if (!card) return;
+  card.innerHTML = '<div class="tc-loading">Загрузка...</div>';
+  const url = userId ? `/api/profile/${userId}` : "/api/profile";
+  try {
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error("failed");
+    const p = await resp.json();
+    renderProfile(p);
+  } catch (err) {
+    console.error("profile load error", err);
+    card.innerHTML = '<div class="tc-empty">Не удалось загрузить карточку</div>';
+  }
+}
+
+function renderProfile(p) {
+  const card = document.getElementById("trainer-card");
+  if (!card) return;
+
+  const onlineCls = p.online ? "tc-online" : "tc-offline";
+  const onlineTxt = p.online ? "онлайн" : "оффлайн";
+
+  let awardsHtml;
+  if (p.awards && p.awards.length) {
+    awardsHtml = p.awards.map(a =>
+      `<div class="tc-award" title="${tcEsc(a.name)}${a.description ? " — " + tcEsc(a.description) : ""}">
+         <img src="${tcEsc(a.image_url)}" alt="${tcEsc(a.name)}" onerror="this.src='/static/images/default.png'">
+         <span class="tc-award-name">${tcEsc(a.name)}</span>
+       </div>`).join("");
+  } else {
+    awardsHtml = '<div class="tc-empty">Наград пока нет</div>';
+  }
+
+  let wishHtml;
+  if (p.wishlist && p.wishlist.length) {
+    wishHtml = p.wishlist.map(w =>
+      `<div class="tc-wish" title="${tcEsc(w.name)}">
+         <img src="${tcEsc(w.image_url)}" alt="${tcEsc(w.name)}" onerror="this.src='/static/images/default.png'">
+         <span class="tc-wish-name">${tcEsc(w.name)}</span>
+       </div>`).join("");
+  } else {
+    wishHtml = '<div class="tc-empty">Список пуст</div>';
+  }
+
+  let friendsHtml;
+  if (p.friends && p.friends.length) {
+    friendsHtml = p.friends.map(f =>
+      `<div class="tc-friend" data-friend-id="${f.id}">
+         <span class="tc-dot ${f.online ? "tc-online" : "tc-offline"}"></span>
+         <span class="tc-friend-name">${tcEsc(f.username)}</span>
+       </div>`).join("");
+  } else {
+    friendsHtml = '<div class="tc-empty">Друзей пока нет</div>';
+  }
+
+  const statusInner = p.status_text
+    ? tcEsc(p.status_text)
+    : (p.is_self ? '<span class="tc-status-placeholder">Нажмите, чтобы написать статус…</span>' : "");
+
+  const backBtn = p.is_self ? "" : '<div class="tc-back" id="tc-back">← к моей карточке</div>';
+
+  // Заглушка-силуэт под будущий аватар (аватар+одежда — отдельное ТЗ).
+  const avatarSvg =
+    '<svg viewBox="0 0 100 128" xmlns="http://www.w3.org/2000/svg">' +
+    '<circle cx="50" cy="34" r="22" fill="#9a6b43"></circle>' +
+    '<path d="M6 128 C6 84 30 66 50 66 C70 66 94 84 94 128 Z" fill="#9a6b43"></path>' +
+    '</svg>';
+
+  card.innerHTML = `
+    ${backBtn}
+    <div class="tc-body">
+      <div class="tc-avatar">
+        <!-- сюда встанет аватар с одеждой — отдельное ТЗ -->
+        ${avatarSvg}
+      </div>
+      <div class="tc-right">
+        <div class="tc-name-row">
+          <span class="tc-username">${tcEsc(p.username)}</span>
+          <span class="tc-badge ${onlineCls}">${onlineTxt}</span>
+          <span class="tc-role">${tcEsc(p.role_name)}</span>
+        </div>
+        <div class="tc-meta">
+          <span class="tc-region">📍 ${tcEsc(p.region_name)}</span>
+        </div>
+        <div class="tc-status ${p.is_self ? "tc-status-editable" : ""}" id="tc-status" ${p.is_self ? 'title="Нажмите, чтобы изменить"' : ""}>${statusInner}</div>
+        <div class="tc-tabwrap">
+          <div class="tc-tabs">
+            <div class="tc-tab tc-tab-act" data-tab="awards">Награды</div>
+            <div class="tc-tab" data-tab="wishlist">Желаемые</div>
+            <div class="tc-tab" data-tab="friends">Друзья</div>
+          </div>
+          <div class="tc-tabbody">
+            <div class="tc-panel tc-panel-act" data-tab="awards"><div class="tc-awards">${awardsHtml}</div></div>
+            <div class="tc-panel" data-tab="wishlist"><div class="tc-wishlist">${wishHtml}</div></div>
+            <div class="tc-panel" data-tab="friends"><div class="tc-friends">${friendsHtml}</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // переключение вкладок
+  card.querySelectorAll(".tc-tab").forEach(tab => {
+    tab.addEventListener("click", () => {
+      const name = tab.dataset.tab;
+      card.querySelectorAll(".tc-tab").forEach(t => t.classList.remove("tc-tab-act"));
+      card.querySelectorAll(".tc-panel").forEach(pn => pn.classList.remove("tc-panel-act"));
+      tab.classList.add("tc-tab-act");
+      const panel = card.querySelector(`.tc-panel[data-tab="${name}"]`);
+      if (panel) panel.classList.add("tc-panel-act");
+    });
+  });
+
+  const back = document.getElementById("tc-back");
+  if (back) back.addEventListener("click", () => loadProfile(null));
+
+  card.querySelectorAll(".tc-friend").forEach(el => {
+    el.addEventListener("click", () => {
+      const fid = parseInt(el.dataset.friendId, 10);
+      if (fid) loadProfile(fid);
+    });
+  });
+
+  if (p.is_self) {
+    const statusEl = document.getElementById("tc-status");
+    if (statusEl) statusEl.addEventListener("click", () => startStatusEdit(p.status_text || ""));
+  }
+}
+
+function startStatusEdit(current) {
+  const statusEl = document.getElementById("tc-status");
+  if (!statusEl) return;
+  statusEl.innerHTML = `
+    <input type="text" id="tc-status-input" maxlength="100" value="${tcEsc(current)}" placeholder="Ваш статус…">
+    <button id="tc-status-save" class="tc-status-save">OK</button>
+  `;
+  const input = document.getElementById("tc-status-input");
+  const saveBtn = document.getElementById("tc-status-save");
+  if (input) input.focus();
+  const doSave = () => saveStatus(input ? input.value : "");
+  if (saveBtn) saveBtn.addEventListener("click", doSave);
+  if (input) input.addEventListener("keydown", (e) => { if (e.key === "Enter") doSave(); });
+}
+
+async function saveStatus(text) {
+  try {
+    const resp = await fetch("/api/profile/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: text }),
+    });
+    if (!resp.ok) throw new Error("failed");
+    loadProfile(null);
+  } catch (err) {
+    console.error("save status error", err);
+    alert("Не удалось сохранить статус");
+  }
+}
+
+if (trainerIcon) {
+  trainerIcon.addEventListener("click", () => openTrainerModal(null));
+}
+if (trainerCloseBtn) {
+  trainerCloseBtn.addEventListener("click", closeTrainerModal);
 }
 
 // ===================================================================
@@ -1519,6 +1952,31 @@ function updateBattleCardFainted(containerId, pokemon) {
   if (nameDiv) nameDiv.textContent = pokemon.name + " [ОБЕЗДВИЖЕН]";
 }
 
+// updateEnemySquad — «шарики» отряда врага у карточки NPC (тренерский бой).
+// count=0/undefined (дикий бой) — индикатор убираем. Живые шарики — первые
+// `remaining` штук, павшие — серые (соответствие конкретным покемонам не важно).
+function updateEnemySquad(count, remaining) {
+  const containerH = document.getElementById("divFightH");
+  if (!containerH) return;
+  let squad = document.getElementById("enemy-squad");
+  if (!count) {
+    if (squad) squad.remove();
+    return;
+  }
+  if (!squad) {
+    squad = document.createElement("div");
+    squad.id = "enemy-squad";
+    squad.className = "enemy-squad";
+    containerH.appendChild(squad);
+  }
+  const rem = remaining || 0;
+  let html = '<span class="squad-label">Отряд:</span>';
+  for (let i = 0; i < count; i++) {
+    html += '<span class="squad-ball' + (i >= rem ? " dead" : "") + '"></span>';
+  }
+  squad.innerHTML = html;
+}
+
 function renderTeamSelection(team) {
   const container = document.getElementById("divFightI");
   if (!container) return;
@@ -1547,6 +2005,12 @@ function renderTeamSelection(team) {
 }
 
 async function performSwitch(userPokemonId) {
+  // PvP (поток [17]B): смена = либо замена павшего, либо действие-смена на ход.
+  if (pvpState) {
+    if (pvpState.phase === "await_replace") pvpReplace(userPokemonId);
+    else pvpAction("switch", null, userPokemonId);
+    return;
+  }
   if (!currentBattleId) return;
   try {
     const resp = await fetch("/api/battle/switch", {
@@ -1572,8 +2036,15 @@ async function performSwitch(userPokemonId) {
       containerI.appendChild(card);
       initBattleSwitchTriggers();
     }
-    // Update wild HP
-    updateBattleCardHp("divFightH", result.wild);
+    // Перерисовываем карточку врага целиком: в тренерском бою он мог смениться
+    // от остаточного урона на входе игрока. Для дикого — просто тот же враг.
+    const containerH = document.getElementById("divFightH");
+    if (containerH && result.wild) {
+      containerH.innerHTML = "";
+      const wcard = await createBattleCard(result.wild, false);
+      containerH.appendChild(wcard);
+    }
+    updateEnemySquad(result.enemy_count, result.enemy_remaining);
   } catch (err) {
     console.error("Switch error:", err);
   }
@@ -1919,6 +2390,9 @@ async function startBattle(data) {
   if (containerI) containerI.appendChild(playerCard);
   if (containerH) containerH.appendChild(wildCard);
 
+  // Индикатор отряда врага (тренерский бой). Для дикого — enemy_count пуст, снимаем.
+  updateEnemySquad(data.enemy_count, data.enemy_remaining);
+
   initBattleSwitchTriggers();
 
   // Погода (иконка + счётчик ходов при старте боя)
@@ -1942,6 +2416,8 @@ async function startBattle(data) {
 
 // Выполнить ход
 async function performMove(attackId, switchTo) {
+  // PvP (поток [17]B): ход роутится в сабмит действия, не в /api/battle/move.
+  if (pvpState) { pvpAction("move", attackId); return; }
   if (!currentBattleId) return;
   try {
     const body = { battle_id: currentBattleId, attack_id: attackId };
@@ -1975,9 +2451,12 @@ async function performMove(attackId, switchTo) {
 
     // Update HP bars
     updateBattleCardHp("divFightI", result.player);
-    updateBattleCardHp("divFightH", result.wild);
-    if (result.player.is_fainted) updateBattleCardFainted("divFightI", result.player);
-    if (result.wild.is_fainted) updateBattleCardFainted("divFightH", result.wild);
+    if (result.player && result.player.is_fainted) updateBattleCardFainted("divFightI", result.player);
+    // Врага обновляем по HP, если он НЕ сменился (при enemy_switch перерисуем ниже).
+    if (result.type !== "enemy_switch") {
+      updateBattleCardHp("divFightH", result.wild);
+      if (result.wild && result.wild.is_fainted) updateBattleCardFainted("divFightH", result.wild);
+    }
 
     // Log entries
     (result.log || []).forEach((entry) => addBattleLogEntry(entry));
@@ -1987,16 +2466,34 @@ async function performMove(attackId, switchTo) {
       updateWeatherIcon(result.weather_id, result.weather_turns, result.weather_name);
     }
 
+    // Индикатор отряда врага (тренерский бой)
+    updateEnemySquad(result.enemy_count, result.enemy_remaining);
+
     // Handle result type
     if (result.type === "victory") {
       setBattleStatus("ПОБЕДА!", "#2b8a3e");
       setSurrenderButton("Закрыть");
-      addBattleLogMessage("Победа! Дикий покемон повержен!");
+      if (result.trainer_name) {
+        addBattleLogMessage("Вы победили тренера " + result.trainer_name + "!");
+      } else {
+        addBattleLogMessage("Победа! Дикий покемон повержен!");
+      }
+      // Опыт/эволюция — только в диком бою (сервер для тренера их не шлёт).
       if (result.evolution && result.evolution.can_evolve) {
         setTimeout(() => showEvolutionNotice(result.evolution), 1000);
       } else {
         setTimeout(endBattle, 2000);
       }
+    } else if (result.type === "enemy_switch") {
+      // NPC вывел следующего покемона: перерисовываем карточку врага, ход игрока.
+      const containerH = document.getElementById("divFightH");
+      if (containerH && result.wild) {
+        containerH.innerHTML = "";
+        const card = await createBattleCard(result.wild, false);
+        containerH.appendChild(card);
+        updateEnemySquad(result.enemy_count, result.enemy_remaining);
+      }
+      setBattleStatus("ВАШ ХОД");
     } else if (result.type === "defeat") {
       setBattleStatus("ПОРАЖЕНИЕ!");
       setSurrenderButton("Закрыть");
@@ -2037,6 +2534,12 @@ async function searchWild() {
 
 // Попытка убежать
 async function runBattle() {
+  // PvP (поток [17]B): «Сдаться»/«Закрыть».
+  if (pvpState) {
+    if (pvpState.phase === "finished") exitPvp();
+    else pvpForfeit();
+    return;
+  }
   if (!currentBattleId) {
     endBattle();
     return;
@@ -2360,12 +2863,15 @@ function openNursery() {
   if (!nurseryPanel) return;
   positionNurseryPanel();
   nurseryPanel.style.display = "block";
+  breedSelection = [];
   loadNurseryPokemons();
+  loadEggs();
 }
 
 function closeNursery() {
   if (!nurseryPanel) return;
   nurseryPanel.style.display = "none";
+  stopEggTimer();
 }
 
 async function loadNurseryPokemons(search) {
@@ -2401,15 +2907,180 @@ async function loadNurseryPokemons(search) {
     }
     nurseryList.innerHTML = html;
     nurseryList.querySelectorAll(".nursery-item-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation(); // клик по «Взять» не выделяет пару
         await takeToTeam(parseInt(btn.dataset.id));
       });
     });
+    // Выбор пары для разведения: клик по строке (не по кнопке) — тогл выделения.
+    nurseryList.querySelectorAll(".nursery-item").forEach((row) => {
+      row.addEventListener("click", () => toggleBreedSelect(parseInt(row.dataset.id), row));
+    });
+    applyBreedSelectionUI();
   } catch (err) {
     console.error("Nursery load error:", err);
     nurseryList.innerHTML = '<div class="nursery-empty">Ошибка загрузки</div>';
   }
 }
+
+// ===================================================================
+// РАЗВЕДЕНИЕ (поток [13])
+// ===================================================================
+let breedSelection = []; // id выбранных покемонов (максимум 2)
+let eggTimerInterval = null;
+
+function toggleBreedSelect(id) {
+  const idx = breedSelection.indexOf(id);
+  if (idx >= 0) {
+    breedSelection.splice(idx, 1);
+  } else {
+    if (breedSelection.length >= 2) breedSelection.shift(); // держим максимум 2
+    breedSelection.push(id);
+  }
+  applyBreedSelectionUI();
+}
+
+function applyBreedSelectionUI() {
+  if (nurseryList) {
+    nurseryList.querySelectorAll(".nursery-item").forEach((row) => {
+      const id = parseInt(row.dataset.id);
+      row.classList.toggle("selected", breedSelection.includes(id));
+    });
+  }
+  const btn = document.getElementById("breed-btn");
+  const hint = document.getElementById("breed-hint");
+  if (btn) btn.disabled = breedSelection.length !== 2;
+  if (hint) {
+    hint.textContent =
+      breedSelection.length === 2
+        ? "Пара выбрана — жмите «Развести»."
+        : "Выберите двух покемонов из питомника для разведения.";
+  }
+}
+
+async function breedSelectedPair() {
+  if (breedSelection.length !== 2) return;
+  const [p1, p2] = breedSelection;
+  try {
+    const resp = await fetch("/api/nursery/breed", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ parent1_id: p1, parent2_id: p2 }),
+    });
+    if (!resp.ok) {
+      alert(await resp.text()); // reason: «нужен Амурит…», «буквы не совпадают» и т.п.
+      return;
+    }
+    breedSelection = [];
+    applyBreedSelectionUI();
+    await loadEggs();
+  } catch (err) {
+    console.error("Breed error:", err);
+  }
+}
+
+function formatEggTime(sec) {
+  if (sec <= 0) return "готово";
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  const pad = (n) => String(n).padStart(2, "0");
+  return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
+}
+
+async function loadEggs() {
+  const eggList = document.getElementById("egg-list");
+  if (!eggList) return;
+  try {
+    const resp = await fetch("/api/nursery/eggs");
+    if (!resp.ok) throw new Error("Failed");
+    const eggs = await resp.json();
+    if (!eggs.length) {
+      eggList.innerHTML = '<div class="nursery-empty">Нет яиц</div>';
+      stopEggTimer();
+      return;
+    }
+    let html = "";
+    for (const e of eggs) {
+      const imgSrc = e.image_url
+        ? e.image_url.replace("/normal/", "/mini/")
+        : "/static/images/default.png";
+      html += `
+        <div class="egg-item" data-id="${e.id}" data-remaining="${e.remaining_seconds}">
+          <img class="egg-item-img" src="${imgSrc}" alt="${e.name}">
+          <div class="egg-item-info">
+            <span class="egg-item-name">${e.name}</span>
+            <span class="egg-item-timer">${
+              e.ready ? "готово" : formatEggTime(e.remaining_seconds)
+            }</span>
+          </div>
+          <button class="egg-hatch-btn" data-id="${e.id}" ${
+            e.ready ? "" : "disabled"
+          }>Вылупить</button>
+        </div>`;
+    }
+    eggList.innerHTML = html;
+    eggList.querySelectorAll(".egg-hatch-btn").forEach((btn) => {
+      btn.addEventListener("click", () => hatchEgg(parseInt(btn.dataset.id)));
+    });
+    startEggTimer();
+  } catch (err) {
+    console.error("Eggs load error:", err);
+    eggList.innerHTML = '<div class="nursery-empty">Ошибка загрузки</div>';
+  }
+}
+
+// Локальный обратный отсчёт: тикает раз в секунду по data-remaining.
+// Источник правды по готовности — сервер (проверяется при вылуплении).
+function startEggTimer() {
+  stopEggTimer();
+  eggTimerInterval = setInterval(() => {
+    const eggList = document.getElementById("egg-list");
+    if (!eggList) return stopEggTimer();
+    eggList.querySelectorAll(".egg-item").forEach((row) => {
+      let rem = parseInt(row.dataset.remaining) || 0;
+      if (rem > 0) {
+        rem -= 1;
+        row.dataset.remaining = rem;
+      }
+      const timer = row.querySelector(".egg-item-timer");
+      const btn = row.querySelector(".egg-hatch-btn");
+      if (timer) timer.textContent = rem <= 0 ? "готово" : formatEggTime(rem);
+      if (btn && rem <= 0) btn.disabled = false;
+    });
+  }, 1000);
+}
+
+function stopEggTimer() {
+  if (eggTimerInterval) {
+    clearInterval(eggTimerInterval);
+    eggTimerInterval = null;
+  }
+}
+
+async function hatchEgg(eggId) {
+  try {
+    const resp = await fetch("/api/nursery/hatch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ egg_id: eggId }),
+    });
+    if (!resp.ok) {
+      alert(await resp.text());
+      return;
+    }
+    const child = await resp.json();
+    alert(`Вылупился ${child.name}!`);
+    await loadEggs();
+    const q = nurserySearchInput ? nurserySearchInput.value.trim() : "";
+    await loadNurseryPokemons(q || undefined);
+    if (typeof loadTeam === "function") loadTeam();
+  } catch (err) {
+    console.error("Hatch error:", err);
+  }
+}
+
+document.getElementById("breed-btn")?.addEventListener("click", breedSelectedPair);
 
 async function takeToTeam(userPokemonId) {
   try {
@@ -2486,9 +3157,15 @@ document.addEventListener("click", function teamCtxClose(e) {
 
 document.addEventListener("click", function teamCtxPokedex(e) {
   const item = e.target.closest(".ctx-item-pokedex");
-  if (item) {
-    document.getElementById("team-context-menu").style.display = "none";
-    // TODO: open pokedex
+  if (!item) return;
+  document.getElementById("team-context-menu").style.display = "none";
+  const speciesId = parseInt(item.dataset.speciesId);
+  if (typeof openPokedex !== "function") return;
+  // Панель покедекса перекрывает док команды — команду закрываем
+  closeTeamModal();
+  openPokedex();
+  if (speciesId && typeof selectPokemon === "function") {
+    selectPokemon(speciesId);
   }
 });
 
@@ -2528,3 +3205,490 @@ document.addEventListener("click", async function teamCtxNursery(e) {
     console.error("Send to nursery error:", err);
   }
 });
+
+// ===================================================================
+// ОНЛАЙН-ИГРОКИ НА ЛОКАЦИИ + ВЫЗОВ НА БОЙ (поток [17], часть A)
+// Транспорт — HTTP-поллинг; серверное состояние presence/вызовов. Таймеры
+// аккуратно чистим (смена локации/ответ), чтобы не плодить дубли.
+// ===================================================================
+const ONLINE_POLL_MS = 7000; // список онлайна
+const INCOMING_POLL_MS = 5000; // входящие вызовы (всегда)
+const OUTGOING_POLL_MS = 2000; // статус исходящего (только пока ждём)
+let onlinePollTimer = null;
+let incomingPollTimer = null;
+let outgoingPollTimer = null;
+let activeChallengePopup = false; // показан ли сейчас входящий попап
+
+function olEscape(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+// Лёгкий тост (в проекте не было — простой самоудаляющийся).
+function showToast(msg) {
+  let host = document.getElementById("pk-toast-host");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "pk-toast-host";
+    document.body.appendChild(host);
+  }
+  const t = document.createElement("div");
+  t.className = "pk-toast";
+  t.textContent = msg;
+  host.appendChild(t);
+  requestAnimationFrame(() => t.classList.add("show"));
+  setTimeout(() => {
+    t.classList.remove("show");
+    setTimeout(() => t.remove(), 300);
+  }, 3000);
+}
+
+// --- Список онлайна на локации ---
+async function pollOnlinePlayers() {
+  try {
+    const r = await fetch("/api/location/players");
+    if (!r.ok) return;
+    const players = await r.json();
+    renderOnlineList(players || []);
+  } catch (e) {
+    /* тихо */
+  }
+}
+
+function renderOnlineList(players) {
+  const list = document.getElementById("online-list");
+  if (!list) return;
+  if (!players.length) {
+    list.innerHTML = '<div class="online-empty">Никого рядом</div>';
+    return;
+  }
+  list.innerHTML = players
+    .map(
+      (p) =>
+        `<div class="online-row" data-user-id="${p.user_id}">` +
+        `<span class="online-icon" title="Действия">👤</span>` +
+        `<span class="online-name">${olEscape(p.username)}</span>` +
+        `</div>`
+    )
+    .join("");
+}
+
+function restartOnlinePolling() {
+  if (onlinePollTimer) {
+    clearInterval(onlinePollTimer);
+    onlinePollTimer = null;
+  }
+  const list = document.getElementById("online-list");
+  if (list) list.innerHTML = '<div class="online-empty">Загрузка…</div>';
+  pollOnlinePlayers();
+  onlinePollTimer = setInterval(pollOnlinePlayers, ONLINE_POLL_MS);
+}
+
+// --- Контекст-меню по клику на иконку игрока ---
+document.addEventListener("click", (e) => {
+  const icon = e.target.closest && e.target.closest(".online-icon");
+  if (!icon) return;
+  const row = icon.closest(".online-row");
+  if (!row) return;
+  const userId = parseInt(row.dataset.userId, 10);
+  const name = row.querySelector(".online-name")?.textContent || "";
+  showOnlinePlayerMenu(icon, userId, name);
+});
+
+function showOnlinePlayerMenu(anchorEl, userId, username) {
+  const menu = document.getElementById("online-player-menu");
+  if (!menu) return;
+  menu.innerHTML = "";
+
+  // «Тренеркарта» — заглушка (пока не работает).
+  const card = document.createElement("div");
+  card.className = "ctx-item ctx-disabled";
+  card.textContent = "Тренеркарта";
+  card.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    showToast("Тренеркарта — скоро");
+  });
+  menu.appendChild(card);
+
+  // «Вызвать на бой».
+  const chal = document.createElement("div");
+  chal.className = "ctx-item";
+  chal.textContent = "Вызвать на бой";
+  chal.addEventListener("click", () => {
+    menu.style.display = "none";
+    sendChallenge(userId, username);
+  });
+  menu.appendChild(chal);
+
+  const rect = anchorEl.getBoundingClientRect();
+  menu.style.left = rect.left + rect.width / 2 + "px";
+  menu.style.top = rect.bottom + 4 + "px";
+  menu.style.display = "block";
+
+  const mr = menu.getBoundingClientRect();
+  if (mr.left < 0) menu.style.left = "4px";
+  if (mr.right > window.innerWidth)
+    menu.style.left = window.innerWidth - mr.width - 4 + "px";
+  if (mr.bottom > window.innerHeight)
+    menu.style.top = rect.top - mr.height - 4 + "px";
+
+  const close = (ev) => {
+    if (!menu.contains(ev.target) && ev.target !== anchorEl) {
+      menu.style.display = "none";
+      document.removeEventListener("click", close);
+    }
+  };
+  setTimeout(() => document.addEventListener("click", close), 0);
+}
+
+// --- Исходящий вызов ---
+async function sendChallenge(userId, username) {
+  try {
+    const r = await fetch("/api/challenge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ target_user_id: userId }),
+    });
+    if (!r.ok) {
+      const t = (await r.text()).trim();
+      showToast(t || "Не удалось отправить вызов");
+      return;
+    }
+    showToast("Вызов отправлен, ждём ответа…");
+    startOutgoingPolling(username, userId);
+  } catch (e) {
+    showToast("Ошибка сети");
+  }
+}
+
+function stopOutgoingPolling() {
+  if (outgoingPollTimer) {
+    clearInterval(outgoingPollTimer);
+    outgoingPollTimer = null;
+  }
+}
+
+function startOutgoingPolling(targetName, targetId) {
+  stopOutgoingPolling();
+  outgoingPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch("/api/challenge/outgoing");
+      if (!r.ok) return;
+      const d = await r.json();
+      if (d.status === "accepted") {
+        stopOutgoingPolling();
+        startPvpBattle(null, targetId);
+        showToast("Бой скоро будет!");
+      } else if (d.status === "declined") {
+        stopOutgoingPolling();
+        showToast((targetName || d.target_name || "Игрок") + " отклонил вызов");
+      } else if (d.status === "none") {
+        stopOutgoingPolling(); // протух / очищен
+      }
+    } catch (e) {
+      /* тихо */
+    }
+  }, OUTGOING_POLL_MS);
+  // страховка: не крутить дольше TTL+запас
+  setTimeout(stopOutgoingPolling, 50000);
+}
+
+// --- Входящие вызовы (поллинг всегда) ---
+function startIncomingPolling() {
+  if (incomingPollTimer) return;
+  incomingPollTimer = setInterval(pollIncoming, INCOMING_POLL_MS);
+  pollIncoming();
+}
+
+async function pollIncoming() {
+  if (activeChallengePopup) return; // уже показываем попап
+  try {
+    const r = await fetch("/api/challenge/incoming");
+    if (!r.ok) return;
+    const list = await r.json();
+    if (list && list.length) showChallengePopup(list[0]);
+  } catch (e) {
+    /* тихо */
+  }
+}
+
+function showChallengePopup(ch) {
+  activeChallengePopup = true;
+  const pop = document.getElementById("challenge-popup");
+  document.getElementById("challenge-popup-text").textContent =
+    "Игрок " + ch.challenger_name + " вызывает на бой!";
+  pop.style.display = "flex";
+
+  const accept = document.getElementById("challenge-accept");
+  const decline = document.getElementById("challenge-decline");
+  const cleanup = () => {
+    pop.style.display = "none";
+    activeChallengePopup = false;
+    accept.onclick = null;
+    decline.onclick = null;
+  };
+  accept.onclick = async () => {
+    await respondChallenge(ch.challenger_id, true);
+    cleanup();
+    startPvpBattle(ch.challenger_id, null);
+    showToast("Бой скоро будет!");
+  };
+  decline.onclick = async () => {
+    await respondChallenge(ch.challenger_id, false);
+    cleanup();
+  };
+}
+
+async function respondChallenge(challengerId, accept) {
+  try {
+    await fetch("/api/challenge/respond", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ challenger_id: challengerId, accept: accept }),
+    });
+  } catch (e) {
+    /* тихо */
+  }
+}
+
+// startPvpBattle — вход в PvP-бой (часть B). Бой уже создан сервером на «принять».
+// Обе стороны зовут это после accept -> подтягиваем current и входим в PvP-UI.
+function startPvpBattle(challengerID, targetID) {
+  enterPvpBattle();
+}
+
+// Старт постоянного поллинга входящих (список онлайна стартует из loadLocation).
+startIncomingPolling();
+
+// ===================================================================
+// PvP-БОЙ (поток [17], часть B) — реюз боевого UI + perspective-поллинг
+// ===================================================================
+let pvpState = null; // {battleId, mySide, phase, logCursor, submitted, myActiveId, oppActiveId}
+let pvpPollTimer = null;
+const PVP_POLL_MS = 1500;
+
+async function enterPvpBattle() {
+  if (pvpState) return; // уже в бою
+  try {
+    const r = await fetch("/api/pvp/current");
+    if (!r.ok) return;
+    const cur = await r.json();
+    if (!cur || cur.none) { showToast("Бой не удалось начать (нет боеспособных покемонов?)"); return; }
+
+    pvpState = {
+      battleId: cur.battle_id, mySide: cur.my_side, phase: cur.phase,
+      logCursor: 0, submitted: false, myActiveId: null, oppActiveId: null,
+    };
+    battleActive = true;
+    currentBattleId = cur.battle_id;
+
+    const locPanel = document.getElementById("divVisioLoc");
+    const fightPanel = document.getElementById("divVisioFight");
+    if (locPanel) locPanel.style.display = "none";
+    if (fightPanel) fightPanel.style.display = "block";
+    const cI = document.getElementById("divFightI"); if (cI) cI.innerHTML = "";
+    const cH = document.getElementById("divFightH"); if (cH) cH.innerHTML = "";
+    clearBattleLog();
+    updateEnemySquad(0, 0); // индикатор отряда в PvP не используем
+
+    // Ловли в PvP нет — прячем кнопку.
+    const catchBtn = document.getElementById("catch-btn"); if (catchBtn) catchBtn.style.display = "none";
+    setSurrenderButton("Сдаться");
+    setBattleStatus("ПОДКЛЮЧЕНИЕ…");
+
+    await pvpRefresh();
+    if (pvpPollTimer) clearInterval(pvpPollTimer);
+    pvpPollTimer = setInterval(pvpRefresh, PVP_POLL_MS);
+  } catch (e) {
+    console.error("enterPvpBattle error:", e);
+  }
+}
+
+async function pvpRefresh() {
+  if (!pvpState) return;
+  try {
+    const r = await fetch(`/api/pvp/state?battle_id=${encodeURIComponent(pvpState.battleId)}&since=${pvpState.logCursor}`);
+    if (!r.ok) return;
+    const s = await r.json();
+
+    const newLog = s.new_log || [];
+    newLog.forEach((e) => addBattleLogEntry(e));
+    if (typeof s.log_seq === "number") pvpState.logCursor = s.log_seq;
+    if (s.weather_id != null) updateWeatherIcon(s.weather_id, s.weather_turns, s.weather_name);
+    pvpState.phase = s.phase;
+
+    if (s.finished) { pvpRenderFinished(s); return; }
+
+    if (s.phase === "lead_select") {
+      pvpState.submitted = false;
+      if (!s.my_active) {
+        pvpRenderSelect(s.my_team, "ВЫБЕРИТЕ ПЕРВОГО ПОКЕМОНА", (id) => pvpChooseLead(id));
+        setBattleStatus("ВЫБОР ЛИДА");
+      } else {
+        setBattleStatus("Соперник выбирает покемона…");
+      }
+      return;
+    }
+
+    if (s.phase === "await_replace") {
+      if (s.await_my_replace) {
+        pvpState.myActiveId = null; // карточка павшего сейчас сменится
+        pvpRenderSelect(s.my_team, "ВЫБЕРИТЕ ПОКЕМОНА НА ЗАМЕНУ", (id) => pvpReplace(id));
+        setBattleStatus("ЗАМЕНА");
+      } else {
+        await pvpEnsureCards(s, newLog.length > 0);
+        setBattleStatus("Соперник выбирает покемона…");
+      }
+      return;
+    }
+
+    // battling
+    await pvpEnsureCards(s, newLog.length > 0);
+    if (s.waiting_for_opponent) {
+      pvpState.submitted = true;
+      setBattleStatus("Ждём соперника…");
+    } else {
+      pvpState.submitted = false;
+      setBattleStatus("ВАШ ХОД");
+    }
+  } catch (e) {
+    console.error("pvpRefresh error:", e);
+  }
+}
+
+// Отрисовать/обновить карточки (мой активный как «player», соперник как «enemy»).
+async function pvpEnsureCards(s, forceRerender) {
+  const cI = document.getElementById("divFightI");
+  const cH = document.getElementById("divFightH");
+  if (s.my_active) {
+    const need = forceRerender || pvpState.myActiveId !== s.my_active.id || !cI || !cI.querySelector(".poke");
+    if (need && cI) {
+      cI.innerHTML = "";
+      const c = await createBattleCard(s.my_active, true);
+      cI.appendChild(c);
+      initBattleSwitchTriggers();
+      pvpState.myActiveId = s.my_active.id;
+    } else {
+      updateBattleCardHp("divFightI", s.my_active);
+      if (s.my_active.is_fainted) updateBattleCardFainted("divFightI", s.my_active);
+    }
+  }
+  if (s.opp_active) {
+    const need = forceRerender || pvpState.oppActiveId !== s.opp_active.id || !cH || !cH.querySelector(".poke");
+    if (need && cH) {
+      cH.innerHTML = "";
+      const c = await createBattleCard(s.opp_active, false);
+      cH.appendChild(c);
+      pvpState.oppActiveId = s.opp_active.id;
+    } else {
+      updateBattleCardHp("divFightH", s.opp_active);
+      if (s.opp_active.is_fainted) updateBattleCardFainted("divFightH", s.opp_active);
+    }
+  }
+}
+
+// Список выбора (лид/замена) — по образцу renderTeamSelection, но с колбэком.
+function pvpRenderSelect(team, title, onPick) {
+  const container = document.getElementById("divFightI");
+  if (!container) return;
+  const alive = (team || []).filter((p) => p.current_hp > 0 && !p.is_fainted);
+  let html = '<div style="padding:10px"><div style="font-weight:700;font-size:13px;margin-bottom:8px;color:#4a3728">' + title + ':</div>';
+  alive.forEach((p) => {
+    const miniSrc = p.image_url ? p.image_url.replace("/normal/", "/mini/") : "/static/images/default.png";
+    html += '<div class="switch-option" data-id="' + p.id + '" style="display:flex;align-items:center;gap:10px;padding:8px 10px;cursor:pointer;border:1px solid #d4c9b2;border-radius:6px;margin-bottom:6px;background:#fefaf5">';
+    html += '<img src="' + miniSrc + '" style="width:32px;height:32px;object-fit:contain">';
+    html += '<span style="font-weight:600;color:#3a2c2a">' + p.name + '</span>';
+    html += '<span style="color:#737373;font-size:12px">Ур. ' + p.level + '</span>';
+    html += '<span style="margin-left:auto;color:#2b8a3e;font-size:11px">HP ' + p.current_hp + '/' + p.max_hp + '</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  container.innerHTML = html;
+  container.querySelectorAll(".switch-option").forEach((el) => {
+    el.addEventListener("click", () => onPick(parseInt(el.dataset.id)));
+    el.addEventListener("mouseenter", () => { el.style.background = "#e1d3c4"; });
+    el.addEventListener("mouseleave", () => { el.style.background = "#fefaf5"; });
+  });
+}
+
+async function pvpChooseLead(id) {
+  if (!pvpState) return;
+  try {
+    const r = await fetch("/api/pvp/lead", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battle_id: pvpState.battleId, user_pokemon_id: id }),
+    });
+    if (!r.ok) { showToast((await r.text()).trim() || "Не удалось выбрать"); return; }
+    const cI = document.getElementById("divFightI"); if (cI) cI.innerHTML = "";
+    setBattleStatus("Соперник выбирает покемона…");
+    pvpRefresh();
+  } catch (e) { /* тихо */ }
+}
+
+async function pvpAction(type, attackId, upId) {
+  if (!pvpState || pvpState.submitted) return;
+  try {
+    const body = { battle_id: pvpState.battleId, type: type };
+    if (type === "move") body.attack_id = attackId;
+    if (type === "switch") body.user_pokemon_id = upId;
+    const r = await fetch("/api/pvp/action", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) { showToast((await r.text()).trim() || "Действие недоступно"); return; }
+    pvpState.submitted = true;
+    setBattleStatus("Ждём соперника…");
+    pvpRefresh();
+  } catch (e) { /* тихо */ }
+}
+
+async function pvpReplace(id) {
+  if (!pvpState) return;
+  try {
+    const r = await fetch("/api/pvp/replace", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battle_id: pvpState.battleId, user_pokemon_id: id }),
+    });
+    if (!r.ok) { showToast((await r.text()).trim() || "Недоступно"); return; }
+    const cI = document.getElementById("divFightI"); if (cI) cI.innerHTML = "";
+    pvpState.myActiveId = null;
+    setBattleStatus("Ждём соперника…");
+    pvpRefresh();
+  } catch (e) { /* тихо */ }
+}
+
+async function pvpForfeit() {
+  if (!pvpState) return;
+  try {
+    await fetch("/api/pvp/forfeit", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ battle_id: pvpState.battleId }),
+    });
+  } catch (e) { /* тихо */ }
+  pvpRefresh();
+}
+
+function pvpRenderFinished(s) {
+  if (pvpPollTimer) { clearInterval(pvpPollTimer); pvpPollTimer = null; }
+  if (s.aborted) {
+    setBattleStatus("Бой прерван", "#a15a2b");
+    addBattleLogMessage("Бой прерван (соперник вышел или тайм-аут).");
+  } else if (s.i_won) {
+    setBattleStatus("ПОБЕДА!", "#2b8a3e");
+    addBattleLogMessage("Вы победили в PvP-бою!");
+  } else {
+    setBattleStatus("ПОРАЖЕНИЕ!");
+    addBattleLogMessage("Вы проиграли PvP-бой.");
+  }
+  setSurrenderButton("Закрыть");
+  if (pvpState) pvpState.phase = "finished";
+}
+
+function exitPvp() {
+  if (pvpPollTimer) { clearInterval(pvpPollTimer); pvpPollTimer = null; }
+  pvpState = null;
+  const catchBtn = document.getElementById("catch-btn"); if (catchBtn) catchBtn.style.display = "";
+  endBattle();
+  if (typeof loadTeam === "function") loadTeam(); // подтянуть сохранённый урон в команду
+}

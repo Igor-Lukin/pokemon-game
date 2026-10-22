@@ -55,5 +55,14 @@ func applyLevelUp(userPokemonID, pokemonID, level int, iv, ev [6]int, natureID i
 		log.Printf("applyLevelUp: InitLearnableAttacks error: %v", err)
 	}
 
+	// [ability] ВТОРАЯ точка эволюции (авто-эволюция при левелапе после боя / от
+	// Леденца). Старый вид = параметр pokemonID (до Exec). Ремап только при реальной
+	// смене вида. Единая точка ремапа — db.RemapAbilityOnEvolve (см. §5.4 ТЗ).
+	if newPokemonID != pokemonID {
+		if err := db.RemapAbilityOnEvolve(userPokemonID, pokemonID, newPokemonID); err != nil {
+			log.Printf("applyLevelUp: RemapAbilityOnEvolve error: %v", err)
+		}
+	}
+
 	return newPokemonID, evoInfo, maxHP, nil
 }

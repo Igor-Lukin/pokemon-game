@@ -125,6 +125,14 @@ func EvolveHandler(w http.ResponseWriter, r *http.Request) {
 
 	newPokemonID := info.EvolvesToID
 
+	// [ability] Старый вид прочитать ДО UPDATE pokemon_id — нужен для ремапа
+	// способности по слоту (см. db.RemapAbilityOnEvolve).
+	var oldPokemonID int
+	if err := db.DB.QueryRow("SELECT pokemon_id FROM user_pokemons WHERE id = ?", userPokemonID).Scan(&oldPokemonID); err != nil {
+		http.Error(w, "Pokemon not found", http.StatusNotFound)
+		return
+	}
+
 	// Get current stats, IVs, EVs, level, nature
 	var level, natureID int
 	var iv [6]int
@@ -183,6 +191,11 @@ func EvolveHandler(w http.ResponseWriter, r *http.Request) {
 	// Re-init learnable attacks for the new form
 	if err := db.InitLearnableAttacks(userPokemonID, newPokemonID, level); err != nil {
 		log.Printf("EvolveHandler: InitLearnableAttacks error: %v", err)
+	}
+
+	// [ability] Ремап способности по слоту (единая точка — см. §5.4 ТЗ).
+	if err := db.RemapAbilityOnEvolve(userPokemonID, oldPokemonID, newPokemonID); err != nil {
+		log.Printf("EvolveHandler: RemapAbilityOnEvolve error: %v", err)
 	}
 
 	log.Printf("User %d evolved pokemon %d to %s (pokemon_id %d)", userID, userPokemonID, newName, newPokemonID)

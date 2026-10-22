@@ -87,7 +87,12 @@ type UserPokemon struct {
 	PokemonID      int
 	Gender         string // 'M'/'F'/'N'
 	Attractiveness string // 'A'/'B'/'C'
+	HeldEffect     string // effect_type надетого предмета ('' если ничего); для Амурита == AmuriteEffect
 }
+
+// AmuriteEffect — метка предмета «Амурит» (items.effect_type). По ней опознаём
+// Амурит на бесполых; отдельных колонок под него нет.
+const AmuriteEffect = "breed_amurite"
 
 // CanBreed — ЗАГЛУШКА-правило совместимости под будущее спаривание.
 // Механика разведения (яйца/потомство) будет позже; здесь ТОЛЬКО правило,
@@ -110,4 +115,41 @@ func CanBreed(a, b *UserPokemon) bool {
 	// противоположные полы: ровно один 'M' и один 'F'
 	return (a.Gender == GenderMale && b.Gender == GenderFemale) ||
 		(a.Gender == GenderFemale && b.Gender == GenderMale)
+}
+
+// BreedCompat — правило совместимости пары для РЕАЛЬНОГО разведения (поток [13]).
+// Возвращает (можно ли, причина-отказ на русском). Требования (решение владельца):
+//   - это два РАЗНЫХ экземпляра;
+//   - ОДИН вид (pokemon_id равны) — потомок будет базовой формой этого вида;
+//   - одна БУКВА привлекательности;
+//   - пол: либо один 'M' + один 'F'; либо оба 'N', но тогда на ОБОИХ надет Амурит.
+//
+// Любой иной случай (разные виды, разные буквы, оба 'M'/оба 'F', один 'N' без пары,
+// 'N' без Амурита и т.п.) — нельзя, с понятной причиной.
+func BreedCompat(a, b *UserPokemon) (bool, string) {
+	if a == nil || b == nil {
+		return false, "не найден покемон"
+	}
+	if a.ID == b.ID {
+		return false, "нужны два разных покемона"
+	}
+	if a.PokemonID != b.PokemonID {
+		return false, "нужны покемоны одного вида"
+	}
+	if a.Attractiveness != b.Attractiveness {
+		return false, "буквы привлекательности не совпадают"
+	}
+	// Оба бесполые — только через Амурит на обоих.
+	if a.Gender == GenderNeutral && b.Gender == GenderNeutral {
+		if a.HeldEffect == AmuriteEffect && b.HeldEffect == AmuriteEffect {
+			return true, ""
+		}
+		return false, "бесполых разводит только Амурит на обоих"
+	}
+	// Обычная пара: ровно один 'M' и один 'F' (без 'N').
+	if (a.Gender == GenderMale && b.Gender == GenderFemale) ||
+		(a.Gender == GenderFemale && b.Gender == GenderMale) {
+		return true, ""
+	}
+	return false, "нужны разнополые (♂ и ♀) или бесполые с Амуритом"
 }

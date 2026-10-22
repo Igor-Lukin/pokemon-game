@@ -147,6 +147,8 @@ body {
   padding: 16px;
   overflow-y: auto;
   overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .description-block {
@@ -1244,6 +1246,107 @@ div.barEXP div {
 .nursery-item-btn:hover {
   background: #855a37;
 }
+/* Выбор пары для разведения */
+.nursery-item {
+  cursor: pointer;
+}
+.nursery-item.selected {
+  background: var(--pk-paper-2);
+  box-shadow: inset 3px 0 0 var(--pk-sepia);
+}
+
+/* Панель разведения */
+.breed-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px;
+  border-top: 1px solid var(--pk-line);
+}
+.breed-hint {
+  flex: 1;
+  font-size: 0.78rem;
+  color: var(--pk-ink-faint);
+}
+.breed-btn {
+  color: #fff;
+  background: var(--pk-sepia);
+  border: 1px solid var(--pk-sepia);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  border-radius: var(--pk-radius);
+}
+.breed-btn:hover:not(:disabled) {
+  background: #855a37;
+}
+.breed-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* Секция яиц */
+.egg-section {
+  border-top: 1px solid var(--pk-line);
+  padding: 8px 6px 4px;
+}
+.egg-section-title {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--pk-ink);
+  margin-bottom: 6px;
+}
+.egg-list {
+  max-height: 180px;
+  overflow-y: auto;
+}
+.egg-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px;
+  border-bottom: 1px solid var(--pk-line);
+}
+.egg-item-img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+}
+.egg-item-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.egg-item-name {
+  font-weight: 600;
+  color: var(--pk-ink);
+  font-size: 0.85rem;
+}
+.egg-item-timer {
+  color: var(--pk-ink-faint);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+.egg-hatch-btn {
+  color: #fff;
+  background: var(--pk-sepia);
+  border: 1px solid var(--pk-sepia);
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  border-radius: var(--pk-radius);
+}
+.egg-hatch-btn:hover:not(:disabled) {
+  background: #855a37;
+}
+.egg-hatch-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 
 /* Боевой лог */
 .divFightLog {
@@ -1548,6 +1651,55 @@ div.barEXP div {
 }
 .attack-info-swap-btn:hover {
   background: #855a37;
+}
+
+/* Мини-окно описания способности */
+.ability-info-popup {
+  position: fixed;
+  background: var(--pk-paper);
+  border: 1px solid var(--pk-line-2);
+  border-radius: var(--pk-radius);
+  box-shadow: var(--pk-shadow);
+  z-index: 1001;
+  width: 260px;
+  font-size: 13px;
+  color: var(--pk-ink);
+}
+.ability-info-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--pk-line);
+}
+.ability-info-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--pk-serif);
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ability-info-close {
+  cursor: pointer;
+  color: var(--pk-ink-faint);
+  font-size: 12px;
+  line-height: 1;
+}
+.ability-info-close:hover {
+  color: var(--pk-ink);
+}
+.ability-info-desc {
+  padding: 8px 10px 10px;
+  font-size: 11px;
+  color: var(--pk-ink-soft);
+  line-height: 1.45;
+}
+.divAbility:hover {
+  border-color: var(--pk-sepia);
+  color: var(--pk-sepia);
 }
 
 /* Список изучаемых атак */
@@ -2141,6 +2293,27 @@ div.barEXP div {
   min-width: 36px;
   text-align: center;
 }
+/* Поле ввода количества (кнопки +/- работают как раньше) */
+.inv-qty-input {
+  width: 90px;
+  padding: 4px 6px;
+  background: var(--pk-paper);
+  border: 1px solid var(--pk-line-2);
+  border-radius: var(--pk-radius);
+  font-family: inherit;
+  box-sizing: border-box;
+  -moz-appearance: textfield;
+}
+.inv-qty-input:focus {
+  outline: none;
+  border-color: var(--pk-sepia);
+}
+/* Стрелки браузера прячем — свои +/- уже есть */
+.inv-qty-input::-webkit-outer-spin-button,
+.inv-qty-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
 .inv-qty-max {
   text-align: center;
   font-size: 11px;
@@ -2345,4 +2518,510 @@ div.barEXP div {
   font-weight: 600;
 }
 
+/* ===== КАРТОЧКА ТРЕНЕРА (поток [7], компоновка A) ===== */
+#trainer-dock {
+  box-sizing: border-box;
+  --tc-avh: 520px;                      /* высота аватара-заглушки (менять тут) */
+  --tc-avw: calc(var(--tc-avh) * 0.66); /* портретная пропорция */
+  width: calc(var(--tc-avw) + 400px);   /* аватар + правая колонка */
+  max-width: calc(100vw - 20px);
+}
+.trainer-card {
+  font-family: var(--pk-serif);
+  color: var(--pk-ink);
+  max-height: 82vh;
+  overflow-y: auto;
+  padding: 2px 4px;
+}
+.tc-loading,
+.tc-empty {
+  color: var(--pk-ink-faint);
+  font-size: 13px;
+  padding: 8px 4px;
+}
+.tc-back {
+  color: var(--pk-sepia);
+  cursor: pointer;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+.tc-back:hover {
+  text-decoration: underline;
+}
 
+/* тело: аватар слева, правая колонка справа */
+.tc-body {
+  display: flex;
+  gap: 18px;
+  align-items: stretch;
+}
+.tc-avatar {
+  flex: 0 0 auto;
+  width: var(--tc-avw);
+  height: var(--tc-avh);
+  background: var(--pk-paper-2);
+  border: 1px solid var(--pk-line-2);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+}
+.tc-avatar svg {
+  width: 88%;
+  height: 92%;
+  opacity: 0.4;
+}
+.tc-right {
+  flex: 1 1 auto;
+  min-width: 340px;
+  display: flex;
+  flex-direction: column;
+}
+.tc-name-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.tc-username {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--pk-sepia);
+}
+.tc-badge {
+  font-size: 12px;
+  font-family: Arial, sans-serif;
+  padding: 3px 10px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+.tc-badge.tc-online {
+  background: #e2f3e0;
+  color: #2f7d32;
+  border-color: #b7dfb2;
+}
+.tc-badge.tc-offline {
+  background: var(--pk-paper-3);
+  color: var(--pk-ink-faint);
+  border-color: var(--pk-line-2);
+}
+.tc-meta {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--pk-ink-soft);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.tc-role {
+  background: var(--pk-paper-2);
+  border: 1px solid var(--pk-line-2);
+  color: var(--pk-sepia);
+  padding: 3px 12px;
+  font-size: 13px;
+}
+.tc-status {
+  font-size: 15px;
+  font-style: italic;
+  color: var(--pk-ink);
+  background: var(--pk-paper-2);
+  border: 1px dashed var(--pk-line-2);
+  padding: 9px 12px;
+  min-height: 22px;
+  margin-bottom: 16px;
+}
+.tc-status-editable {
+  cursor: text;
+}
+.tc-status-editable:hover {
+  border-color: var(--pk-sepia);
+}
+.tc-status-placeholder {
+  color: var(--pk-ink-faint);
+  font-style: italic;
+}
+.tc-status-save {
+  margin-left: 6px;
+  font-family: var(--pk-serif);
+  background: var(--pk-sepia);
+  color: #fff;
+  border: none;
+  padding: 3px 12px;
+  cursor: pointer;
+}
+#tc-status-input {
+  width: 70%;
+  font-family: var(--pk-serif);
+  padding: 4px 6px;
+  border: 1px solid var(--pk-line-2);
+  background: var(--pk-paper);
+}
+
+/* вкладки */
+.tc-tabwrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.tc-tabs {
+  display: flex;
+  gap: 2px;
+}
+.tc-tab {
+  font-size: 13px;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  color: var(--pk-ink-soft);
+  background: var(--pk-paper-2);
+  border: 1px solid var(--pk-line-2);
+  border-bottom: none;
+  user-select: none;
+}
+.tc-tab.tc-tab-act {
+  background: var(--pk-paper);
+  color: var(--pk-sepia);
+  font-weight: 700;
+}
+.tc-tabbody {
+  border: 1px solid var(--pk-line-2);
+  padding: 14px;
+  flex: 1;
+  overflow-y: auto;
+}
+.tc-panel {
+  display: none;
+}
+.tc-panel.tc-panel-act {
+  display: block;
+}
+
+/* содержимое вкладок */
+.tc-awards,
+.tc-wishlist {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.tc-award,
+.tc-wish {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 72px;
+  text-align: center;
+}
+.tc-award img,
+.tc-wish img {
+  width: 52px;
+  height: 52px;
+  object-fit: contain;
+  background: var(--pk-paper-2);
+  border: 1px solid var(--pk-line);
+  padding: 3px;
+}
+.tc-award-name,
+.tc-wish-name {
+  font-size: 11px;
+  color: var(--pk-ink-soft);
+  margin-top: 4px;
+  line-height: 1.2;
+  font-family: Arial, sans-serif;
+}
+.tc-friends {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tc-friend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.tc-friend:hover {
+  background: var(--pk-paper-3);
+  border-color: var(--pk-line);
+}
+.tc-friend-name {
+  font-size: 15px;
+  color: var(--pk-ink);
+}
+.tc-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.tc-dot.tc-online {
+  background: #52a852;
+}
+.tc-dot.tc-offline {
+  background: #b9ad96;
+}
+
+
+
+/* ===== Диалог с NPC (поток A) =====
+   Встраивается в панель «Персонажи»: подменяет список NPC, растёт по высоте
+   контейнера. Оформление — «drawer» (вариант 10). */
+.npc-dialogue {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  animation: npc-dialogue-in 0.18s ease;
+}
+@keyframes npc-dialogue-in {
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.npc-dialogue-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 14px;
+}
+.npc-dialogue-portrait {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #fff 0%, #efe2c7 70%, #e0cfa8 100%);
+  border: 3px solid var(--pk-sepia);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 42px;
+  margin-bottom: 8px;
+}
+.npc-dialogue-name {
+  font-family: var(--pk-serif);
+  font-weight: 700;
+  font-size: 1.05rem;
+  color: var(--pk-sepia);
+  text-align: center;
+}
+.npc-dialogue-text {
+  font-family: var(--pk-serif);
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--pk-ink);
+  background: var(--pk-paper-2);
+  border: 1px solid var(--pk-line);
+  border-radius: 8px;
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  white-space: pre-wrap;
+}
+.npc-dialogue-options {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.npc-dialogue-option {
+  padding: 11px 14px;
+  cursor: pointer;
+  border: 1px solid var(--pk-line-2);
+  background: var(--pk-paper);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(120, 95, 55, 0.08);
+  transition: all 0.18s ease;
+  font-weight: 600;
+  color: var(--pk-ink-soft);
+  text-align: center;
+}
+.npc-dialogue-option:hover {
+  color: #fff;
+  background: var(--pk-sepia);
+  border-color: var(--pk-sepia);
+  box-shadow: 0 4px 12px rgba(154, 107, 67, 0.22);
+}
+.npc-dialogue-back {
+  margin-top: auto;
+  padding-top: 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--pk-sepia-2, #b08a5a);
+  text-align: center;
+  transition: color 0.15s ease;
+}
+.npc-dialogue-back:hover {
+  color: var(--pk-sepia);
+}
+
+/* ===== Индикатор отряда врага (тренерский бой, поток B) ===== */
+.enemy-squad {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  margin-top: 4px;
+}
+.enemy-squad .squad-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pk-sepia, #9a6b43);
+  margin-right: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.enemy-squad .squad-ball {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ff6b5a 0%, #d64632 60%, #9a2f20 100%);
+  border: 1px solid #7a2418;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.enemy-squad .squad-ball.dead {
+  background: #cfc4b0;
+  border-color: #b3a992;
+  box-shadow: none;
+  opacity: 0.6;
+}
+
+/* ===== Онлайн-игроки на локации + вызов на бой (поток [17]) ===== */
+/* Столбец внутри .chat-panel, правее .chat-block (место бывшего .users-block). */
+.online-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 16px;
+  overflow: hidden;
+}
+.online-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+.online-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  font-size: 0.8rem;
+  color: var(--pk-ink-soft);
+  border-radius: var(--pk-radius);
+}
+.online-row:hover {
+  background: var(--pk-paper-3);
+}
+.online-icon {
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  user-select: none;
+}
+.online-name {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.online-empty {
+  padding: 6px;
+  font-size: 0.75rem;
+  color: var(--pk-ink-faint);
+  font-style: italic;
+}
+
+/* Задизейбленный пункт контекст-меню (Тренеркарта — заглушка) */
+.team-context-menu .ctx-item.ctx-disabled {
+  color: var(--pk-ink-faint);
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.team-context-menu .ctx-item.ctx-disabled:hover {
+  background: transparent;
+  color: var(--pk-ink-faint);
+}
+
+/* Попап входящего вызова на бой */
+.challenge-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(60, 45, 30, 0.35);
+}
+.challenge-popup-box {
+  background: var(--pk-paper);
+  border: 1px solid var(--pk-line-2);
+  border-radius: var(--pk-radius);
+  box-shadow: var(--pk-shadow);
+  padding: 20px 24px;
+  max-width: 320px;
+  text-align: center;
+  font-family: var(--pk-serif);
+}
+.challenge-popup-text {
+  color: var(--pk-ink);
+  font-size: 0.95rem;
+  margin-bottom: 16px;
+}
+.challenge-popup-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+.challenge-btn {
+  padding: 7px 18px;
+  border: 1px solid var(--pk-line-2);
+  border-radius: var(--pk-radius);
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-family: var(--pk-serif);
+  background: var(--pk-paper-2);
+  color: var(--pk-ink);
+}
+.challenge-btn.accept {
+  background: var(--pk-sepia);
+  border-color: var(--pk-sepia);
+  color: #fff;
+}
+.challenge-btn.accept:hover {
+  background: var(--pk-sepia-2);
+}
+.challenge-btn.decline:hover {
+  background: var(--pk-paper-3);
+}
+
+/* Тост */
+#pk-toast-host {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 3500;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  pointer-events: none;
+}
+.pk-toast {
+  background: var(--pk-ink);
+  color: var(--pk-paper);
+  padding: 8px 16px;
+  border-radius: var(--pk-radius);
+  font-size: 0.82rem;
+  box-shadow: var(--pk-shadow);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.3s, transform 0.3s;
+}
+.pk-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}

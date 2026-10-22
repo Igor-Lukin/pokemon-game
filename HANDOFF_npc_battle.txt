@@ -1,0 +1,317 @@
+====================================================================
+HANDOFF_npc_battle — ТРЕНЕРСКИЙ БОЙ vs КОМАНДА NPC (поток B)
+(скорми файл ИИ-агенту целиком; это ТЗ на одну механику)
+Автор ТЗ: тимлид. Тема выбрана владельцем. Обновлено: 2026-07-17
+Продолжение потока A (HANDOFF_npc_dialogue.txt, СДЕЛАН и проверен владельцем).
+====================================================================
+
+--------------------------------------------------------------------
+0. КАК РАБОТАЕМ (ритм — НЕ менять; то же, что в HANDOFF_moves §0)
+--------------------------------------------------------------------
+Владелец НЕ программист: простой язык, маленькие проверяемые шаги.
+На машине диалога (RDP-сервер) Go НЕТ — компилировать нельзя. Ритм:
+  1) агент правит .go/.js/.html/.css напрямую + меняет данные в БД через
+     python+sqlite3 (Go тут нет, python есть);
+  2) пишет TEST_npc_battle.txt в КОРЕНЬ проекта (что менялось + чек-лист);
+  3) владелец несёт проект на ОСНОВНОЙ ПК (там Go): go build/go vet + сверка
+     поведения, дописывает отчёт в конец;
+  4) владелец говорит «отчёт готов» — читаем, при ошибках правим.
+ВАЖНО: перед каждой правкой БД — бэкап рядом: pokemon.db.bak-before-npcbattle.
+Кодировка python при работе с БД: sys.stdout.reconfigure(encoding='utf-8').
+Через PowerShell в python НЕ слать (BOM ломает stdin) — Bash-героку.
+Боевая БД — ./database/pokemon.db (в КОРНЕ pokemon.db — пустышка 0 байт).
+
+--------------------------------------------------------------------
+1. ЦЕЛЬ И ГРАНИЦЫ ПОТОКА B
+--------------------------------------------------------------------
+ЦЕЛЬ: из диалога с NPC (кнопка с action='battle', поток A) начинается
+ТРЕНИРОВОЧНЫЙ бой против КОМАНДЫ NPC (до 6 покемонов). Когда активный покемон
+NPC падает — NPC автоматически выставляет следующего. Игрок победил, когда пала
+ВСЯ команда NPC; проиграл — когда пала вся его команда. Ловля в таком бою
+запрещена; ОПЫТ/НАГРАДЫ НЕ начисляются НИКОМУ (решение владельца). Драться с NPC
+можно неограниченно.
+
+КОМАНДА NPC (вариант B — живёт только на бой, НЕ persistent):
+  - team_mode='random' -> игра генерирует team_size покемонов случайно (уровни
+    из [min_level, max_level]);
+  - team_mode='fixed'  -> команда берётся из таблицы npc_pokemons (задаётся в
+    админке). Умная генерация (сбалансированные типы) — ПОЗЖЕ, схему не менять.
+
+НЕ ДЕЛАЕМ в потоке B:
+  - умную генерацию/ИИ выбора хода сверх существующего (см. §5 — стартуем на
+    готовом chooseWildMove);
+  - награды, опыт, деньги, рейтинг, «выигрыш предмета»;
+  - PvP, двойные бои, смену врага по стратегии (только по обмороку);
+  - квесты (это надстройка над диалогами A).
+Владелец подтвердил именно такой объём.
+
+--------------------------------------------------------------------
+2. ЧТО УЖЕ ЕСТЬ ОТ ПОТОКА A (шов — НЕ ломать, доделать)
+--------------------------------------------------------------------
+(проверено тимлидом в коде по TEST_npc_dialogue.txt)
+  - Диалоги работают. Опция с action='battle' -> сервер отдаёт {kind:"battle",
+    npc_id}; клиент (game.js) в chooseOption (~строка 1001) на kind=="battle"
+    закрывает док и зовёт startTrainerBattle(result.npc_id).
+  - startTrainerBattle(npcId) — ЗАГЛУШКА (game.js ~строка 1023, помечена
+    TODO(поток B)): сейчас console.log/alert. ЕДИНСТВЕННАЯ точка входа боя —
+    ЕЁ ТЕЛО И ЗАМЕНИТЬ.
+  - npc уже расширен полями: team_mode('random'|'fixed'), team_size(1..6),
+    min_level, max_level (миграции сделаны потоком A, идемпотентны). В админке
+    (npc_form.html) блок «Команда для боя» их уже сохраняет.
+  - Таблицы dialogue_nodes/dialogue_options готовы (не трогаем).
+
+--------------------------------------------------------------------
+3. ЧТО УЖЕ ЕСТЬ В БОЁВКЕ (переиспользовать, НЕ переписывать)
+--------------------------------------------------------------------
+Бой серверный, STATEFUL: battleSessions[battleID] под battleMu (battle.go).
+  - BattleState (battle.go ~строка 231): PlayerTeam []BattlePokemon + ActiveIdx
+    (команда игрока со СМЕНАМИ уже полностью реализована), WildPokemon
+    *BattlePokemon (ПРОТИВНИК — сейчас ОДИН), BattleType (="wild"), погода/
+    экраны/поля и т.д.
+  - StartBattleHandler (battle.go ~1990-2072): строит playerTeam из user_pokemons
+    (playerPokemonToBattle в цикле, firstAlive), генерит одного дикого,
+    кладёт BattleState, ставит погоду по региону локации, отдаёт
+    BattleResponse{Type:"start", BattleID, Player, Wild, Weather...}.
+  - MoveHandler / SwitchHandler / RunHandler / CatchHandler берут bs по battle_id,
+    двигают ход, отдают BattleResponse{Type, Log[], Player, Wild, Team,...}.
+  - ХОД ПРОТИВНИКА уже есть: chooseWildMoveOrCharge(wild) (charge_moves.go:142)
+    -> chooseWildMove(wild) (battle.go:1767) — учитывает charge/lock/bide/encore,
+    иначе выбирает СЛУЧАЙНУЮ урон-атаку среди разрешённых. Он бьёт bs.WildPokemon —
+    после «указательного трюка» (§4) это будет активный покемон NPC. Механику
+    хода (executeDamagingMove и вся цепочка *_moves.go) НЕ трогаем.
+  - ПОБЕДА/ПОРАЖЕНИЕ сейчас (то, что меняем в §4.3):
+      battle.go:2198 (MoveHandler): if bs.WildPokemon.IsFainted -> "victory" +
+        awardExp(player, bs.WildPokemon.PokemonID) + delete session;
+        else if player.IsFainted -> "need_switch"/"defeat".
+      battle.go ~2426 (SwitchHandler, после ответного хода врага) — аналогичный
+        блок "victory". Это ДВА места, где враг-одиночка = победа.
+  - Ловля: CatchHandler (catch.go:111) уже РЕЖЕТ bs.BattleType!="wild" -> для
+    "trainer" ловля запрещена АВТОМАТИЧЕСКИ. Ничего не делать.
+  - Генерация покемона: wild.go generateWildPokemon(locationID) — выбирает ВИД из
+    pokemon_locations по локации, ролит уровень 1-20, IV, натуру, статы, и
+    generateWildMoves(pokemonID, level) (до 4 атак по обучению). Возвращает
+    WildPokemonGenerate; wildToBattlePokemon(gen) (battle.go:1887) делает
+    BattlePokemon. ЯДРО (IV/натура/статы/generateWildMoves) переиспользуемо для
+    ЛЮБОГО вида — см. §5.
+  - Клиент: startBattle(data) (game.js ~2245) отрисовывает бой из ответа
+    Type:"start"; обычный старт — POST /api/battle/start -> startBattle(data)
+    (~2365-2372). Ответы боя обрабатываются по result.type + result.log
+    (addBattleLogEntry), обмороки/смена — уже разведены.
+
+--------------------------------------------------------------------
+4. ЯДРО B: КОМАНДА ВРАГА ЧЕРЕЗ «УКАЗАТЕЛЬНЫЙ ТРЮК» (минимум правок движка)
+--------------------------------------------------------------------
+ГЛАВНЫЙ ПРИНЦИП: НЕ переименовывать bs.WildPokemon по всему движку. Вместо этого
+WildPokemon ОСТАЁТСЯ указателем на АКТИВНОГО врага, а рядом добавляем команду.
+
+(4.1) BattleState — добавить поля:
+        EnemyTeam      []BattlePokemon
+        EnemyActiveIdx int
+      Для боя "trainer": построить EnemyTeam ПОЛНОСТЬЮ (никаких append после!),
+      затем bs.EnemyActiveIdx=0; bs.WildPokemon = &bs.EnemyTeam[0].
+      Для боя "wild": как сейчас — EnemyTeam пустой, WildPokemon = одиночка.
+      !!! ВАЖНО: &EnemyTeam[i] валиден, только пока срез не реаллоцируется. Строим
+      один раз, дальше НЕ append. При смене врага — только переставляем индекс и
+      указатель: bs.EnemyActiveIdx=n; bs.WildPokemon=&bs.EnemyTeam[n].
+
+(4.2) Новый обработчик старта: server/handlers/api/npc_battle.go
+      func TrainerBattleStartHandler(w,r):
+        - auth (userID из сессии);
+        - decode {npc_id int};
+        - собрать команду ИГРОКА — ПЕРЕИСПОЛЬЗОВАТЬ логику StartBattleHandler
+          (playerPokemonToBattle в цикле, firstAlive, проверки «пусто»/«все без
+          сознания»). Чтобы не расходиться — ВЫНЕСТИ это в общий хелпер
+          buildPlayerTeam(userID) ([]BattlePokemon, firstAlive int, err) и позвать
+          его И в StartBattleHandler, И тут (одна точка правды);
+        - собрать команду NPC (§5) -> EnemyTeam (>=1 живой);
+        - battleID; BattleState{ BattleType:"trainer", PlayerTeam, ActiveIdx,
+          EnemyTeam, EnemyActiveIdx:0, WildPokemon:&EnemyTeam[0], PlayerName,
+          StartedAt, Turn:0 }; положить в battleSessions под battleMu;
+        - погода: как в StartBattleHandler, но по ЛОКАЦИИ NPC (npc.location_id)
+          ИЛИ по текущей локации игрока — согласуй, переиспользуй тот же SELECT;
+        - ответ BattleResponse{Type:"start", BattleID, Player:&PlayerTeam[Active],
+          Wild:&EnemyTeam[0], Weather..., + EnemyCount:len(EnemyTeam),
+          EnemyRemaining:len(живых), TrainerName:npc.name}. (Добавить эти поля в
+          BattleResponse — для индикатора отряда врага на клиенте.)
+      Маршрут в routes.go рядом с /api/battle/*:
+        r.HandleFunc("/api/battle/trainer/start", api.TrainerBattleStartHandler).Methods("POST")
+
+(4.3) ПОБЕДА/СМЕНА ВРАГА — заменить «враг пал = победа» на командную логику.
+      Ввести ОДИН хелпер (напр. в npc_battle.go):
+        // Вызывать ТАМ, где сейчас проверяется bs.WildPokemon.IsFainted -> victory.
+        // Возвращает: allEnemyDown bool, switched bool (враг сменился).
+        func handleEnemyFaint(bs *BattleState, log *[]BattleLogEntry) (allEnemyDown, switched bool)
+      Логика:
+        - если активный враг НЕ IsFainted -> вернуть (false,false);
+        - если бой НЕ "trainer" (одиночка) -> вернуть (true,false) (старое
+          поведение: враг пал = конец);
+        - иначе искать в EnemyTeam следующего живого:
+            нет живых -> (true,false)  // вся команда NPC пала = победа игрока;
+            есть -> bs.EnemyActiveIdx=idx; bs.WildPokemon=&bs.EnemyTeam[idx];
+                    ПРИМЕНИТЬ «вход» врага: ловушки его стороны (bs.WildSide,
+                    как player-switch применяет к входящему — переиспользуй ту же
+                    функцию входа/hazards из SwitchHandler, обобщив её на сторону);
+                    добавить в log «<NPC> отправляет <имя>!»; вернуть (false,true).
+      В battle.go:2198 и ~2426 заменить блок:
+        было:  if bs.WildPokemon.IsFainted { "victory"; awardExp; delete }
+        стало: if allDown,switched := handleEnemyFaint(bs,&log); allDown {
+                 respType="victory"; bs.Finished=true;
+                 if bs.BattleType=="wild" { awardExp(...) }   // trainer — БЕЗ опыта
+                 delete session
+               } else if switched {
+                 respType="enemy_switch"   // бой продолжается, враг сменился
+               } else { ...player.IsFainted ветка без изменений... }
+      ВНИМАНИЕ: awardExp ТОЛЬКО для "wild". Для "trainer" опыт не начисляем.
+
+(4.4) Пограничные случаи (проверить, не переписывать движок):
+      - Игрок валит врага фазовой атакой (Рык/Вихрь, handlePhazeMove) — для
+        одиночки это ничего не делало; для команды NPC ДОПУСТИМО оставить как
+        есть в MVP (фазинг врага = no-op) ИЛИ, если просто, дёрнуть смену врага
+        через тот же индекс-свап. Если сложно — оставить no-op и записать в
+        «остатки». НЕ уходить в переписывание.
+      - saveBattleState(bs) на победе/поражении: убедиться, что он работает с
+        PlayerTeam и не спотыкается о EnemyTeam (враг в БД НЕ сохраняем).
+      - Смена активного игрока (need_switch/defeat при падении игрока) — БЕЗ
+        изменений, это уже работает.
+
+--------------------------------------------------------------------
+5. ГЕНЕРАЦИЯ КОМАНДЫ NPC
+--------------------------------------------------------------------
+Нужна функция «построить БОЕВОГО покемона по виду и уровню» — сейчас
+generateWildPokemon умеет только «случайный вид ИЗ ЛОКАЦИИ». Отрефакторить:
+  (a) ВЫНЕСТИ из generateWildPokemon ядро в
+        buildGenerateFor(pokemonID, level int) *WildPokemonGenerate
+      (SELECT базовых статов вида по id -> IV/натура/статы/generateWildMoves).
+      generateWildPokemon после этого = выбрать вид из локации + ролить уровень +
+      позвать buildGenerateFor (поведение диких НЕ меняется — сверить!).
+  (b) team_mode='random': выбрать team_size СЛУЧАЙНЫХ видов из pokemons
+      (SELECT id FROM pokemons ORDER BY RANDOM() LIMIT team_size; желательно
+      только «настоящие», у кого есть атаки — если пусто из-за отсутствия атак,
+      перебрать/дефолт). Уровень каждого — rand в [min_level, max_level].
+      Для каждого: gen:=buildGenerateFor(id,lvl); wildToBattlePokemon(gen) ->
+      добавить в EnemyTeam.
+  (c) team_mode='fixed': читать из npc_pokemons (см. §6) строки (pokemon_id,
+      level[, position]) по npc_id, по каждой buildGenerateFor+wildToBattlePokemon.
+      Если строк нет — фолбэк на random (или ошибка «у тренера нет команды» —
+      согласуй; проще фолбэк на random по team_size).
+  Гарантия: EnemyTeam содержит >=1 покемона и >=1 живого (HP>0), иначе 400.
+
+--------------------------------------------------------------------
+6. СХЕМА БД (поток B)
+--------------------------------------------------------------------
+Под бэкап pokemon.db.bak-before-npcbattle. Новая таблица — в срез database.go.
+  CREATE TABLE IF NOT EXISTS npc_pokemons (
+    id INTEGER PRIMARY KEY,
+    npc_id INTEGER NOT NULL,
+    pokemon_id INTEGER NOT NULL,
+    level INTEGER NOT NULL DEFAULT 5,
+    position INTEGER DEFAULT 0,        -- порядок вывода в бою
+    FOREIGN KEY(npc_id) REFERENCES npc(id),
+    FOREIGN KEY(pokemon_id) REFERENCES pokemons(id)
+  );
+Поля команды на npc (team_mode/team_size/min_level/max_level) уже есть от A.
+Каскад: DeleteNPC (admin/npc.go) сейчас чистит dialogue_* — ДОБАВИТЬ туда же
+DELETE FROM npc_pokemons WHERE npc_id=?.
+
+--------------------------------------------------------------------
+7. АДМИНКА — РЕДАКТОР КОМАНДЫ (fixed-ростер)
+--------------------------------------------------------------------
+Расширить страницу редактирования NPC (npc_form.html + admin/npc.go или
+admin/dialogue.go от A). Под блоком «Команда для боя» (team_mode и пр. уже есть):
+  - если team_mode='fixed' — показать РОСТЕР: список npc_pokemons (вид -> select
+    из pokemons, level, position) + формы add/edit/delete строки ростера.
+  - маршруты /admin/npc/team/{add,edit,delete} (образец — attack/ability add/remove
+    у pokemons или dialogue-CRUD от A). checkAdmin(r) как везде.
+  - Валидация: level>=1; вид существует; team_size для random 1..6.
+MVP-послабление: если делать fixed-редактор долго — сначала полностью сдать
+'random' (он самодостаточен), а fixed-ростер добавить следом; но таблицу
+npc_pokemons и чтение её в §5(c) заложить сразу.
+
+--------------------------------------------------------------------
+8. ФРОНТ — ЗАМЕНА ЗАГЛУШКИ + СМЕНА ВРАГА (game.js/html/css)
+--------------------------------------------------------------------
+  - startTrainerBattle(npcId) (game.js ~1023): ЗАМЕНИТЬ тело заглушки на реальный
+    старт: POST /api/battle/trainer/start {npc_id:npcId} -> при успехе
+    startBattle(data) (ПЕРЕИСПОЛЬЗОВАТЬ существующий рендер боя). Ошибки («нет
+    покемонов в команде» и т.п.) — показать сообщение, как в обычном старте.
+  - Обработка ответов боя: добавить тип "enemy_switch" (рядом с "turn"/"victory"/
+    "need_switch"): проиграть result.log (addBattleLogEntry «<NPC> отправляет
+    <имя>!»), обновить карточку врага из result.wild, бой продолжается. Не путать
+    с "need_switch" (это про падение ИГРОКА — остаётся как есть).
+  - Индикатор отряда врага: по data.enemy_count/enemy_remaining (из §4.2) нарисовать
+    N «шариков» у карточки врага и гасить по мере падения (обновлять на victory-/
+    enemy_switch-ответах). MVP: можно минимально (числом «Осталось: k»), но лучше
+    шарики в стиле каталога.
+  - Победа над тренером: на "victory" в бою "trainer" — сообщение «Вы победили
+    тренера <имя>!» (различить по флагу боя/ответу). Опыта НЕТ — блок эволюции/exp
+    не показывать (сервер их не пришлёт для trainer).
+  - «Сдаться»/RunHandler: для тренерского боя оставить как есть (сдача завершает
+    бой). Побег без последствий допустим в MVP.
+  - Ловля: кнопки ловли в тренерском бою быть НЕ должно (или клик отклонён
+    сервером) — сервер уже режет по типу боя; на клиенте достаточно не показывать
+    «Поймать», если бой не wild (если такой признак есть — иначе оставить, сервер
+    вернёт ошибку).
+
+--------------------------------------------------------------------
+9. ТЕСТ-ДАННЫЕ И ПРОВЕРКА (DoD)
+--------------------------------------------------------------------
+Тест-данные (python/админка, под бэкап): NPC «Ричи» (id=1, от потока A) — у него
+уже есть опция «Да, давай» (action='battle'). Задать team_mode='random',
+team_size=3, min_level=8, max_level=12. Плюс СДЕЛАТЬ второго NPC с team_mode='fixed'
+и ростером из 2 конкретных видов (проверить fixed-ветку). У тест-игрока — команда
+из 2+ покемонов (для проверки смен с обеих сторон).
+
+DoD (осн. ПК, обязателен ЖИВОЙ прогон — билд+vet это НЕ «готово»):
+  [ ] go build -o server.exe ./server + go vet ./... — зелёные;
+  [ ] диалог -> «Да, давай» -> НАЧАЛСЯ бой (startBattle нарисовал врага NPC);
+  [ ] у врага РЕАЛЬНО команда: когда его активный падает, NPC сам выставляет
+      следующего («enemy_switch», лог «отправляет …»), бой продолжается;
+  [ ] игрок побеждает ТОЛЬКО когда пала ВСЯ команда NPC ("victory", тренерское
+      сообщение), ОПЫТ НИКОМУ не начислен (проверить exp/level покемонов игрока
+      до/после — без изменений);
+  [ ] random-команда: уровни в [min,max], у покемонов есть атаки; fixed-команда
+      берётся из npc_pokemons в заданном порядке;
+  [ ] падение покемона ИГРОКА по-прежнему даёт need_switch/defeat (не сломано);
+  [ ] ловля в тренерском бою невозможна (сервер отклоняет);
+  [ ] обычный ДИКИЙ бой не сломан (regression): старт, ход, победа с опытом,
+      смена, ловля — всё как раньше (мы трогали общий victory-путь!);
+  [ ] админка: team_mode/размер/уровни сохраняются; fixed-ростер редактируется;
+      удаление NPC чистит npc_pokemons.
+
+--------------------------------------------------------------------
+10. ГРАБЛИ / РИСКИ (читать перед стартом)
+--------------------------------------------------------------------
+  - REGRESSION дикого боя — ГЛАВНЫЙ риск: мы правим ОБЩИЙ victory-путь (2198/2426).
+    handleEnemyFaint для "wild" обязан вести себя РОВНО как раньше (враг пал = конец,
+    awardExp зовётся). Сверить дикий бой отдельным пунктом DoD.
+  - Указатель WildPokemon в EnemyTeam: EnemyTeam строить ОДИН раз, дальше НЕ append
+    (иначе указатель повиснет). Смена врага = только индекс+переустановка указателя.
+  - awardExp ТОЛЬКО для wild. Для trainer — ни игроку, ни «врагу» (у врага и так нет).
+  - Единая точка команды игрока: вынести buildPlayerTeam(userID), звать из обоих
+    стартов — не копировать цикл playerPokemonToBattle с расхождениями.
+  - Вход врага при смене: переиспользуй существующую логику входа (ловушки стороны
+    bs.WildSide), не пиши свою; если она «зашита» под игрока — аккуратно обобщи.
+  - Фазинг врага (Рык/Вихрь по команде NPC) — пограничный; MVP: no-op или простая
+    смена. НЕ уходить в переписывание движка; спорное — в «остатки» отчёта.
+  - Всё чтение/запись battleSessions — под battleMu (как в существующих хендлерах).
+  - Go на RDP НЕТ: только правки файлов + БД (python, utf-8, bash-героку, бэкап).
+    Отчёт -> TEST_npc_battle.txt в корень, чек-лист из §9.
+
+--------------------------------------------------------------------
+11. КРАТКИЙ ЧЕК-ЛИСТ ФАЙЛОВ
+--------------------------------------------------------------------
+БД:        database.go (+CREATE npc_pokemons); тест-данные (Ричи random + fixed-NPC).
+Go:        battle.go (BattleState +EnemyTeam/EnemyActiveIdx; buildPlayerTeam хелпер;
+           замена 2 victory-блоков на handleEnemyFaint; awardExp только wild;
+           BattleResponse +EnemyCount/EnemyRemaining/TrainerName);
+           wild.go (вынести buildGenerateFor(pokemonID,level); generateWildPokemon
+           через него);
+           handlers/api/npc_battle.go (TrainerBattleStartHandler, handleEnemyFaint,
+           генерация команды NPC random/fixed);
+           routes.go (+/api/battle/trainer/start);
+           admin/npc.go (каскад npc_pokemons в DeleteNPC; team-ростер CRUD +маршруты).
+Фронт:     game.js (startTrainerBattle -> реальный POST+startBattle; обработка
+           "enemy_switch"; индикатор отряда врага; тренерская победа без exp);
+           game.html/game.css (шарики отряда врага при необходимости).
+Отчёт:     TEST_npc_battle.txt (корень).
+====================================================================

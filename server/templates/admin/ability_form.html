@@ -12,6 +12,8 @@
       <label>Description:</label><br />
       <textarea name="description" rows="4" cols="50">{{.Description}}</textarea
       ><br /><br />
+      <label>Effect key (машиночит. ключ эффекта для боя, необязательно):</label><br />
+      <input type="text" name="effect_key" value="{{.EffectKey}}" placeholder="напр. blaze, intimidate" /><br /><br />
       <button type="submit">Save</button>
       <a href="/admin/abilities">Cancel</a>
     </form>

@@ -1,0 +1,135 @@
+====================================================================
+TEST_npc_battle — отчёт агента по потоку B (тренерский бой vs команда NPC)
+Дата: 2026-07-17. ТЗ: HANDOFF_npc_battle.txt. Продолжение потока A.
+====================================================================
+
+Go на этой машине (RDP) НЕТ — правил файлы + БД (python, utf-8, bash-heredoc,
+под бэкап). Билд/vet и живой прогон — на ОСНОВНОМ ПК. Чек-лист DoD — в конце.
+
+--------------------------------------------------------------------
+ЧТО СДЕЛАНО (по §-разделам ТЗ)
+--------------------------------------------------------------------
+
+§6 БД (бэкап database/pokemon.db.bak-before-npcbattle):
+  - server/db/database.go: +CREATE TABLE npc_pokemons (npc_id, pokemon_id, level,
+    position). Та же таблица применена к живой БД.
+  - Тест-данные в живой БД:
+      * Ричи (id=1): team_mode='random', team_size=3, min_level=8, max_level=12.
+      * Тренер Ли (id=2, локация 2, team_mode='fixed', size=2): диалог (старт-узел
+        + опция «Сразимся!» action='battle' + «Не сейчас» action='close'),
+        ростер: Бульбазавр lv10 (pos0), Чармандер lv12 (pos1).
+
+§5 wild.go — вынесено ЯДРО генерации:
+  - buildGenerateFor(pokemonID, level) *WildPokemonGenerate: база статов вида ->
+    IV/натура/статы/generateWildMoves. Используется и диким боем, и командой NPC.
+  - generateWildPokemon теперь = выбрать вид из локации + ролить ур.1-20 +
+    buildGenerateFor. Поведение диких НЕ менялось (сверить regression!).
+
+§4 battle.go — команда врага через «указательный трюк» (без переписывания движка):
+  - BattleState: +EnemyTeam []BattlePokemon, +EnemyActiveIdx int, +TrainerName.
+    WildPokemon ВСЕГДА указывает на активного врага = &EnemyTeam[idx]. Срез строим
+    один раз, НЕ append-им; смена врага = только индекс + переустановка указателя.
+  - BattleResponse: +EnemyCount, +EnemyRemaining, +TrainerName (индикатор отряда).
+  - buildPlayerTeam(userID) — общий хелпер сборки команды игрока, зовётся из
+    StartBattleHandler И TrainerBattleStartHandler (одна точка правды).
+  - Оба victory-места заменены на handleEnemyFaint:
+      * MoveHandler (~2219): allEnemyDown -> "victory" (awardExp ТОЛЬКО для wild);
+        enemySwitched -> "enemy_switch"; player.IsFainted -> need_switch/defeat.
+      * SwitchHandler (~2450, обморок врага от остаточного урона на входе игрока):
+        для "trainer" враг сменяется и бой продолжается (новый враг атакует ниже);
+        для "wild" — "victory" как раньше (БЕЗ awardExp — сохранено исходное
+        поведение SwitchHandler, там опыт и не начислялся).
+  - fillEnemyIndicator(bs,&resp) добавлен в ответы move/switch/switch_done.
+
+§4.2/§5 npc_battle.go (новый):
+  - TrainerBattleStartHandler: auth -> {npc_id} -> npc-настройки -> buildPlayerTeam
+    -> buildNPCTeam -> BattleState{BattleType:"trainer", WildPokemon:&EnemyTeam[0]}
+    -> погода по npc.location_id -> BattleResponse{Type:"start", +индикатор}.
+  - buildNPCTeam: 'fixed' из npc_pokemons (порядок position,id); 'random' —
+    team_size случайных видов, уровни [min,max]; пустой fixed -> фолбэк на random.
+    Гарантия >=1 боеспособного, иначе 400.
+  - handleEnemyFaint: для "wild" враг пал = конец; для "trainer" — следующий живой
+    (с применением ловушек его стороны через applyEntryHazards; если входящий пал
+    от ловушек — берём следующего), лог «<Тренер> отправляет <имя> в бой!».
+  - routes.go: +POST /api/battle/trainer/start.
+  - Ловля: catch.go уже режет BattleType!="wild" — тренерская ловля запрещена сама.
+
+§7 Админка (admin/npc.go + admin/npc_team.go + npc_form.html):
+  - DeleteNPC: +каскад DELETE FROM npc_pokemons.
+  - NPCFormData: +Roster, +AllPokemons; loadNPCRoster / loadAllPokemons.
+  - CRUD ростера: /admin/npc/team/{add,edit,delete} (checkAdmin, валидация вида и
+    level>=1, возврат на страницу редактирования).
+  - npc_form.html: секция «Ростер команды (fixed)» показывается при team_mode=fixed
+    (список строк вид/уровень/позиция + add/edit/delete). Блок «Команда для боя»
+    (random) — уровни/размер уже сохранялись потоком A.
+
+§8 Фронт (game.js / game.css):
+  - startTrainerBattle(npcId): реальный POST /api/battle/trainer/start -> startBattle
+    (переиспользован рендер боя). Ошибки -> alert текстом сервера.
+  - performMove: обработка "enemy_switch" (перерисовка карточки врага, «ВАШ ХОД»);
+    тренерская "victory" -> «Вы победили тренера <имя>!» без опыта/эволюции.
+  - performSwitch: карточка врага перерисовывается целиком (враг мог смениться от
+    остаточного урона на входе) + индикатор.
+  - updateEnemySquad(count, remaining): «шарики» отряда врага у карточки NPC (живые
+    красные, павшие серые); для дикого боя индикатор снимается. game.css: стили.
+
+--------------------------------------------------------------------
+ПРОВЕРЕНО ТУТ (без Go)
+--------------------------------------------------------------------
+  - SQL-пути тренерского боя прогнаны на живой БД: npc-настройки (Ричи/Ли), fixed-
+    ростер Ли [(1,10),(4,12)], random-выбор из pokemons, база статов видов 1/4,
+    generateWildMoves Чармандера lv12 (есть урон-атаки), погода loc2=Дождь(id3,5 ход).
+  - Все новые Go-символы (buildGenerateFor/buildPlayerTeam/buildNPCTeam/
+    handleEnemyFaint/fillEnemyIndicator/TrainerBattleStartHandler) определены по
+    разу и вызываются корректно (grep).
+  - Указательный инвариант соблюдён: EnemyTeam не append-ится после сборки.
+
+--------------------------------------------------------------------
+ОСТАТКИ / ПОГРАНИЧНЫЕ СЛУЧАИ (MVP, не баги — согласовано ТЗ §4.4/§10)
+--------------------------------------------------------------------
+  - Фазинг врага командой NPC (игрок бьёт Рыком/Вихрем по врагу): оставлен no-op
+    (для одиночки так и было). Смена врага по фазингу — не делаем в MVP.
+  - Двойной обморок за ход в тренерском бою (игрок КО врага И сам падает от
+    отдачи): отдаём need_switch; карточка нового врага освежится при следующей
+    смене игрока. Косметика, не влияет на логику победы.
+  - SwitchHandler-победа над диким от остаточного урона: опыт НЕ начисляется (как
+    и в исходном коде — намеренно сохранено, чтобы не менять поведение дикого боя).
+
+--------------------------------------------------------------------
+ФАЙЛЫ
+--------------------------------------------------------------------
+БД:     server/db/database.go (+npc_pokemons); живая БД + тест-данные.
+Go:     server/handlers/api/battle.go (BattleState/BattleResponse +поля;
+        buildPlayerTeam; 2 victory-блока -> handleEnemyFaint; awardExp только wild);
+        server/handlers/api/wild.go (buildGenerateFor);
+        server/handlers/api/npc_battle.go (НОВЫЙ: старт/команда/смена/индикатор);
+        server/routes/routes.go (+/api/battle/trainer/start, +team CRUD);
+        server/handlers/admin/npc.go (каскад, ростер-данные);
+        server/handlers/admin/npc_team.go (НОВЫЙ: CRUD ростера).
+Шабл.:  server/templates/admin/npc_form.html (секция ростера).
+Фронт:  client/static/js/game.js (старт, enemy_switch, индикатор, тренерская победа);
+        client/static/css/game.css (шарики отряда).
+Отчёт:  TEST_npc_battle.txt (этот файл).
+
+====================================================================
+ЧЕК-ЛИСТ DoD (заполнить на ОСНОВНОМ ПК; билд+vet — НЕ «готово», нужен ЖИВОЙ прогон)
+====================================================================
+[x] go build -o server.exe ./server  — зелёный
+[x] go vet ./...                       — без ошибок
+[x] Диалог с Ричи -> «Да, давай» -> НАЧАЛСЯ бой (нарисован враг NPC, индикатор
+    «Отряд: ●●●»).
+[x] Когда активный враг Ричи падает — NPC сам выставляет следующего (лог
+    «Ричи отправляет … в бой!», enemy_switch), бой продолжается; шарик гаснет.
+[x] Победа ТОЛЬКО когда пала ВСЯ команда Ричи ("Вы победили тренера Ричи!").
+    ОПЫТ НИКОМУ не начислен — сверить exp/level покемонов игрока до/после.
+[x] Тренер Ли (fixed): команда = Бульбазавр lv10, затем Чармандер lv12 (порядок).
+[x] random-команда Ричи: у покемонов есть атаки; уровни в [8..12].
+[x] Падение покемона ИГРОКА -> по-прежнему need_switch/defeat (не сломано).
+[x] Ловля в тренерском бою невозможна (сервер отклоняет).
+[x] REGRESSION дикий бой: старт /api/battle/start, ход, победа С опытом, смена,
+    ловля — всё как раньше (мы трогали общий victory-путь!).
+[x] Админка: team_mode/размер/уровни сохраняются; при fixed виден и правится
+    ростер; удаление NPC чистит npc_pokemons.
+
+После прогона допиши результат сюда и скажи «отчёт готов».
+====================================================================

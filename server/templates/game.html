@@ -20,7 +20,7 @@
       <div class="game-header">
         <div class="header-left"></div>
         <div class="header-center">
-          <div class="header-icon">👤</div>
+          <div class="header-icon" id="profile-icon">👤</div>
           <div class="header-icon" id="my-pokemons-icon">🐾</div>
           <div class="header-icon" id="inventory-icon">🎒</div>
           <div class="header-icon">📦</div>
@@ -55,9 +55,21 @@
               <div class="location-image" id="location-image"></div>
             </div>
             <div class="npc-block">
-              <div class="panel-header">🧙 ПЕРСОНАЖИ</div>
+              <div class="panel-header" id="npc-panel-header">🧙 ПЕРСОНАЖИ</div>
               <div class="npc-list" id="npc-list">
                 <div class="npc-placeholder">Загрузка...</div>
+              </div>
+              <!-- Диалог с NPC — меняет содержимое этой же панели (поток A) -->
+              <div class="npc-dialogue" id="npc-dialogue" style="display: none">
+                <div class="npc-dialogue-head">
+                  <div class="npc-dialogue-portrait" id="dialogue-portrait">🧙</div>
+                  <div class="npc-dialogue-name" id="dialogue-npc-name">NPC</div>
+                </div>
+                <div class="npc-dialogue-text" id="dialogue-text"></div>
+                <div class="npc-dialogue-options" id="dialogue-options"></div>
+                <div class="npc-dialogue-back" id="dialogue-close">
+                  ← Назад к персонажам
+                </div>
               </div>
               <div
                 id="location-services"
@@ -132,12 +144,11 @@
               <button id="send-btn" class="send-btn">→</button>
             </div>
           </div>
-          <div class="users-block">
-            <div class="panel-header">👥 ИГРОКИ ОНЛАЙН</div>
-            <div class="user-list" id="user-list">
-              <div class="user">Игрок1</div>
-              <div class="user">Игрок2</div>
-              <div class="user">Тренер Ли</div>
+          <!-- Онлайн-игроки на ЭТОЙ локации (поток [17]) — правее чата -->
+          <div id="online-players" class="online-panel">
+            <div class="panel-header">🟢 В СЕТИ</div>
+            <div class="online-list" id="online-list">
+              <div class="online-empty">Никого рядом</div>
             </div>
           </div>
         </div>
@@ -192,6 +203,22 @@
       <div class="nursery-list" id="nursery-list">
         <div class="nursery-loading">Загрузка...</div>
       </div>
+
+      <!-- Разведение (поток [13]): выбор пары + кнопка -->
+      <div class="breed-bar">
+        <div class="breed-hint" id="breed-hint">
+          Выберите двух покемонов из питомника для разведения.
+        </div>
+        <button class="breed-btn" id="breed-btn" disabled>Развести 🥚</button>
+      </div>
+
+      <!-- Яйца -->
+      <div class="egg-section">
+        <div class="egg-section-title">🥚 Яйца</div>
+        <div class="egg-list" id="egg-list">
+          <div class="nursery-empty">Нет яиц</div>
+        </div>
+      </div>
     </div>
 
     <!-- Окно инвентаря -->
@@ -216,6 +243,23 @@
         </div>
       </div>
     </div>
+
+    <!-- Карточка тренера -->
+    <div class="divDockPanels" id="trainer-dock">
+      <div class="divDockPanelsArrow" id="trainer-dock-arrow"></div>
+      <div class="divDockPanelsTitle">
+        <div class="divDockPanelsTitleText">Карточка тренера</div>
+        <div class="button close justicon" id="trainer-close">
+          <span class="icon icomoon icon-x">✖</span>
+        </div>
+      </div>
+      <div class="divDockPanelsContent">
+        <div class="trainer-card" id="trainer-card">
+          <div class="tc-loading">Загрузка...</div>
+        </div>
+      </div>
+    </div>
+
 
     <!-- Окно команды -->
     <div class="divDockPanels" id="team-dock">
@@ -272,6 +316,15 @@
       </div>
     </div>
 
+    <!-- Мини-окно описания способности (по образцу attack-info-popup) -->
+    <div id="ability-info-popup" class="ability-info-popup" style="display:none">
+      <div class="ability-info-header">
+        <span class="ability-info-name" id="abi-name"></span>
+        <span class="ability-info-close" id="ability-info-close">✖</span>
+      </div>
+      <div class="ability-info-desc" id="abi-description"></div>
+    </div>
+
     <!-- Эволюция -->
     <div id="evolution-popup" class="evolution-popup" style="display:none">
       <div class="evolution-popup-bg"></div>
@@ -300,6 +353,20 @@
 
     <!-- Меню замены в бою -->
     <div id="battle-switch-menu" class="team-context-menu" style="display:none"></div>
+
+    <!-- Контекст-меню игрока онлайна (поток [17]) -->
+    <div id="online-player-menu" class="team-context-menu" style="display:none"></div>
+
+    <!-- Попап входящего вызова на бой (поток [17]) -->
+    <div id="challenge-popup" class="challenge-popup" style="display:none">
+      <div class="challenge-popup-box">
+        <div class="challenge-popup-text" id="challenge-popup-text"></div>
+        <div class="challenge-popup-actions">
+          <button class="challenge-btn accept" id="challenge-accept">Принять</button>
+          <button class="challenge-btn decline" id="challenge-decline">Отклонить</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Окно Дневник тренера -->
     <div class="divDockPanels" id="diary-dock">

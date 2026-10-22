@@ -12,6 +12,7 @@
         <th>ID</th>
         <th>Name</th>
         <th>Description</th>
+        <th>Effect key</th>
         <th>Actions</th>
       </tr>
       {{range .}}
@@ -19,6 +20,7 @@
         <td>{{.ID}}</td>
         <td>{{.Name}}</td>
         <td>{{.Description}}</td>
+        <td>{{.EffectKey}}</td>
         <td>
           <a href="/admin/abilities/edit?id={{.ID}}">Edit</a>
           <form

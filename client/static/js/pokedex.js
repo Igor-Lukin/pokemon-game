@@ -69,6 +69,21 @@ if (typesGrid) {
 // ---------- Поиск и детальная карточка ----------
 let typesMap = {}; // id -> name
 let currentSuggestions = [];
+// Максимальный номер вида в покедексе — берётся из БД, а не хардкодится.
+// Так навигация «След./Пред.» работает для любого поколения без правок кода.
+let maxPokemonId = 251; // запасное значение до загрузки списка
+
+// Узнать реальный максимум id (последний в списке, он отсортирован по id)
+function loadMaxPokemonId() {
+  fetch("/api/pokedex/list")
+    .then((res) => res.json())
+    .then((list) => {
+      if (Array.isArray(list) && list.length) {
+        maxPokemonId = list.reduce((m, p) => (p.id > m ? p.id : m), 0);
+      }
+    })
+    .catch((err) => console.error("Ошибка загрузки списка покедекса:", err));
+}
 
 // Загрузка всех типов (id -> name)
 function loadTypes() {
@@ -312,7 +327,7 @@ function showPokemonDetail(pokemon) {
             <div class="pokedex-nav">
                 <button class="pokedex-nav-btn" id="pokedex-prev-btn" ${pokemon.id <= 1 ? 'disabled' : ''}>◀ Пред.</button>
                 <span class="pokedex-nav-title">#${pokemon.id} ${pokemon.name}</span>
-                <button class="pokedex-nav-btn" id="pokedex-next-btn" ${pokemon.id >= 151 ? 'disabled' : ''}>След. ▶</button>
+                <button class="pokedex-nav-btn" id="pokedex-next-btn" ${pokemon.id >= maxPokemonId ? 'disabled' : ''}>След. ▶</button>
             </div>
             <div class="card-top">
                 <div class="card-left">
@@ -418,7 +433,7 @@ function showPokemonDetail(pokemon) {
     if (pokemon.id > 1) selectPokemon(pokemon.id - 1);
   });
   document.getElementById("pokedex-next-btn")?.addEventListener("click", () => {
-    if (pokemon.id < 151) selectPokemon(pokemon.id + 1);
+    if (pokemon.id < maxPokemonId) selectPokemon(pokemon.id + 1);
   });
 }
 
@@ -471,3 +486,5 @@ if (searchIcon) {
 }
 // Загружаем типы для карточек
 loadTypes();
+// Узнаём максимальный номер вида (для навигации След./Пред. без хардкода)
+loadMaxPokemonId();

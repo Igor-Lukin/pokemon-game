@@ -57,12 +57,11 @@ type GeneratedMove struct {
 }
 
 func generateWildPokemon(locationID int) *WildPokemonGenerate {
+	// Выбираем ВИД из локации, ролим уровень 1–20, дальше — общее ядро
+	// buildGenerateFor (одна точка правды со сборкой команды NPC, поток B).
 	rows, err := db.DB.Query(`
-		SELECT p.id, p.name, p.image_url, p.primary_type_id, p.secondary_type_id,
-		       p.base_hp, p.base_attack, p.base_defense, p.base_speed,
-		       p.base_special_attack, p.base_special_defense, COALESCE(p.weight, 0)
+		SELECT pl.pokemon_id
 		FROM pokemon_locations pl
-		JOIN pokemons p ON pl.pokemon_id = p.id
 		WHERE pl.location_id = ?
 	`, locationID)
 	if err != nil {
@@ -70,39 +69,51 @@ func generateWildPokemon(locationID int) *WildPokemonGenerate {
 	}
 	defer rows.Close()
 
-	type candidate struct {
-		id                int
-		name              string
-		imageURL          string
-		primaryTypeID     int
-		secondaryTypeID   sql.NullInt64
-		baseHP, baseAtk, baseDef, baseSpd, baseSpAtk, baseSpDef int
-		weight            float64
-	}
-	var candidates []candidate
+	var ids []int
 	for rows.Next() {
-		var c candidate
-		if err := rows.Scan(&c.id, &c.name, &c.imageURL, &c.primaryTypeID,
-			&c.secondaryTypeID, &c.baseHP, &c.baseAtk, &c.baseDef,
-			&c.baseSpd, &c.baseSpAtk, &c.baseSpDef, &c.weight); err != nil {
-			continue
+		var id int
+		if err := rows.Scan(&id); err == nil {
+			ids = append(ids, id)
 		}
-		candidates = append(candidates, c)
 	}
-	if len(candidates) == 0 {
+	if len(ids) == 0 {
 		return nil
 	}
 
-	chosen := candidates[rand.Intn(len(candidates))]
-
+	chosenID := ids[rand.Intn(len(ids))]
 	level := 1 + rand.Intn(20) // 1–20
+	return buildGenerateFor(chosenID, level)
+}
 
-	ivHP := rand.Intn(6)
-	ivAtk := rand.Intn(6)
-	ivDef := rand.Intn(6)
-	ivSpd := rand.Intn(6)
-	ivSpAtk := rand.Intn(6)
-	ivSpDef := rand.Intn(6)
+// buildGenerateFor — построить «сгенерированного» покемона по виду и уровню:
+// базовые статы вида -> IV/натура/статы/атаки. Используется и диким боем
+// (generateWildPokemon), и командой NPC (поток B). Возвращает nil, если вида нет.
+func buildGenerateFor(pokemonID, level int) *WildPokemonGenerate {
+	if level < 1 {
+		level = 1
+	}
+	var name, imageURL string
+	var primaryTypeID int
+	var secondaryTypeID sql.NullInt64
+	var baseHP, baseAtk, baseDef, baseSpd, baseSpAtk, baseSpDef int
+	var weight float64
+	err := db.DB.QueryRow(`
+		SELECT p.name, p.image_url, p.primary_type_id, p.secondary_type_id,
+		       p.base_hp, p.base_attack, p.base_defense, p.base_speed,
+		       p.base_special_attack, p.base_special_defense, COALESCE(p.weight, 0)
+		FROM pokemons p WHERE p.id = ?
+	`, pokemonID).Scan(&name, &imageURL, &primaryTypeID, &secondaryTypeID,
+		&baseHP, &baseAtk, &baseDef, &baseSpd, &baseSpAtk, &baseSpDef, &weight)
+	if err != nil {
+		return nil
+	}
+
+	ivHP := rand.Intn(32)
+	ivAtk := rand.Intn(32)
+	ivDef := rand.Intn(32)
+	ivSpd := rand.Intn(32)
+	ivSpAtk := rand.Intn(32)
+	ivSpDef := rand.Intn(32)
 
 	var natureID int
 	var natureName, natureInc, natureDec string
@@ -125,27 +136,27 @@ func generateWildPokemon(locationID int) *WildPokemonGenerate {
 		return val
 	}
 
-	maxHP := ((2*chosen.baseHP + ivHP) * level / 100) + level + 10
-	attack := stat(chosen.baseAtk, ivAtk, natureInc, natureDec, "attack")
-	defense := stat(chosen.baseDef, ivDef, natureInc, natureDec, "defense")
-	speed := stat(chosen.baseSpd, ivSpd, natureInc, natureDec, "speed")
-	specialAttack := stat(chosen.baseSpAtk, ivSpAtk, natureInc, natureDec, "special_attack")
-	specialDefense := stat(chosen.baseSpDef, ivSpDef, natureInc, natureDec, "special_defense")
+	maxHP := ((2*baseHP + ivHP) * level / 100) + level + 10
+	attack := stat(baseAtk, ivAtk, natureInc, natureDec, "attack")
+	defense := stat(baseDef, ivDef, natureInc, natureDec, "defense")
+	speed := stat(baseSpd, ivSpd, natureInc, natureDec, "speed")
+	specialAttack := stat(baseSpAtk, ivSpAtk, natureInc, natureDec, "special_attack")
+	specialDefense := stat(baseSpDef, ivSpDef, natureInc, natureDec, "special_defense")
 
-	moves := generateWildMoves(chosen.id, level)
+	moves := generateWildMoves(pokemonID, level)
 
 	var secType *int
-	if chosen.secondaryTypeID.Valid {
-		st := int(chosen.secondaryTypeID.Int64)
+	if secondaryTypeID.Valid {
+		st := int(secondaryTypeID.Int64)
 		secType = &st
 	}
 
 	return &WildPokemonGenerate{
-		PokemonID:       chosen.id,
-		Name:            chosen.name,
+		PokemonID:       pokemonID,
+		Name:            name,
 		Level:           level,
-		ImageURL:        chosen.imageURL,
-		PrimaryTypeID:   chosen.primaryTypeID,
+		ImageURL:        imageURL,
+		PrimaryTypeID:   primaryTypeID,
 		SecondaryTypeID: secType,
 		MaxHP:           maxHP,
 		Attack:          attack,
@@ -153,7 +164,7 @@ func generateWildPokemon(locationID int) *WildPokemonGenerate {
 		Speed:           speed,
 		SpecialAttack:   specialAttack,
 		SpecialDefense:  specialDefense,
-		Weight:          chosen.weight,
+		Weight:          weight,
 		NatureID:        natureID,
 		NatureName:      natureName,
 		NatureInc:       natureInc,

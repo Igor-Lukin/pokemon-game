@@ -87,6 +87,13 @@ type BattlePokemon struct {
 	StatusID        int           `json:"status_id"`
 	Happiness       int           `json:"-"`
 	Gender          string        `json:"gender,omitempty"` // 'M'/'F'/'N' — для гейта гендерных атак (не волатиль, при смене НЕ сбрасывается)
+	// [ability] Способность экземпляра, загруженная в бой. Эффекты пока НЕ пишем —
+	// диспетчер abilities_battle.go читает AbilityKey (effect_key). При смене НЕ
+	// сбрасывается (свойство особи, не волатиль).
+	AbilityID   int    `json:"ability_id,omitempty"`
+	AbilityKey  string `json:"ability_key,omitempty"`
+	AbilityName string `json:"ability_name,omitempty"`
+	FlashFireBoosted bool `json:"-"` // Внутренний огонь: поглотил огонь -> огненные атаки ×1.5 (batch2)
 	Moves           []BattleMove  `json:"moves"`
 	IsFainted       bool          `json:"is_fainted"`
 	// In-battle volatile state
@@ -233,6 +240,14 @@ type BattleState struct {
 	PlayerTeam       []BattlePokemon
 	ActiveIdx        int
 	WildPokemon      *BattlePokemon
+	// Тренерский бой (BattleType=="trainer", поток B): команда врага. WildPokemon
+	// ВСЕГДА указывает на активного врага = &EnemyTeam[EnemyActiveIdx]. Срез строим
+	// ОДИН раз и не append-им (иначе указатель повиснет); смена врага = только
+	// переустановка индекса и указателя. Для "wild" EnemyTeam пустой.
+	EnemyTeam        []BattlePokemon
+	EnemyActiveIdx   int
+	EnemySmart       bool   // team_mode=='smart' (поток [12]): включает ИИ-замены врага
+	TrainerName      string // имя NPC-тренера (для лога «отправляет …»)
 	Turn             int
 	StartedAt        time.Time
 	BattleType       string
@@ -287,6 +302,10 @@ type BattleResponse struct {
 	WeatherID    int             `json:"weather_id,omitempty"`
 	WeatherName  string          `json:"weather_name,omitempty"`
 	WeatherTurns int             `json:"weather_turns,omitempty"`
+	// Тренерский бой (поток B): индикатор отряда врага и имя тренера.
+	EnemyCount     int    `json:"enemy_count,omitempty"`
+	EnemyRemaining int    `json:"enemy_remaining,omitempty"`
+	TrainerName    string `json:"trainer_name,omitempty"`
 }
 
 // ======================== Session Management ========================
@@ -455,9 +474,16 @@ func calculateDamage(bs *BattleState, attacker, defender *BattlePokemon, move *B
 	if defSide != nil && defSide.LuckyChantTurns > 0 {
 		isCrit = false
 	}
+	// [ability hook] Боевая броня/Крепкий панцирь: защищающийся не получает критов.
+	if isCrit && abilityBlocksCrit(defender) {
+		isCrit = false
+	}
 	critMult := 1.0
 	if isCrit {
 		critMult = 1.5
+		if attacker.AbilityKey == "sniper" { // Снайпер: крит бьёт на 225%
+			critMult = 2.25
+		}
 	}
 
 	// Комната чудес: Защита и Спец.Защита меняются местами (room_moves.go).
@@ -550,8 +576,12 @@ func calculateDamage(bs *BattleState, attacker, defender *BattlePokemon, move *B
 		pokemonHasType(attacker, attacker.HeldItemTypeID) {
 		heldMult = attacker.HeldAtkMult
 	}
+	// [ability hook] Множители способностей: исходящий (у атакующего) и входящий
+	// (у защищающегося). Пусто => 1.0 (урон НЕ меняется — регрессия).
+	abilOutMult := abilityModifyOutgoingDamage(bs, attacker, defender, move)
+	abilInMult := abilityModifyIncomingDamage(bs, attacker, defender, move)
 	baseDamage := (float64(2*attacker.Level+10)/250.0)*(float64(a)/float64(d))*float64(effPower) + 2
-	damage = int(math.Floor(baseDamage * stab * effectiveness * critMult * screenMult * r * chargeMult * terrainMult * heldMult))
+	damage = int(math.Floor(baseDamage * stab * effectiveness * critMult * screenMult * r * chargeMult * terrainMult * heldMult * abilOutMult * abilInMult))
 	if damage < 1 {
 		damage = 1
 	}
@@ -602,9 +632,13 @@ func checkHit(move *BattleMove, attacker, defender *BattlePokemon) bool {
 	if attacker.StatStages[6] != 0 {
 		effAcc *= accuracyEvasionMultiplier(attacker.StatStages[6])
 	}
-	if defender.StatStages[7] != 0 {
+	// [ability hook] Соколиный глаз (keen_eye): игнорирует ПОВЫШЕННОЕ уклонение цели.
+	if defender.StatStages[7] != 0 && !(abilityIgnoresEvasion(attacker) && defender.StatStages[7] > 0) {
 		effAcc /= accuracyEvasionMultiplier(defender.StatStages[7])
 	}
+	// [ability hook] Множитель точности от способностей (Фасеточные глаза/Блестящая
+	// кожа). Пусто => ×1.0.
+	effAcc *= abilityAccuracyMult(attacker, defender, move)
 	if effAcc >= 100 {
 		return true
 	}
@@ -765,6 +799,13 @@ func executeDamagingMove(bs *BattleState, attacker, defender *BattlePokemon, mov
 		})
 		return false, 0
 	}
+	// [ability hook] Поглощение по типу (Внутренний огонь/Аккумулятор/Дренаж/Генератор/
+	// Травоядность/Пористое тело): цель невосприимчива к типу атаки — урон не наносится,
+	// применяется эффект. Пусто => false (ничего не поглощается).
+	if abilityAbsorbsMove(bs, attacker, defender, move, round, log) {
+		return false, 0
+	}
+
 	hit := false
 
 	if move.HitsMin > 1 {
@@ -855,6 +896,12 @@ func executeDamagingMove(bs *BattleState, attacker, defender *BattlePokemon, mov
 	// Тип последней атаки, попавшей по цели — для Адаптации-2 (type_moves.go).
 	if hit {
 		defender.LastHitByType = move.TypeID
+	}
+	// [ability hook] Ответ при КОНТАКТЕ (Грубая кожа/Стальные шипы/Статическое
+	// напряжение/Горящее тело/Ядовитая кожа/Липкая слизь/Привлекательность): носитель
+	// (defender) отвечает атакующему после контактной атаки. Пусто => no-op.
+	if hit && move.Contact {
+		abilityOnHitByMove(bs, attacker, defender, move, round, log)
 	}
 	// Связь судеб: если удар отправил цель в обморок, атакующий гибнет тоже.
 	if hit && fainted {
@@ -1057,6 +1104,18 @@ func applyEffectByID(bs *BattleState, attacker, defender *BattlePokemon, move *B
 			PokemonName:  defender.Name,
 			PokemonImage: defender.ImageURL,
 			Message:      defender.Name + " защищён Ограждением — статус не подействовал!",
+		})
+		return 0
+	}
+	// [ability hook] Иммунитет к статусу от способности (напр. Immunity/Limber).
+	// Пусто => false (ничего не блокирует — регрессия). Рядом со щитами/Ограждением:
+	// погода/Проклятье/Пристальный взгляд выше уже отработали и сюда не попадают.
+	if defender != nil && abilityBlocksStatus(bs, defender, id) {
+		*log = append(*log, BattleLogEntry{
+			Round:        round,
+			PokemonName:  defender.Name,
+			PokemonImage: defender.ImageURL,
+			Message:      defender.Name + ": способность защищает от статуса!",
 		})
 		return 0
 	}
@@ -1334,6 +1393,20 @@ func applyStatChanges(attacker, defender *BattlePokemon, move *BattleMove, weath
 			}
 			continue
 		}
+		// [ability hook] Иммунитет к падению статов (Чистое тело/Белый дым): снижение
+		// статов ПРОТИВНИКОМ не проходит. Само-снижения (отдача) не трогаем — гейт
+		// только по цели-защитнику с отрицательным изменением.
+		if k.target == defender && stages < 0 && abilityBlocksStatDrop(defender, k.stat) {
+			statName := statChangeNames[k.stat]
+			if statName == "" {
+				statName = "Стат"
+			}
+			*log = append(*log, BattleLogEntry{
+				Round:      round,
+				StatChange: statName + " " + names[k] + " защищена способностью!",
+			})
+			continue
+		}
 		// Туман (screens.go): сторона защищена от СНИЖЕНИЯ статов противником.
 		// Блокируем только отрицательные изменения по цели-защитнику (свои
 		// бусты и само-снижения от отдачи не трогаем).
@@ -1415,6 +1488,31 @@ func processTurn(bs *BattleState, playerMove *BattleMove, switchTo int) []Battle
 		return log
 	}
 
+	// ИИ-замена умного тренера (поток [12], замечание 3): если активный враг не
+	// пробивает игрока, а на скамейке есть выгодный — враг ТРАТИТ ход на смену
+	// (заходит новый + ловушки), а игрок бьёт уже по нему. Только BattleType=trainer
+	// и EnemySmart, чтобы не менять поведение random/fixed-тренеров и дикого боя.
+	enemySwitched := false
+	if bs.BattleType == "trainer" && bs.EnemySmart {
+		if newIdx := chooseEnemySwitch(bs, player, wild); newIdx >= 0 {
+			// Через хелпер: здесь локальная переменная log ([]BattleLogEntry)
+			// перекрывает пакет log, напрямую log.Printf вызвать нельзя.
+			logSmartSwitch(wild.Name, bs.EnemyTeam[newIdx].Name, player.Name)
+			wild.ActiveTurns = 0 // уходящий сбрасывает счётчик поля
+			bs.EnemyActiveIdx = newIdx
+			bs.WildPokemon = &bs.EnemyTeam[newIdx]
+			wild = bs.WildPokemon
+			log = append(log, BattleLogEntry{
+				Round: bs.Turn, PokemonName: wild.Name, PokemonImage: wild.ImageURL,
+				Message: fmt.Sprintf("%s отправляет %s в бой!", bs.TrainerName, wild.Name),
+			})
+			if applyEntryHazards(bs, wild, &bs.WildSide, bs.Turn, &log) {
+				log = append(log, BattleLogEntry{Round: bs.Turn, PokemonName: wild.Name, Fainted: true})
+			}
+			enemySwitched = true
+		}
+	}
+
 	// Счётчик реальных ходов на поле (для Татами Блок): в этот ход оба ходят.
 	// ActiveTurns==1 -> первый ход после выхода. Сброс — при смене (=0 у уходящего).
 	player.ActiveTurns++
@@ -1432,6 +1530,12 @@ func processTurn(bs *BattleState, playerMove *BattleMove, switchTo int) []Battle
 	// Pre-turn status processing
 	playerCanAct := processPreTurnStatus(player, &log)
 	wildCanAct := processPreTurnStatus(wild, &log)
+
+	// Враг сменился в этот ход — он уже потратил действие на замену, атаковать
+	// новым нельзя (игрок бьёт по вошедшему).
+	if enemySwitched {
+		wildCanAct = false
+	}
 
 	// Храп/Бормотание: покемон действует ВО СНЕ. processPreTurnStatus уже тикнул
 	// сон (движение к пробуждению); если игрок всё ещё спит и выбрал такой ход —
@@ -1510,7 +1614,7 @@ func processTurn(bs *BattleState, playerMove *BattleMove, switchTo int) []Battle
 	runEndTurnVolatiles(player, wild, &log)
 	if player.IsFainted || wild.IsFainted {
 		playerCanAct = !player.IsFainted
-		wildCanAct = !wild.IsFainted
+		wildCanAct = !wild.IsFainted && !enemySwitched
 		if player.IsFainted {
 			log = append(log, BattleLogEntry{
 				Round:       bs.Turn,
@@ -1536,7 +1640,7 @@ func processTurn(bs *BattleState, playerMove *BattleMove, switchTo int) []Battle
 			move = playerMove
 		} else {
 			attacker, defender = wild, player
-			move = chooseWildMoveOrCharge(wild)
+			move = chooseEnemyMove(bs, wild, player)
 		}
 		markMoveUsed(attacker, move.ID) // учёт для Последнего средства
 		if move.CategoryID != 3 && move.Power > 0 {
@@ -1573,7 +1677,7 @@ func processTurn(bs *BattleState, playerMove *BattleMove, switchTo int) []Battle
 		return log
 	}
 
-	wildMove := chooseWildMoveOrCharge(wild)
+	wildMove := chooseEnemyMove(bs, wild, player)
 
 	// Опережение (Me First, call_moves.go): игрок копирует урон-атаку дикого и бьёт
 	// ею ПЕРВЫМ с силой ×1.5 — если быстрее и ход дикого наносит урон. Иначе провал.
@@ -1851,6 +1955,14 @@ func playerPokemonToBattle(userPokemonID int) *BattlePokemon {
 		bp.IsFainted = true
 	}
 
+	// [ability] Способность экземпляра -> AbilityKey/Name для диспетчера боя.
+	var abilityID sql.NullInt64
+	db.DB.QueryRow("SELECT ability_id FROM user_pokemons WHERE id = ?", bp.ID).Scan(&abilityID)
+	if abilityID.Valid {
+		bp.AbilityID = int(abilityID.Int64)
+		bp.AbilityName, bp.AbilityKey = db.AbilityNameKey(bp.AbilityID)
+	}
+
 	// Load learned moves from user_pokemon_learnable_attacks
 	moveRows, err := db.DB.Query(`
 		SELECT a.id, a.name, COALESCE(a.eng_name, ''), a.type_id, a.category_id, a.power, a.accuracy,
@@ -1920,7 +2032,7 @@ func wildToBattlePokemon(w *WildPokemonGenerate) *BattlePokemon {
 		gender = db.GenderNeutral
 	}
 
-	return &BattlePokemon{
+	bp := &BattlePokemon{
 		ID:              0,
 		PokemonID:       w.PokemonID,
 		Name:            w.Name,
@@ -1947,33 +2059,31 @@ func wildToBattlePokemon(w *WildPokemonGenerate) *BattlePokemon {
 		IsFainted:       false,
 		HeldAtkMult:     1.0, // дикие предметов не носят; дефолт 1.0 (безопасно к урону)
 	}
+
+	// [ability] Транзиентная СЛУЧАЙНАЯ базовая способность соперника (только на бой,
+	// в БД не пишется). Одна точка — покрывает и дикого, и тренерского бойца
+	// (buildNPCTeam строит их через эту же функцию). Так эффекты сработают у обоих.
+	if abilityID, _, ok := db.RollBasicAbility(w.PokemonID); ok {
+		bp.AbilityID = abilityID
+		bp.AbilityName, bp.AbilityKey = db.AbilityNameKey(abilityID)
+	}
+
+	return bp
 }
 
 // ======================== HTTP Handlers ========================
 
-func StartBattleHandler(w http.ResponseWriter, r *http.Request) {
-	sess, _ := session.Store.Get(r, "pokemon-session")
-	userID, ok := sess.Values["user_id"].(int)
-	if !ok {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	var req BattleStartRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
-		return
-	}
-
-	// Load all team pokemon
+// buildPlayerTeam собирает боевую команду игрока из user_pokemons (позиции 1..6).
+// Возвращает команду, индекс первого «в сознании» и ошибку с готовым текстом.
+// Единая точка правды: зовётся и диким стартом, и тренерским (поток B).
+func buildPlayerTeam(userID int) ([]BattlePokemon, int, error) {
 	rows, err := db.DB.Query(`
 		SELECT id FROM user_pokemons
 		WHERE user_id = ? AND position BETWEEN 1 AND 6
 		ORDER BY position
 	`, userID)
 	if err != nil {
-		http.Error(w, "DB error", http.StatusInternalServerError)
-		return
+		return nil, -1, fmt.Errorf("DB error")
 	}
 	defer rows.Close()
 
@@ -1984,8 +2094,7 @@ func StartBattleHandler(w http.ResponseWriter, r *http.Request) {
 		teamIDs = append(teamIDs, id)
 	}
 	if len(teamIDs) == 0 {
-		http.Error(w, "Нет покемонов в команде", http.StatusBadRequest)
-		return
+		return nil, -1, fmt.Errorf("Нет покемонов в команде")
 	}
 
 	var playerTeam []BattlePokemon
@@ -2001,11 +2110,31 @@ func StartBattleHandler(w http.ResponseWriter, r *http.Request) {
 		playerTeam = append(playerTeam, *p)
 	}
 	if len(playerTeam) == 0 {
-		http.Error(w, "Нет покемонов в команде", http.StatusBadRequest)
-		return
+		return nil, -1, fmt.Errorf("Нет покемонов в команде")
 	}
 	if firstAlive < 0 {
-		http.Error(w, "Все покемоны в команде без сознания", http.StatusBadRequest)
+		return nil, -1, fmt.Errorf("Все покемоны в команде без сознания")
+	}
+	return playerTeam, firstAlive, nil
+}
+
+func StartBattleHandler(w http.ResponseWriter, r *http.Request) {
+	sess, _ := session.Store.Get(r, "pokemon-session")
+	userID, ok := sess.Values["user_id"].(int)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	var req BattleStartRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	playerTeam, firstAlive, err := buildPlayerTeam(userID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -2057,8 +2186,15 @@ func StartBattleHandler(w http.ResponseWriter, r *http.Request) {
 	bs.BattleWeatherID = weatherID
 	bs.BattleWeatherName = weatherName
 
+	// [ability hook] Способности ЛИДОВ при старте боя (лиды не идут через
+	// applyEntryHazards). Пусто => no-op; демо-ветка logtest пишет в лог старта.
+	var startLog []BattleLogEntry
+	abilityOnSwitchIn(bs, playerPoke, &startLog)
+	abilityOnSwitchIn(bs, wildPoke, &startLog)
+
 	resp := BattleResponse{
 		Type:        "start",
+		Log:         startLog,
 		BattleID:    battleID,
 		Player:      playerPoke,
 		Wild:        wildPoke,
@@ -2192,19 +2328,30 @@ func MoveHandler(w http.ResponseWriter, r *http.Request) {
 	// Отсчёт таймеров стороны поля (экраны) — конец хода (screens.go).
 	tickSideTimers(bs, &log)
 
-	// Determine response type
+	// [ability hook] Способности «конец хода» (Форсаж/Дождефаг/Ледяное тело/Змеиная
+	// кожа) для обоих активных. Пусто => no-op.
+	abilityOnEndTurn(bs, player, bs.Turn, &log)
+	abilityOnEndTurn(bs, bs.WildPokemon, bs.Turn, &log)
+
+	// Determine response type.
+	// handleEnemyFaint: для "wild" враг пал = конец (старое поведение); для
+	// "trainer" — выставляет следующего покемона NPC (switched) или сообщает,
+	// что вся команда врага пала (allEnemyDown).
 	respType := "turn"
 	var evoInfo *EvolutionInfo
-	if bs.WildPokemon.IsFainted {
+	allEnemyDown, enemySwitched := handleEnemyFaint(bs, &log)
+	if allEnemyDown {
 		respType = "victory"
 		bs.Finished = true
-		evoInfo = awardExp(player, bs.WildPokemon.PokemonID)
+		if bs.BattleType == "wild" {
+			evoInfo = awardExp(player, bs.WildPokemon.PokemonID) // опыт ТОЛЬКО за дикого
+		}
 		saveBattleState(bs)
 		battleMu.Lock()
 		delete(battleSessions, req.BattleID)
 		battleMu.Unlock()
 	} else if player.IsFainted {
-		// Check if there are more pokemon in the team
+		// Игрок пал (враг при этом мог смениться — уже применено к bs и логу).
 		hasMore := false
 		for _, p := range bs.PlayerTeam {
 			if !p.IsFainted {
@@ -2222,6 +2369,8 @@ func MoveHandler(w http.ResponseWriter, r *http.Request) {
 			delete(battleSessions, req.BattleID)
 			battleMu.Unlock()
 		}
+	} else if enemySwitched {
+		respType = "enemy_switch" // враг сменился, бой продолжается
 	}
 
 	resp := BattleResponse{
@@ -2246,6 +2395,8 @@ func MoveHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		resp.Team = team
 	}
+
+	fillEnemyIndicator(bs, &resp) // индикатор отряда врага (только trainer)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
@@ -2278,6 +2429,10 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Find the pokemon in the team
 	oldIdx := bs.ActiveIdx
+	// Вынужденная замена: уходящий покемон в обмороке (враг его сбил). Это НЕ ход —
+	// игрок бесплатно выставляет нового, враг НЕ бьёт и конец хода не тикает.
+	// Добровольная замена (уходящий жив) — как раньше: стоит хода, враг атакует.
+	forcedSwitch := bs.PlayerTeam[oldIdx].IsFainted
 	found := false
 	newIdx := -1
 	for i, p := range bs.PlayerTeam {
@@ -2404,6 +2559,24 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Вынужденная замена после обморока — это НЕ ход: враг не атакует, край-эффекты
+	// (статус/семена/погода/таймеры) не тикают. Ловушки на входящего уже применены выше.
+	if forcedSwitch {
+		resp := BattleResponse{
+			Type:         "switch_done",
+			Log:          logEntries,
+			Player:       copyBattlePokemon(active),
+			Wild:         copyBattlePokemon(wild),
+			WeatherID:    bs.BattleWeatherID,
+			WeatherName:  bs.BattleWeatherName,
+			WeatherTurns: bs.WeatherTurns,
+		}
+		fillEnemyIndicator(bs, &resp)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
 	// Pre-turn status damage for wild pokemon (burn/poison)
 	processPreTurnStatus(wild, &logEntries)
 
@@ -2417,23 +2590,31 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 			PokemonName: wild.Name,
 			Fainted:     true,
 		})
-		bs.Finished = true
-		saveBattleState(bs)
-		battleMu.Lock()
-		delete(battleSessions, req.BattleID)
-		battleMu.Unlock()
-		resp := BattleResponse{
-			Type:        "victory",
-			Log:         logEntries,
-			Player:      copyBattlePokemon(active),
-			Wild:        copyBattlePokemon(wild),
-			WeatherID:    bs.BattleWeatherID,
-			WeatherName:  bs.BattleWeatherName,
-			WeatherTurns: bs.WeatherTurns,
+		// Для "wild" — конец (победа без опыта, как было). Для "trainer" — NPC
+		// выставляет следующего врага, и бой продолжается (новый враг атакует ниже).
+		allEnemyDown, _ := handleEnemyFaint(bs, &logEntries)
+		if allEnemyDown {
+			bs.Finished = true
+			saveBattleState(bs)
+			battleMu.Lock()
+			delete(battleSessions, req.BattleID)
+			battleMu.Unlock()
+			resp := BattleResponse{
+				Type:        "victory",
+				Log:         logEntries,
+				Player:      copyBattlePokemon(active),
+				Wild:        copyBattlePokemon(wild),
+				WeatherID:    bs.BattleWeatherID,
+				WeatherName:  bs.BattleWeatherName,
+				WeatherTurns: bs.WeatherTurns,
+			}
+			fillEnemyIndicator(bs, &resp)
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(resp)
+			return
 		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resp)
-		return
+		// Тренерский бой: враг сменился — дальше по коду атакует уже новый враг.
+		wild = bs.WildPokemon
 	}
 
 	postProcessWeather(bs, &logEntries)
@@ -2443,7 +2624,7 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Wild pokemon attacks after switch
 	if !wild.IsFainted {
-		wildMove := chooseWildMoveOrCharge(wild)
+		wildMove := chooseEnemyMove(bs, wild, active)
 		if wildMove != nil {
 			if wildMove.CategoryID != 3 && wildMove.Power > 0 {
 				fainted, wc := executeDamagingMove(bs, wild, active, wildMove, bs.BattleWeatherID, bs.Turn, &logEntries, sideFor(bs, active), sideFor(bs, wild), bs.WaterSportTurns > 0)
@@ -2482,6 +2663,7 @@ func SwitchHandler(w http.ResponseWriter, r *http.Request) {
 		WeatherName:  bs.BattleWeatherName,
 		WeatherTurns: bs.WeatherTurns,
 	}
+	fillEnemyIndicator(bs, &resp) // враг мог смениться от остаточного урона
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)

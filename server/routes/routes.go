@@ -8,9 +8,41 @@ import (
 	"pokemon-game/server/handlers/api"
 	"pokemon-game/server/handlers/auth"
 	"pokemon-game/server/handlers/game"
+	"pokemon-game/server/session"
+	"sync"
+	"time"
 
 	"github.com/gorilla/mux"
 )
+
+// Троттлинг обновления users.last_seen: не чаще раза в 60с на игрока.
+var (
+	lastSeenMu    sync.Mutex
+	lastSeenCache = map[int]time.Time{}
+)
+
+// lastSeenMiddleware обновляет users.last_seen для авторизованного игрока
+// (онлайн/оффлайн в карточке тренера). Пишет в БД не чаще раза в 60с на игрока.
+func lastSeenMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if sess, err := session.Store.Get(r, "pokemon-session"); err == nil {
+			if uid, ok := sess.Values["user_id"].(int); ok {
+				now := time.Now()
+				lastSeenMu.Lock()
+				last, seen := lastSeenCache[uid]
+				stale := !seen || now.Sub(last) > 60*time.Second
+				if stale {
+					lastSeenCache[uid] = now
+				}
+				lastSeenMu.Unlock()
+				if stale {
+					db.DB.Exec("UPDATE users SET last_seen = CURRENT_TIMESTAMP WHERE id = ?", uid)
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 func SetupRoutes() *mux.Router {
 	r := mux.NewRouter()
@@ -42,6 +74,17 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/admin/npc/create", admin.CreateNonPlayerCharacterHandler).Methods("GET", "POST")
 	r.HandleFunc("/admin/npc/edit", admin.EditNonPlayerCharacterHandler).Methods("GET", "POST")
 	r.HandleFunc("/admin/npc/delete", admin.DeleteNonPlayerCharacterHandler).Methods("POST")
+	// npc — редактор диалогов (узлы/опции)
+	r.HandleFunc("/admin/npc/dialogue/node/add", admin.AddDialogueNodeHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/dialogue/node/edit", admin.EditDialogueNodeHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/dialogue/node/delete", admin.DeleteDialogueNodeHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/dialogue/option/add", admin.AddDialogueOptionHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/dialogue/option/edit", admin.EditDialogueOptionHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/dialogue/option/delete", admin.DeleteDialogueOptionHandler).Methods("POST")
+	// npc — фикс-ростер команды (поток B)
+	r.HandleFunc("/admin/npc/team/add", admin.AddNPCPokemonHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/team/edit", admin.EditNPCPokemonHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/team/delete", admin.DeleteNPCPokemonHandler).Methods("POST")
 	// abilities
 	r.HandleFunc("/admin/abilities", admin.AbilitiesHandler).Methods("GET")
 	r.HandleFunc("/admin/abilities/create", admin.CreateAbilityHandler).Methods("GET", "POST")
@@ -89,6 +132,12 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/api/battle/switch", api.SwitchHandler).Methods("POST")
 	r.HandleFunc("/api/battle/run", api.RunHandler).Methods("POST")
 	r.HandleFunc("/api/battle/catch", api.CatchHandler).Methods("POST")
+	// Тренерский бой vs команда NPC (поток B)
+	r.HandleFunc("/api/battle/trainer/start", api.TrainerBattleStartHandler).Methods("POST")
+
+	// Диалоги NPC (поток A)
+	r.HandleFunc("/api/npc/{id}/dialogue", api.NpcDialogueStartHandler).Methods("GET")
+	r.HandleFunc("/api/npc/dialogue/option", api.NpcDialogueOptionHandler).Methods("POST")
 
 	// Pokedex
 	r.HandleFunc("/api/pokedex/pokemon/{id}", api.GetPokemonInfo).Methods("GET")
@@ -109,6 +158,21 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/api/user/pokemon/{id}/hold", api.HoldItemHandler).Methods("POST")
 	r.HandleFunc("/api/user/pokemon/{id}/unhold", api.UnholdItemHandler).Methods("POST")
 
+	// Онлайн-игроки на локации + вызов на бой (поток [17], часть A)
+	r.HandleFunc("/api/location/players", api.LocationPlayersHandler).Methods("GET")
+	r.HandleFunc("/api/challenge", api.ChallengeCreateHandler).Methods("POST")
+	r.HandleFunc("/api/challenge/incoming", api.ChallengeIncomingHandler).Methods("GET")
+	r.HandleFunc("/api/challenge/respond", api.ChallengeRespondHandler).Methods("POST")
+	r.HandleFunc("/api/challenge/outgoing", api.ChallengeOutgoingHandler).Methods("GET")
+
+	// PvP-бой между игроками (поток [17], часть B)
+	r.HandleFunc("/api/pvp/current", api.PvpCurrentHandler).Methods("GET")
+	r.HandleFunc("/api/pvp/state", api.PvpStateHandler).Methods("GET")
+	r.HandleFunc("/api/pvp/lead", api.PvpLeadHandler).Methods("POST")
+	r.HandleFunc("/api/pvp/action", api.PvpActionHandler).Methods("POST")
+	r.HandleFunc("/api/pvp/replace", api.PvpReplaceHandler).Methods("POST")
+	r.HandleFunc("/api/pvp/forfeit", api.PvpForfeitHandler).Methods("POST")
+
 	// API для локаций
 	r.HandleFunc("/api/locations/{id}", api.GetLocation).Methods("GET")
 
@@ -116,10 +180,19 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/api/user/location", api.GetCurrentUserLocation).Methods("GET")
 	r.HandleFunc("/api/user/move", api.MoveUser).Methods("POST")
 
+	// Карточка тренера (профиль). status — до {id}, чтобы не перехватывался.
+	r.HandleFunc("/api/profile", api.ProfileHandler).Methods("GET")
+	r.HandleFunc("/api/profile/status", api.SetStatusHandler).Methods("POST")
+	r.HandleFunc("/api/profile/{id}", api.ProfileHandler).Methods("GET")
+
 	// API для питомника
 	r.HandleFunc("/api/nursery/pokemons", api.GetUserPokemonsForNursery).Methods("GET")
 	r.HandleFunc("/api/nursery/take", api.TakeToTeamHandler).Methods("POST")
 	r.HandleFunc("/api/nursery/send", api.SendToNurseryHandler).Methods("POST")
+	// Разведение (поток [13])
+	r.HandleFunc("/api/nursery/breed", api.BreedHandler).Methods("POST")
+	r.HandleFunc("/api/nursery/eggs", api.EggsHandler).Methods("GET")
+	r.HandleFunc("/api/nursery/hatch", api.HatchHandler).Methods("POST")
 
 	// API для лечения
 	r.HandleFunc("/api/heal", api.HealHandler).Methods("POST")
@@ -136,6 +209,9 @@ func SetupRoutes() *mux.Router {
 	r.PathPrefix("/images/").Handler(
 		http.StripPrefix("/images/", http.FileServer(http.Dir("./client/static/images"))),
 	)
+
+	// Отметка активности игрока (last_seen) на всех маршрутах.
+	r.Use(lastSeenMiddleware)
 
 	return r
 }

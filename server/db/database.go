@@ -295,6 +295,81 @@ func createTables() {
 			FOREIGN KEY(user_id) REFERENCES users(id),
 			FOREIGN KEY(item_id) REFERENCES items(id)
 		);`,
+
+		// ===== КАРТОЧКА ТРЕНЕРА (поток [7]) =====
+		// Справочник должностей игрока (отображаемая роль, отдельно от is_admin-прав).
+		`CREATE TABLE IF NOT EXISTS player_roles (
+			id INTEGER PRIMARY KEY,
+			name TEXT NOT NULL UNIQUE
+		);`,
+		// Друзья (симметрия — двумя строками при наполнении; показ только чтение).
+		`CREATE TABLE IF NOT EXISTS user_friends (
+			user_id INTEGER NOT NULL,
+			friend_id INTEGER NOT NULL,
+			PRIMARY KEY(user_id, friend_id),
+			FOREIGN KEY(user_id) REFERENCES users(id),
+			FOREIGN KEY(friend_id) REFERENCES users(id)
+		);`,
+		// Желаемые покемоны (только показ).
+		`CREATE TABLE IF NOT EXISTS user_wishlist (
+			user_id INTEGER NOT NULL,
+			pokemon_id INTEGER NOT NULL,
+			PRIMARY KEY(user_id, pokemon_id),
+			FOREIGN KEY(user_id) REFERENCES users(id),
+			FOREIGN KEY(pokemon_id) REFERENCES pokemons(id)
+		);`,
+
+		// ===== ДИАЛОГИ NPC (поток A) =====
+		// Узлы диалога — реплики NPC. Ровно один is_start=1 на NPC.
+		`CREATE TABLE IF NOT EXISTS dialogue_nodes (
+			id INTEGER PRIMARY KEY,
+			npc_id INTEGER NOT NULL,
+			node_key TEXT,               -- удобный ключ узла в рамках NPC (авторинг/квесты)
+			speaker_text TEXT NOT NULL,  -- что говорит NPC
+			is_start INTEGER DEFAULT 0,  -- 1 = стартовый узел NPC (ровно один)
+			FOREIGN KEY(npc_id) REFERENCES npc(id)
+		);`,
+		// Опции (ответы игрока) — рёбра графа диалога.
+		`CREATE TABLE IF NOT EXISTS dialogue_options (
+			id INTEGER PRIMARY KEY,
+			node_id INTEGER NOT NULL,    -- к какому узлу относится ответ
+			sort_order INTEGER DEFAULT 0,
+			option_text TEXT NOT NULL,   -- текст кнопки-ответа
+			next_node_id INTEGER,        -- куда ведёт (NULL = конец после действия)
+			action_type TEXT,            -- NULL | 'battle' | 'close' (позже: give_item/set_flag/start_quest)
+			action_param TEXT,           -- параметр действия (на будущее)
+			condition_flag TEXT,         -- НА БУДУЩЕЕ (квесты): условие показа; сейчас NULL/игнор
+			FOREIGN KEY(node_id) REFERENCES dialogue_nodes(id)
+		);`,
+		// ===== ТРЕНЕРСКИЙ БОЙ (поток B) =====
+		// Фиксированный ростер команды NPC (team_mode='fixed'). Для 'random'
+		// команда генерируется на лету и тут НЕ хранится.
+		`CREATE TABLE IF NOT EXISTS npc_pokemons (
+			id INTEGER PRIMARY KEY,
+			npc_id INTEGER NOT NULL,
+			pokemon_id INTEGER NOT NULL,
+			level INTEGER NOT NULL DEFAULT 5,
+			position INTEGER DEFAULT 0,        -- порядок вывода в бою
+			FOREIGN KEY(npc_id) REFERENCES npc(id),
+			FOREIGN KEY(pokemon_id) REFERENCES pokemons(id)
+		);`,
+		// ===== РАЗВЕДЕНИЕ (поток [13]) =====
+		// Яйцо, полученное сведе́нием пары в питомнике. Вид (species_id) —
+		// БАЗОВАЯ форма линии; IV уже посчитаны при создании (макс родителей +30%).
+		// created_at/hatch_at хранятся как UTC-строки 'YYYY-MM-DD HH:MM:SS'
+		// (тот же формат, что user_pokemons.created_at); готовность = now>=hatch_at.
+		`CREATE TABLE IF NOT EXISTS eggs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			species_id INTEGER NOT NULL,        -- базовая форма, которая вылупится
+			iv_hp INTEGER, iv_attack INTEGER, iv_defense INTEGER,
+			iv_speed INTEGER, iv_special_attack INTEGER, iv_special_defense INTEGER,
+			parent1_id INTEGER, parent2_id INTEGER,
+			created_at TEXT NOT NULL,
+			hatch_at   TEXT NOT NULL,
+			FOREIGN KEY(user_id) REFERENCES users(id),
+			FOREIGN KEY(species_id) REFERENCES pokemons(id)
+		);`,
 	}
 
 	for _, q := range queries {
@@ -311,6 +386,20 @@ func createTables() {
 	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN happiness INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN gender TEXT")         // пол экземпляра 'M'/'F'/'N'
 	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN attractiveness TEXT") // буква привлекательности 'A'/'B'/'C'
+
+	// Карточка тренера (поток [7]): поля профиля на users + флаг награды на items.
+	DB.Exec("ALTER TABLE users ADD COLUMN status_text TEXT")           // статус игрока (сам пишет)
+	DB.Exec("ALTER TABLE users ADD COLUMN role_id INTEGER")            // должность (FK player_roles), nullable
+	DB.Exec("ALTER TABLE users ADD COLUMN last_seen TIMESTAMP")        // для онлайн/оффлайн
+	DB.Exec("ALTER TABLE users ADD COLUMN avatar_data TEXT")           // задел под аватар (пока не используем)
+	DB.Exec("ALTER TABLE items ADD COLUMN is_award INTEGER DEFAULT 0") // 1 = награда (показ в карточке, не в сумке)
+
+	// Диалоги NPC (поток A): поля команды NPC для боя (используются потоком B).
+	// В потоке A только редактируются в админке; команда НЕ генерируется.
+	DB.Exec("ALTER TABLE npc ADD COLUMN team_mode TEXT DEFAULT 'random'") // 'random'|'fixed'
+	DB.Exec("ALTER TABLE npc ADD COLUMN team_size INTEGER DEFAULT 6")     // 1..6
+	DB.Exec("ALTER TABLE npc ADD COLUMN min_level INTEGER DEFAULT 5")
+	DB.Exec("ALTER TABLE npc ADD COLUMN max_level INTEGER DEFAULT 10")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN never_misses INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN recoil INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN drain INTEGER DEFAULT 0")
@@ -360,6 +449,15 @@ func createTables() {
 		INSERT OR IGNORE INTO items (id, name, description, category_id, price, effect_type, effect_value, image_url)
 		VALUES (?, ?, ?, (SELECT id FROM item_categories WHERE name = 'candy'), ?, ?, ?, ?)
 	`, 100, "Леденец", "Повышает уровень покемона на 1 и даёт +2 EV", 0, "candy", 1, "/static/images/items/41.png")
+
+	// Способности (поток [9] — КАРКАС). Схема + миграция слотов + бэкфилл экземпляров.
+	// ALTER fire-and-ignore (конвенция проекта: дубль колонки игнорируется).
+	DB.Exec("ALTER TABLE abilities ADD COLUMN effect_key TEXT")          // машиночит. ключ эффекта (заполняется позже)
+	DB.Exec("ALTER TABLE pokemon_abilities ADD COLUMN slot INTEGER")     // 1=базовая X, 2=базовая Y, 3=скрытая
+	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN ability_id INTEGER")   // закреплённая способность экземпляра
+	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN ability_slot INTEGER") // её слот (для ремапа при эволюции)
+	migrateAbilitySlots()       // проставить slot существующим pokemon_abilities (идемпотентно)
+	backfillInstanceAbilities() // назначить способность экземплярам без неё (идемпотентно)
 }
 
 // Начальные данные для справочных таблиц
@@ -520,6 +618,21 @@ func insertInitialData() {
 	}
 	for _, e := range effs {
 		DB.Exec("INSERT OR IGNORE INTO type_effectiveness (attacking_type_id, defending_type_id, multiplier) VALUES (?, ?, ?)", e.atk, e.def, e.mult)
+	}
+
+	// Должности игрока (карточка тренера). is_admin остаётся флагом ПРАВ отдельно.
+	playerRoles := []struct {
+		id   int
+		name string
+	}{
+		{1, "Тренер"}, // дефолт (можно NULL role_id)
+		{2, "Админ"},
+		{3, "Гим лидер"},
+		{4, "Полицейский"},
+		{5, "Наставник"},
+	}
+	for _, pr := range playerRoles {
+		DB.Exec("INSERT OR IGNORE INTO player_roles (id, name) VALUES (?, ?)", pr.id, pr.name)
 	}
 
 	// Регионы

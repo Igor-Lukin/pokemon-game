@@ -23,6 +23,10 @@ Thumbs.db
 
 # Database
 *.db
+database/backups/
+database/*.bak*
+database/*.backup*
+database/*.db-journal
 
 # Logs
 *.log
