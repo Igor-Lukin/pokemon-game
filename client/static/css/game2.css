@@ -1167,14 +1167,17 @@ button {
 .pd-bar-row .expbar.pd-happy > i {
   background: linear-gradient(90deg, #d96a9a, #f2c14e);
 }
-.pd-hero .pd-types {
-  display: flex;
-  gap: 5px;
+.pd-hero .pd-name-types {
+  display: inline-flex;
+  gap: 4px;
+  vertical-align: middle;
+  margin-right: 6px;
 }
-.pd-hero .pd-types img {
-  width: 24px;
-  height: 24px;
-  border-radius: 6px;
+.pd-hero .pd-name-types img {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: block;
 }
 .pd-grid {
   display: grid;

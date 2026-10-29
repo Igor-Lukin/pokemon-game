@@ -1,0 +1,35 @@
+TEST_pokemon_card_visual — карточка покемона (детальный вид, ветка feature/pokemon-card-visual)
+
+1. ПОПАП АТАК НЕ ОТКРЫВАЛСЯ
+Причина: обработчик клика по .pd-move (renderPokemonDetail) не гасил всплытие.
+showAttackInfoPopup / showLearnableList успевали выставить display:block, после чего
+общий document-listener «клик вне попапа» тут же скрывал попап (клик по .pd-move
+не был исключением, в отличие от старого .moveBox).
+
+Исправление (client/static/js/game.js):
+  - обработчик .pd-move: добавлен e.stopPropagation();
+  - в общий обработчик закрытия attack-info-popup добавлено исключение .pd-move
+    (страховка, как уже было для .moveBox);
+  - showAttackInfoPopup скрывает learnable-list-popup, showLearnableList скрывает
+    attack-info-popup — попапы не наслаиваются.
+Поведение:
+  - клик по пустому слоту «＋ Изучить атаку» -> «Изучаемые атаки»;
+  - клик по изученной атаке -> описание атаки, кнопка «Сменить атаку» -> список
+    изучаемых атак (как и раньше задумано в UI).
+
+2. ИКОНКИ ТИПА ПЕРЕД ИМЕНЕМ
+  - renderPokemonDetail: typeImgs перенесены из правого блока .pd-types внутрь
+    .pd-name, в span.pd-name-types перед именем (тот же порядок, что в плитке
+    команды .tname-types);
+  - game2.css: .pd-hero .pd-types/* заменены на .pd-hero .pd-name-types
+    (inline-flex, gap 4px, иконки 18x18, radius 4px).
+
+ЖИВОЙ ПРОГОН (headless Chrome + CDP, отдельная копия сервера на :8081,
+копия database/pokemon.db, тестовый пользователь с Бульбазавром: 1 атака + 3 слота):
+  - .pd-name first child = pd-name-types, иконок 2, старого .pd-types в hero нет;
+  - клик по пустому слоту: learnable-list-popup display=block, 1 вариант («Рёв»);
+  - клик по изученной атаке: attack-info-popup display=block («Лобовая атака»);
+  - «Сменить атаку»: learnable-list-popup=block, attack-info-popup=none.
+  Скриншот проверен: иконки типов стоят перед именем.
+
+ПРОВЕРКИ: node --check client/static/js/game.js, go build ./... — ок.

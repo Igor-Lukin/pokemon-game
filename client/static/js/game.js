@@ -917,6 +917,8 @@ function bindBoxLeftEvents() {
 function showAttackInfoPopup(move, moveBox) {
   const popup = document.getElementById("attack-info-popup");
   if (!popup) return;
+  const learnablePopup = document.getElementById("learnable-list-popup");
+  if (learnablePopup) learnablePopup.style.display = "none";
   const catNames = {1:"Физическая",2:"Специальная",3:"Статус"};
   const catBg = {1:"#dc3545",2:"#0d6efd",3:"#6f42c1"};
   const catText = {1:"#fff",2:"#fff",3:"#fff"};
@@ -1034,6 +1036,8 @@ function showLearnableList(userPokemonId, replacePosition) {
   const popup = document.getElementById("learnable-list-popup");
   const body = document.getElementById("learnable-list-body");
   if (!popup || !body) return;
+  const attackPopup = document.getElementById("attack-info-popup");
+  if (attackPopup) attackPopup.style.display = "none";
 
   popup.dataset.userPokemonId = userPokemonId;
   popup.dataset.replacePosition = replacePosition;
@@ -1116,7 +1120,7 @@ document.addEventListener("click", (e) => {
     }
   }
   if (aiPopup && aiPopup.style.display === "block") {
-    if (!aiPopup.contains(e.target) && !e.target.closest(".moveBox") && !e.target.closest(".attack-block")) {
+    if (!aiPopup.contains(e.target) && !e.target.closest(".moveBox") && !e.target.closest(".pd-move") && !e.target.closest(".attack-block")) {
       aiPopup.style.display = "none";
     }
   }
@@ -4646,7 +4650,7 @@ function renderPokemonDetail(id) {
     <div class="pd-hero">
       <img class="pd-spr" src="${teamSprite(p)}" alt="${escTeam(displayName)}" title="Открыть в покедексе">
       <div class="pd-id">
-        <div class="pd-name">${escTeam(displayName)} ${genderHtml(p.gender)}${
+        <div class="pd-name"><span class="pd-name-types">${typeImgs.join("")}</span>${escTeam(displayName)} ${genderHtml(p.gender)}${
           p.attractiveness
             ? ` <span class="pd-attract" title="Привлекательность: ${escTeam(p.attractiveness)}">${escTeam(p.attractiveness)}</span>`
             : ""
@@ -4673,7 +4677,6 @@ function renderPokemonDetail(id) {
           </div>
         </div>
       </div>
-      <div class="pd-types">${typeImgs.join("")}</div>
     </div>
     <div class="pd-grid">
       <div class="pd-block">
@@ -4718,7 +4721,8 @@ function renderPokemonDetail(id) {
     });
   });
   detail.querySelectorAll(".pd-move").forEach((row) => {
-    row.addEventListener("click", () => {
+    row.addEventListener("click", (e) => {
+      e.stopPropagation();
       if (row.classList.contains("empty")) {
         showLearnableList(p.id, parseInt(row.dataset.pos, 10));
         return;
