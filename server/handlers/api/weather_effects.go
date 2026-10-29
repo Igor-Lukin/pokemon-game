@@ -38,6 +38,10 @@ func pokemonHasType(p *BattlePokemon, typeID int) bool {
 // Вызывается один раз за ход ДО postProcessWeather (пока погода ещё активна),
 // чтобы обморок от погоды подхватился штатной логикой победы/поражения.
 func applyWeatherChip(bs *BattleState, a, b *BattlePokemon, log *[]BattleLogEntry) {
+	// [batch7] Штиль/Микроклимат отменяют погодный урон.
+	if abilityWeatherNegated(bs) {
+		return
+	}
 	weatherChipOne(bs.BattleWeatherID, bs.Turn, a, log)
 	weatherChipOne(bs.BattleWeatherID, bs.Turn, b, log)
 }
@@ -46,19 +50,29 @@ func weatherChipOne(weatherID, round int, p *BattlePokemon, log *[]BattleLogEntr
 	if p == nil || p.IsFainted {
 		return
 	}
+	// [batch7] Магический щит блокирует погодный урон.
+	if abilityBlocksIndirect(p) {
+		return
+	}
 	var immune bool
 	var src string
 	switch weatherID {
 	case weatherHail:
-		immune = pokemonHasType(p, 6) // Лёд
+		immune = pokemonHasType(p, 6) || p.AbilityKey == "snow_cloak" || p.AbilityKey == "overcoat" // Лёд / Белотелый / Укрытие
 		src = "града"
 	case weatherSand:
-		immune = pokemonHasType(p, 13) || pokemonHasType(p, 9) || pokemonHasType(p, 17) // Камень/Земля/Сталь
+		immune = pokemonHasType(p, 13) || pokemonHasType(p, 9) || pokemonHasType(p, 17) ||
+			p.AbilityKey == "sand_veil" || p.AbilityKey == "overcoat" // + Пескоструй / Укрытие
 		src = "песчаной бури"
 	default:
 		return
 	}
 	if immune {
+		// [ability log] Пескоструй/Белотелый не только повышают уклонение, но и
+		// полностью игнорируют урон своей погоды.
+		if p.AbilityKey == "sand_veil" || p.AbilityKey == "snow_cloak" || p.AbilityKey == "overcoat" {
+			abilityLog(p, round, log, "weather_immune", "не получает урон от "+src)
+		}
 		return
 	}
 	dmg := p.MaxHP / 16

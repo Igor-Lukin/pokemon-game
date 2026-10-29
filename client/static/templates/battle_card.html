@@ -1,34 +1,34 @@
-<div class="poke pokemonBoxCard pokemonBoxFight minimized" data-p-id="{{.ID}}">
+<div class="poke pokemonBoxCard pokemonBoxFight fighter-card minimized" data-p-id="{{.ID}}">
+  <button class="bag-fab" type="button" title="Инвентарь (бол = ловля)">🎒</button>
   <div class="minicardContainer">
     <div class="minicard">
       <div class="rank txtgray2"><span>{{.Rank}}</span></div>
-      <div class="image"><img src="{{.ImageURL}}" alt="{{.Name}}" /></div>
-      <div class="boxleft antioverlaybug">
-        <img src="/static/images/pokeball.png" class="ball clickable" />
-        <div class="typ" style="visibility: visible">
-          {{range .Types}}
-          <img src="/static/images/types/{{.}}.png" class="typ" />
-          {{end}}
+      <div class="fsprite image"><img src="{{.ImageURL}}" alt="{{.Name}}" /></div>
+      <div class="frow1">
+        <span class="fname name">{{.Name}}</span>
+        <span class="flvl lvl">{{.Level}}</span>
+        <div class="boxleft antioverlaybug">
+          <div class="typ ftypes" style="visibility: visible">
+            {{range .Types}}
+            <img src="/static/images/types/{{.}}.png" class="typ" />
+            {{end}}
+          </div>
         </div>
-        <div class="lvl">{{.Level}}</div>
       </div>
-      <div class="boxright"><div class="icons antioverlaybug"></div><div class="icons2 antioverlaybug"><span class="icon icomoon icon-star-fill starter" style="display: none;"></span></div><div class="items antioverlaybug"></div></div>
-      <div class="bars">
-        <div class="progressbar barHP max">
-          <div style="width: {{.HpPercent}}%;"></div>
-        </div>
-        <div class="progressbar barEXP">
-          <div style="width: {{.ExpPercent}}%;"></div>
-        </div>
+      <div class="hpbar barHP max">
+        <div style="width: {{.HpPercent}}%"></div>
+      </div>
+      <div class="fmeta">
+        <span class="hp-text hp-text-val"></span>
+        <span class="hp-text exp-label" style="color: var(--accent-2)">EXP</span>
+      </div>
+      <div class="expbar barEXP">
+        <div style="width: {{.ExpPercent}}%"></div>
+      </div>
+      <div class="fstatus">
+        <span class="status-badge" style="display: none"></span>
       </div>
     </div>
-  </div>
-  <div class="maincardContainer">
-      <div class="title">
-        <div class="name">{{.Name}}</div>
-        <span class="status-badge" style="display:none"></span>
-        <span class="icon icomoon icon-sex-2 gender"></span>
-      </div>
   </div>
   <div class="moves">
     {{range .Attacks}}

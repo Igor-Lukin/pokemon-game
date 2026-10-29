@@ -83,6 +83,10 @@ func volatileLeechSeed(seeder, seeded *BattlePokemon, log *[]BattleLogEntry) {
 	if !seeded.LeechSeeded || seeded.IsFainted || seeder.IsFainted {
 		return
 	}
+	// [batch7] Магический щит блокирует косвенный урон семян.
+	if abilityBlocksIndirect(seeded) {
+		return
+	}
 	dmg := seeded.MaxHP / 8
 	if dmg < 1 {
 		dmg = 1
@@ -112,6 +116,9 @@ func volatileLeechSeed(seeder, seeded *BattlePokemon, log *[]BattleLogEntry) {
 // покемона. TrapTurns считает оставшиеся ходы; на нуле связывание спадает.
 func volatileTrap(p *BattlePokemon, log *[]BattleLogEntry) {
 	if !p.Trapped || p.IsFainted {
+		return
+	}
+	if abilityBlocksIndirect(p) {
 		return
 	}
 	dmg := p.MaxHP / 16
@@ -230,6 +237,11 @@ var inflictVolatile = map[int]func(target *BattlePokemon, round int, log *[]Batt
 }
 
 func inflictFlinch(t *BattlePokemon, round int, log *[]BattleLogEntry) {
+	if t.AbilityKey == "inner_focus" { // [batch6] Бесстрашие
+		t.Flinched = false
+		abilityLog(t, round, log, "", "не поддаётся испугу")
+		return
+	}
 	t.Flinched = true
 	*log = append(*log, BattleLogEntry{
 		Round:        round,
@@ -294,8 +306,16 @@ func inflictConfusion(t *BattlePokemon, round int, log *[]BattleLogEntry) {
 	if t.Confused {
 		return
 	}
+	if t.AbilityKey == "own_tempo" { // [batch6] Внутренний ритм
+		abilityLog(t, round, log, "", "не теряет собственный ритм — замешательство не действует")
+		return
+	}
 	t.Confused = true
 	t.ConfusedTurns = mathrand.Intn(3) + 2
+	if t.AbilityKey == "tangled_feet" {
+		t.StatStages[7] = clampStage(t.StatStages[7] + 1)
+		abilityLog(t, round, log, "", "путается, но уклонение +1")
+	}
 	*log = append(*log, BattleLogEntry{
 		Round:        round,
 		PokemonName:  t.Name,
@@ -306,9 +326,11 @@ func inflictConfusion(t *BattlePokemon, round int, log *[]BattleLogEntry) {
 
 // inflictCurse — CUSTOM-обработчик атаки "Проклятье" (EffectID effectCurse=12).
 // Уникальная механика, зависит от типа применяющего (attacker):
-//   ПРИЗРАК: жертвует 1/2 от МАКС. HP (может уйти в обморок) и проклинает
-//     цель (−1/4 HP по ходам). Если цель уже проklята — провал, HP не тратится.
-//   НЕ ПРИЗРАК: себе Атака +1, Защита +1, Скорость −1 (статуса не накладывает).
+//
+//	ПРИЗРАК: жертвует 1/2 от МАКС. HP (может уйти в обморок) и проклинает
+//	  цель (−1/4 HP по ходам). Если цель уже проklята — провал, HP не тратится.
+//	НЕ ПРИЗРАК: себе Атака +1, Защита +1, Скорость −1 (статуса не накладывает).
+//
 // Всё поведение атаки живёт здесь (у атаки НЕТ строк attack_stat_changes),
 // иначе не-призрак-статы протекли бы и в призрак-ветку.
 func inflictCurse(attacker, defender *BattlePokemon, round int, log *[]BattleLogEntry) {

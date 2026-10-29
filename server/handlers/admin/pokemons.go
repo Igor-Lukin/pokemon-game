@@ -33,6 +33,8 @@ type Pokemon struct {
 	EvolutionMethodID  sql.NullInt64
 	EvolutionLevel     sql.NullInt64
 	EvolutionItemID    sql.NullInt64
+	EvolutionCondition sql.NullString
+	EvolutionPriority  sql.NullInt64
 }
 
 // Список покемонов
@@ -128,6 +130,8 @@ func CreatePokemonHandler(w http.ResponseWriter, r *http.Request) {
 		evolutionMethodID := r.FormValue("evolution_method_id")
 		evolutionLevel := r.FormValue("evolution_level")
 		evolutionItemID := r.FormValue("evolution_item_id")
+		evolutionCondition := r.FormValue("evolution_condition")
+		evolutionPriority := r.FormValue("evolution_priority")
 		imageURL := r.FormValue("image_url")
 
 		if name == "" || primaryTypeID == "" {
@@ -155,18 +159,22 @@ func CreatePokemonHandler(w http.ResponseWriter, r *http.Request) {
 		evolutionMethodVal := nullInt(evolutionMethodID)
 		evolutionLevelVal := nullInt(evolutionLevel)
 		evolutionItemVal := nullInt(evolutionItemID)
+		evolutionConditionVal := nullString(evolutionCondition)
+		evolutionPriorityVal, _ := strconv.Atoi(evolutionPriority)
 
 		_, err := db.DB.Exec(`
 			INSERT INTO pokemons (
 				name, description, height, weight, base_hp, base_attack, base_defense, base_speed,
 				base_special_attack, base_special_defense, category_power, experience_group, rarity,
 				female_percentage, male_percentage, primary_type_id, secondary_type_id, evolves_from_id,
-				evolution_method_id, evolution_level, evolution_item_id, image_url
-			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				evolution_method_id, evolution_level, evolution_item_id, evolution_condition,
+				evolution_priority, image_url
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			name, description, heightVal, weightVal, baseHPVal, baseAttackVal, baseDefenseVal, baseSpeedVal,
 			baseSpecialAttackVal, baseSpecialDefenseVal, categoryPowerVal, experienceGroupVal, rarityVal,
 			femalePercentageVal, malePercentageVal, primaryTypeIDVal, secondaryTypeIDVal, evolvesFromIDVal,
-			evolutionMethodVal, evolutionLevelVal, evolutionItemVal, imageURLVal)
+			evolutionMethodVal, evolutionLevelVal, evolutionItemVal, evolutionConditionVal, evolutionPriorityVal,
+			imageURLVal)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -197,14 +205,16 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
     SELECT id, name, description, height, weight, base_hp, base_attack, base_defense, base_speed,
            base_special_attack, base_special_defense, category_power, experience_group, rarity,
            female_percentage, male_percentage, primary_type_id, secondary_type_id,
-           evolves_from_id, evolution_method_id, evolution_level, evolution_item_id, image_url
+           evolves_from_id, evolution_method_id, evolution_level, evolution_item_id,
+           evolution_condition, evolution_priority, image_url
     FROM pokemons WHERE id = ?`, id).Scan(
 			&p.ID, &p.Name, &p.Description, &p.Height, &p.Weight,
 			&p.BaseHP, &p.BaseAttack, &p.BaseDefense, &p.BaseSpeed,
 			&p.BaseSpecialAttack, &p.BaseSpecialDefense, &p.CategoryPower,
 			&p.ExperienceGroup, &p.Rarity, &p.FemalePercentage, &p.MalePercentage,
 			&p.PrimaryTypeID, &p.SecondaryTypeID, &p.EvolvesFromID, &p.EvolutionMethodID,
-			&p.EvolutionLevel, &p.EvolutionItemID, &p.ImageURL)
+			&p.EvolutionLevel, &p.EvolutionItemID, &p.EvolutionCondition, &p.EvolutionPriority,
+			&p.ImageURL)
 
 		if err != nil {
 			if err == sql.ErrNoRows {
@@ -264,9 +274,11 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
 
 		// Загружаем локации покемона
 		locRows, err := db.DB.Query(`
-			SELECT l.id, l.name, pl.rarity 
+			SELECT l.id, l.name, COALESCE(r.name, ''), COALESCE(pl.rarity, ''),
+			       COALESCE(pl.min_level, 1), COALESCE(pl.max_level, 20)
 			FROM pokemon_locations pl
 			JOIN locations l ON pl.location_id = l.id
+			LEFT JOIN regions r ON r.id = l.region_id
 			WHERE pl.pokemon_id = ?`, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -274,33 +286,42 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer locRows.Close()
 		type PokemonLocation struct {
-			ID     int
-			Name   string
-			Rarity string
+			ID         int
+			Name       string
+			RegionName string
+			Rarity     string
+			MinLevel   int
+			MaxLevel   int
 		}
 		var locations []PokemonLocation
 		for locRows.Next() {
 			var loc PokemonLocation
-			if err := locRows.Scan(&loc.ID, &loc.Name, &loc.Rarity); err != nil {
+			if err := locRows.Scan(&loc.ID, &loc.Name, &loc.RegionName, &loc.Rarity, &loc.MinLevel, &loc.MaxLevel); err != nil {
 				continue
 			}
 			locations = append(locations, loc)
 		}
 		// Загружаем все локации для выпадающего списка
-		allLocRows, err := db.DB.Query("SELECT id, name FROM locations ORDER BY name")
+		allLocRows, err := db.DB.Query(`
+			SELECT l.id, l.name, COALESCE(r.name, '')
+			FROM locations l
+			LEFT JOIN regions r ON r.id = l.region_id
+			ORDER BY l.id
+		`)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer allLocRows.Close()
 		type AllLocation struct {
-			ID   int
-			Name string
+			ID         int
+			Name       string
+			RegionName string
 		}
 		var allLocations []AllLocation
 		for allLocRows.Next() {
 			var al AllLocation
-			if err := allLocRows.Scan(&al.ID, &al.Name); err == nil {
+			if err := allLocRows.Scan(&al.ID, &al.Name, &al.RegionName); err == nil {
 				allLocations = append(allLocations, al)
 			}
 		}
@@ -407,6 +428,33 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Предметы эволюции для выбора в форме (категория evolution_stone или effect_type=evolve).
+		var currentEvoItem interface{}
+		if p.EvolutionItemID.Valid {
+			currentEvoItem = p.EvolutionItemID.Int64
+		}
+		evoItemsRows, err := db.DB.Query(`
+			SELECT id, name FROM items
+			WHERE category_id = 5 OR COALESCE(effect_type, '') = 'evolve' OR id = COALESCE(?, -1)
+			ORDER BY id
+		`, currentEvoItem)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		defer evoItemsRows.Close()
+		type EvoItem struct {
+			ID   int
+			Name string
+		}
+		var evoItems []EvoItem
+		for evoItemsRows.Next() {
+			var ei EvoItem
+			if err := evoItemsRows.Scan(&ei.ID, &ei.Name); err == nil {
+				evoItems = append(evoItems, ei)
+			}
+		}
+
 		// Добавьте эти поля в структуру data
 		data := struct {
 			Pokemon      Pokemon
@@ -420,7 +468,8 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
 			LearnMethods []LearnMethod
 			AllPokemons  []SimplePokemon // новое
 			EvoMethods   []EvoMethod     // новое
-		}{p, types, abilities, allAbilities, locations, allLocations, attacks, allAttacks, learnMethods, allPokemons, evoMethods}
+			EvoItems     []EvoItem       // предметы эволюции
+		}{p, types, abilities, allAbilities, locations, allLocations, attacks, allAttacks, learnMethods, allPokemons, evoMethods, evoItems}
 
 		tmpl := template.Must(template.ParseFiles("./server/templates/admin/pokemon_form.html"))
 		tmpl.Execute(w, data)
@@ -449,6 +498,8 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
 		evolutionMethodID := r.FormValue("evolution_method_id")
 		evolutionLevel := r.FormValue("evolution_level")
 		evolutionItemID := r.FormValue("evolution_item_id")
+		evolutionCondition := r.FormValue("evolution_condition")
+		evolutionPriority := r.FormValue("evolution_priority")
 		imageURL := r.FormValue("image_url")
 
 		if name == "" || primaryTypeID == "" {
@@ -476,18 +527,22 @@ func EditPokemonHandler(w http.ResponseWriter, r *http.Request) {
 		evolutionMethodVal := nullInt(evolutionMethodID)
 		evolutionLevelVal := nullInt(evolutionLevel)
 		evolutionItemVal := nullInt(evolutionItemID)
+		evolutionConditionVal := nullString(evolutionCondition)
+		evolutionPriorityVal, _ := strconv.Atoi(evolutionPriority)
 
 		_, err := db.DB.Exec(`
     UPDATE pokemons SET
         name=?, description=?, height=?, weight=?, base_hp=?, base_attack=?, base_defense=?, base_speed=?,
         base_special_attack=?, base_special_defense=?, category_power=?, experience_group=?, rarity=?,
         female_percentage=?, male_percentage=?, primary_type_id=?, secondary_type_id=?, evolves_from_id=?,
-        evolution_method_id=?, evolution_level=?, evolution_item_id=?, image_url=?
+        evolution_method_id=?, evolution_level=?, evolution_item_id=?, evolution_condition=?,
+        evolution_priority=?, image_url=?
     WHERE id=?`,
 			name, description, heightVal, weightVal, baseHPVal, baseAttackVal, baseDefenseVal, baseSpeedVal,
 			baseSpecialAttackVal, baseSpecialDefenseVal, categoryPowerVal, experienceGroupVal, rarityVal,
 			femalePercentageVal, malePercentageVal, primaryTypeIDVal, secondaryTypeIDVal, evolvesFromIDVal,
-			evolutionMethodVal, evolutionLevelVal, evolutionItemVal, imageURLVal, id)
+			evolutionMethodVal, evolutionLevelVal, evolutionItemVal, evolutionConditionVal,
+			evolutionPriorityVal, imageURLVal, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -626,13 +681,56 @@ func AddPokemonLocationHandler(w http.ResponseWriter, r *http.Request) {
 	pokemonID := r.FormValue("pokemon_id")
 	locationID := r.FormValue("location_id")
 	rarity := r.FormValue("rarity")
+	minLevel := formInt(r.FormValue("min_level"), 1)
+	maxLevel := formInt(r.FormValue("max_level"), 20)
 	if pokemonID == "" || locationID == "" {
 		http.Error(w, "Missing parameters", http.StatusBadRequest)
 		return
 	}
+	if minLevel < 1 || minLevel > 100 || maxLevel < 1 || maxLevel > 100 || minLevel > maxLevel {
+		http.Error(w, "Invalid level range", http.StatusBadRequest)
+		return
+	}
 	pID, _ := strconv.Atoi(pokemonID)
 	lID, _ := strconv.Atoi(locationID)
-	_, err := db.DB.Exec("INSERT INTO pokemon_locations (pokemon_id, location_id, rarity) VALUES (?, ?, ?)", pID, lID, rarity)
+	_, err := db.DB.Exec(
+		"INSERT INTO pokemon_locations (pokemon_id, location_id, rarity, min_level, max_level) VALUES (?, ?, ?, ?, ?)",
+		pID, lID, rarity, minLevel, maxLevel)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/pokemons/edit?id="+pokemonID, http.StatusSeeOther)
+}
+
+// Редактирование спавна (min/max/rarity) у покемона
+func EditPokemonLocationHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAdmin(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	pokemonID := r.FormValue("pokemon_id")
+	locationID := r.FormValue("location_id")
+	rarity := r.FormValue("rarity")
+	minLevel := formInt(r.FormValue("min_level"), 1)
+	maxLevel := formInt(r.FormValue("max_level"), 20)
+	if pokemonID == "" || locationID == "" {
+		http.Error(w, "Missing parameters", http.StatusBadRequest)
+		return
+	}
+	if minLevel < 1 || minLevel > 100 || maxLevel < 1 || maxLevel > 100 || minLevel > maxLevel {
+		http.Error(w, "Invalid level range", http.StatusBadRequest)
+		return
+	}
+	pID, _ := strconv.Atoi(pokemonID)
+	lID, _ := strconv.Atoi(locationID)
+	_, err := db.DB.Exec(
+		"UPDATE pokemon_locations SET rarity = ?, min_level = ?, max_level = ? WHERE pokemon_id = ? AND location_id = ?",
+		rarity, minLevel, maxLevel, pID, lID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

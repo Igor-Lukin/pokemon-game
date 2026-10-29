@@ -26,6 +26,80 @@ func checkAdmin(r *http.Request) bool {
 	return isAdmin == 1
 }
 
+type regionOption struct {
+	ID   int
+	Name string
+}
+
+type weatherOption struct {
+	ID   int
+	Name string
+}
+
+type locationExitOption struct {
+	ID   int
+	Name string
+}
+
+type locationFormData struct {
+	ID           int
+	Name         string
+	Description  string
+	HasNursery   bool
+	HasHealing   bool
+	RegionID     int
+	Regions      []regionOption
+	Exits        []locationExitOption
+	AllLocations []locationExitOption
+}
+
+type regionFormData struct {
+	ID               int
+	Name             string
+	CurrentWeatherID int
+	Weathers         []weatherOption
+}
+
+func loadRegionOptions() ([]regionOption, error) {
+	rows, err := db.DB.Query("SELECT id, name FROM regions ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var regions []regionOption
+	for rows.Next() {
+		var r regionOption
+		if err := rows.Scan(&r.ID, &r.Name); err == nil {
+			regions = append(regions, r)
+		}
+	}
+	return regions, nil
+}
+
+func loadWeatherOptions() ([]weatherOption, error) {
+	rows, err := db.DB.Query("SELECT id, name FROM weather ORDER BY id")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var weathers []weatherOption
+	for rows.Next() {
+		var w weatherOption
+		if err := rows.Scan(&w.ID, &w.Name); err == nil {
+			weathers = append(weathers, w)
+		}
+	}
+	return weathers, nil
+}
+
+func formInt(value string, fallback int) int {
+	n, err := strconv.Atoi(value)
+	if err != nil || n == 0 {
+		return fallback
+	}
+	return n
+}
+
 // главная страница админки
 func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	if !checkAdmin(r) {
@@ -42,7 +116,13 @@ func LocationsHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
-	rows, err := db.DB.Query("SELECT id, name, description, has_nursery, has_healing FROM locations ORDER BY id")
+	rows, err := db.DB.Query(`
+		SELECT l.id, l.name, l.description, l.has_nursery, l.has_healing,
+		       COALESCE(l.region_id, 1), COALESCE(r.name, '')
+		FROM locations l
+		LEFT JOIN regions r ON r.id = l.region_id
+		ORDER BY l.id
+	`)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -55,12 +135,14 @@ func LocationsHandler(w http.ResponseWriter, r *http.Request) {
 		Description string
 		HasNursery  bool
 		HasHealing  bool
+		RegionID    int
+		RegionName  string
 	}
 	var locations []Location
 	for rows.Next() {
 		var loc Location
 		var nursery, healing int
-		if err := rows.Scan(&loc.ID, &loc.Name, &loc.Description, &nursery, &healing); err != nil {
+		if err := rows.Scan(&loc.ID, &loc.Name, &loc.Description, &nursery, &healing, &loc.RegionID, &loc.RegionName); err != nil {
 			continue
 		}
 		loc.HasNursery = nursery == 1
@@ -78,8 +160,13 @@ func CreateLocationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if r.Method == http.MethodGet {
+		regions, err := loadRegionOptions()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		tmpl := template.Must(template.ParseFiles("./server/templates/admin/location_form.html"))
-		tmpl.Execute(w, nil)
+		tmpl.Execute(w, locationFormData{RegionID: 2, Regions: regions})
 		return
 	}
 	if r.Method == http.MethodPost {
@@ -97,7 +184,10 @@ func CreateLocationHandler(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("has_healing") == "on" {
 			hasHealing = 1
 		}
-		_, err := db.DB.Exec("INSERT INTO locations (name, description, has_nursery, has_healing) VALUES (?, ?, ?, ?)", name, description, hasNursery, hasHealing)
+		regionID := formInt(r.FormValue("region_id"), 2)
+		_, err := db.DB.Exec(
+			"INSERT INTO locations (name, description, has_nursery, has_healing, region_id) VALUES (?, ?, ?, ?, ?)",
+			name, description, hasNursery, hasHealing, regionID)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -125,8 +215,11 @@ func EditLocationHandler(w http.ResponseWriter, r *http.Request) {
 
 	if r.Method == http.MethodGet {
 		var name, description string
-		var hasNursery, hasHealing int
-		err := db.DB.QueryRow("SELECT name, description, has_nursery, has_healing FROM locations WHERE id = ?", id).Scan(&name, &description, &hasNursery, &hasHealing)
+		var hasNursery, hasHealing, regionID int
+		err := db.DB.QueryRow(`
+			SELECT name, description, has_nursery, has_healing, COALESCE(region_id, 1)
+			FROM locations WHERE id = ?
+		`, id).Scan(&name, &description, &hasNursery, &hasHealing, &regionID)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "Location not found", http.StatusNotFound)
@@ -144,42 +237,51 @@ func EditLocationHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		defer rows.Close()
-		type Exit struct {
-			ID   int
-			Name string
-		}
-		var exits []Exit
+		var exits []locationExitOption
 		for rows.Next() {
-			var e Exit
+			var e locationExitOption
 			if err := rows.Scan(&e.ID, &e.Name); err == nil {
 				exits = append(exits, e)
 			}
 		}
 
 		// Получаем список всех локаций для выпадающего списка добавления выхода
-		allRows, err := db.DB.Query("SELECT id, name FROM locations ORDER BY id")
+		allRows, err := db.DB.Query(`
+			SELECT l.id, l.name || COALESCE(' — ' || r.name, '')
+			FROM locations l
+			LEFT JOIN regions r ON r.id = l.region_id
+			ORDER BY l.id
+		`)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		defer allRows.Close()
-		var allLocations []Exit
+		var allLocations []locationExitOption
 		for allRows.Next() {
-			var loc Exit
+			var loc locationExitOption
 			if err := allRows.Scan(&loc.ID, &loc.Name); err == nil {
 				allLocations = append(allLocations, loc)
 			}
 		}
 
-		data := struct {
-			ID           int
-			Name         string
-			Description  string
-			HasNursery   bool
-			HasHealing   bool
-			Exits        []Exit
-			AllLocations []Exit
-		}{ID: id, Name: name, Description: description, HasNursery: hasNursery == 1, HasHealing: hasHealing == 1, Exits: exits, AllLocations: allLocations}
+		regions, err := loadRegionOptions()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		data := locationFormData{
+			ID:           id,
+			Name:         name,
+			Description:  description,
+			HasNursery:   hasNursery == 1,
+			HasHealing:   hasHealing == 1,
+			RegionID:     regionID,
+			Regions:      regions,
+			Exits:        exits,
+			AllLocations: allLocations,
+		}
 
 		tmpl, err := template.ParseFiles("./server/templates/admin/location_form.html")
 		if err != nil {
@@ -209,7 +311,10 @@ func EditLocationHandler(w http.ResponseWriter, r *http.Request) {
 		if r.FormValue("has_healing") == "on" {
 			hasHealing = 1
 		}
-		_, err := db.DB.Exec("UPDATE locations SET name = ?, description = ?, has_nursery = ?, has_healing = ? WHERE id = ?", name, description, hasNursery, hasHealing, id)
+		regionID := formInt(r.FormValue("region_id"), 1)
+		_, err := db.DB.Exec(
+			"UPDATE locations SET name = ?, description = ?, has_nursery = ?, has_healing = ?, region_id = ? WHERE id = ?",
+			name, description, hasNursery, hasHealing, regionID, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -247,6 +352,155 @@ func DeleteLocationHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/admin/locations", http.StatusSeeOther)
+}
+
+// список регионов
+func RegionsHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAdmin(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	rows, err := db.DB.Query(`
+		SELECT r.id, r.name, COALESCE(r.current_weather_id, 1), COALESCE(w.name, ''),
+		       (SELECT COUNT(*) FROM locations l WHERE l.region_id = r.id)
+		FROM regions r
+		LEFT JOIN weather w ON w.id = r.current_weather_id
+		ORDER BY r.id
+	`)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	type Region struct {
+		ID               int
+		Name             string
+		CurrentWeatherID int
+		WeatherName      string
+		LocationCount    int
+	}
+	var regions []Region
+	for rows.Next() {
+		var reg Region
+		if err := rows.Scan(&reg.ID, &reg.Name, &reg.CurrentWeatherID, &reg.WeatherName, &reg.LocationCount); err == nil {
+			regions = append(regions, reg)
+		}
+	}
+	tmpl := template.Must(template.ParseFiles("./server/templates/admin/regions.html"))
+	tmpl.Execute(w, regions)
+}
+
+// создание региона
+func CreateRegionHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAdmin(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if r.Method == http.MethodGet {
+		weathers, err := loadWeatherOptions()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tmpl := template.Must(template.ParseFiles("./server/templates/admin/region_form.html"))
+		tmpl.Execute(w, regionFormData{CurrentWeatherID: 1, Weathers: weathers})
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "Name is required", http.StatusBadRequest)
+		return
+	}
+	weatherID := formInt(r.FormValue("current_weather_id"), 1)
+	if _, err := db.DB.Exec("INSERT INTO regions (name, current_weather_id) VALUES (?, ?)", name, weatherID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/regions", http.StatusSeeOther)
+}
+
+// редактирование региона
+func EditRegionHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAdmin(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	idStr := r.URL.Query().Get("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id == 0 {
+		http.Error(w, "Invalid id", http.StatusBadRequest)
+		return
+	}
+
+	if r.Method == http.MethodGet {
+		var name string
+		var weatherID int
+		err := db.DB.QueryRow("SELECT name, COALESCE(current_weather_id, 1) FROM regions WHERE id = ?", id).Scan(&name, &weatherID)
+		if err != nil {
+			if err == sql.ErrNoRows {
+				http.Error(w, "Region not found", http.StatusNotFound)
+			} else {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
+		weathers, err := loadWeatherOptions()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		tmpl := template.Must(template.ParseFiles("./server/templates/admin/region_form.html"))
+		tmpl.Execute(w, regionFormData{ID: id, Name: name, CurrentWeatherID: weatherID, Weathers: weathers})
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.FormValue("name")
+	if name == "" {
+		http.Error(w, "Name is required", http.StatusBadRequest)
+		return
+	}
+	weatherID := formInt(r.FormValue("current_weather_id"), 1)
+	if _, err := db.DB.Exec("UPDATE regions SET name = ?, current_weather_id = ? WHERE id = ?", name, weatherID, id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/regions", http.StatusSeeOther)
+}
+
+// удаление региона (только если в нём нет локаций)
+func DeleteRegionHandler(w http.ResponseWriter, r *http.Request) {
+	if !checkAdmin(r) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	id, err := strconv.Atoi(r.FormValue("id"))
+	if err != nil || id == 0 {
+		http.Error(w, "Invalid id", http.StatusBadRequest)
+		return
+	}
+	var count int
+	db.DB.QueryRow("SELECT COUNT(*) FROM locations WHERE region_id = ?", id).Scan(&count)
+	if count > 0 {
+		http.Error(w, "Нельзя удалить регион, в котором есть локации", http.StatusConflict)
+		return
+	}
+	if _, err := db.DB.Exec("DELETE FROM regions WHERE id = ?", id); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin/regions", http.StatusSeeOther)
 }
 
 // Добавление выхода (перехода) из локации

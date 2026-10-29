@@ -7,10 +7,10 @@ package api
 // (Огнеупорная пыльца(503) — отдельная механика/шаг: волатиль на покемоне.)
 
 const (
-	typeFire          = 2   // тип Огонь
-	moveWaterSport    = 367 // Увлажнение
-	waterSportDuration = 5  // раундов действия
-	movePowder        = 503 // Огнеупорная пыльца (Powder)
+	typeFire           = 2   // тип Огонь
+	moveWaterSport     = 367 // Увлажнение
+	waterSportDuration = 5   // раундов действия
+	movePowder         = 503 // Огнеупорная пыльца (Powder)
 )
 
 // waterSportAdjust — если Увлажнение активно и ход огненного типа, возвращает
@@ -34,6 +34,11 @@ func waterSportAdjust(move *BattleMove, active bool) *BattleMove {
 // (firePowderBurst). Пыльца снимается в конце хода (действует текущий ход).
 func applyPowderMove(defender *BattlePokemon, round int, log *[]BattleLogEntry) {
 	if defender == nil {
+		return
+	}
+	// [batch6] Укрытие: порошок не прилипает.
+	if defender.AbilityKey == "overcoat" {
+		abilityLog(defender, round, log, "", "не пропускает порошок")
 		return
 	}
 	defender.Powdered = true

@@ -1,0 +1,264 @@
+====================================================================
+MISSING_MOVES_gen8 — хвосты восьмого поколения (#810–905, Галар)
+Дата: 2026-10-23. Скилл: adding-pokemon-generations.
+Связанные файлы: HANDOFF_gen8.txt, TEST_gen8.txt.
+====================================================================
+
+Ниже — всё, что сознательно НЕ добавлялось или добавлено
+приблизительно, и механики, которые остались на отдельные задачи.
+Виды, статы, лёрнсеты, способности и спрайты внесены полностью.
+
+--------------------------------------------------------------------
+1. РЕГИОНАЛЬНЫЕ ФОРМЫ, GIGANTAMAX И ПРОЧИЕ ФОРМЫ
+--------------------------------------------------------------------
+Отдельными видами НЕ заводились (только базовые виды #810–905):
+- Galarian forms: Meowth, Ponyta, Rapidash, Slowpoke, Slowbro,
+  Slowking, Farfetch'd, Weezing, Mr. Mime, Articuno, Zapdos, Moltres,
+  Corsola, Zigzagoon, Linoone, Darumaka, Darmanitan, Yamask, Stunfisk;
+- Hisuian forms: Growlithe, Arcanine, Voltorb, Electrode, Typhlosion,
+  Qwilfish, Sneasel, Samurott, Lilligant, Zorua, Zoroark, Braviary,
+  Sliggoo, Goodra, Avalugg, Decidueye;
+- Gigantamax-формы (в т.ч. G-Max-мувы) не добавлялись;
+- Toxtricity (Amped/Low Key) — взят amped;
+- Eiscue (Ice/Noice) — взят ice;
+- Indeedee (male/female) — взят male;
+- Morpeko (Full Belly/Hangry) — взят full-belly;
+- Urshifu (Single Strike/Rapid Strike) — взят single-strike;
+- Basculegion (male/female) — взят male;
+- Enamorus (Incarnate/Therian) — взят incarnate;
+- Zacian/Zamazenta (Crowned), Eternatus (Eternamax),
+  Calyrex (Ice/Shadow Rider) — взяты базовые формы;
+- Zarude (Dada) — взят базовый.
+`pokemon_forms` не трогался.
+
+Из-за этого НЕ добавлялись и не входят в лёрнсеты базовых видов
+форменные/подписные атаки, которых нет в выбранных version group
+PokeAPI у базовых форм: Astral Barrage, Behemoth Bash, Behemoth Blade,
+Ceaseless Edge, Glacial Lance, Mountain Gale, Raging Fury,
+Shell Side Arm, Springtide Storm (форма), Strange Steam,
+Triple Arrows, Wave Crash и др. (полный список — §4).
+
+--------------------------------------------------------------------
+2. ЭВОЛЮЦИИ — ПРИБЛИЖЕНИЯ И НЕМОДЕЛИРУЕМЫЕ УСЛОВИЯ
+--------------------------------------------------------------------
+Внутригенная линия и кросс-ген эволюции ИЗ старых поколений:
+- Stantler 234 -> Wyrdeer 899: канон Legends: Arceus — Psyshield Bash
+  в agile style 20 раз. В БД method=1 (level), level=30 — ближайшее
+  поддерживаемое приближение; condition=NULL.
+- Scyther 123 -> Kleavor 900: канон — Black Augurite (use-item).
+  В БД method=5 (item), evolution_item_id=NULL; предмет не заводился.
+- Ursaring 217 -> Ursaluna 901: канон — Peat Block под полной луной.
+  В БД method=5 (item), item=NULL; фаза луны не моделируется.
+- Basculin 550 -> Basculegion 902: канон — получить 294 HP recoil-урона.
+  Recoil-условие не моделируется; приближение method=1, level=40.
+- Sneasel 215 -> Sneasler 903: эволюция требует HISUIAN Sneasel.
+  Hisuian-формы в БД нет, поэтому связь НЕ создавалась (903 — базовая).
+- Qwilfish 211 -> Overqwil 904: аналогично требует HISUIAN Qwilfish.
+  Связь НЕ создавалась (904 — базовая).
+- Enamorus 905 — базовая, эволюции нет.
+- Эволюции gen8-видов в gen9+ НЕ добавлялись: Applin -> Dipplin,
+  Duraludon -> Archaludon и т.п.
+- Galar-формы не заводились, поэтому НЕ связывались:
+  Farfetch'd -> Sirfetch'd (865), Mr. Mime -> Mr. Rime (866),
+  Corsola -> Cursola (864), Linoone -> Obstagoon (862),
+  Meowth -> Perrserker (863), Yamask -> Runerigus (867).
+  Все шесть видов #862–867 остались базовыми.
+
+Внутригенная линия с приближениями:
+- Applin 840 -> Flapple 841 / Appletun 842: use-item (Tart/Sweet
+  Apple). В БД method=5, item=NULL. Обе строки есть; движок level-up
+  не участвует.
+- Sinistea 854 -> Polteageist 855: Cracked/Chipped Pot.
+  method=5, item=NULL.
+- Milcery 868 -> Alcremie 869: спин с Sweet. method=5, item=NULL;
+  тип сладости и спин не моделируются.
+- Kubfu 891 -> Urshifu 892: Scroll of Darkness/Waters.
+  method=5, item=NULL; стиль не моделируется.
+- Clobbopus 852 -> Grapploct 853: канон — level-up, зная Taunt.
+  known_move не моделируется; приближение level=35 (Taunt изучается
+  на 35).
+- Snom 872 -> Frosmoth 873: friendship ночью. method=4,
+  condition='time_night' (движок поддерживает).
+- Toxel 848 -> Toxtricity 849: level 30; форма (nature) не
+  моделируется, берётся amped.
+
+Предметы эволюции (Tart/Sweet Apple, Cracked/Chipped Pot, Sweet,
+Scrolls, Peat Block, Black Augurite) в `items` не заводились.
+Локации дикой ловли не трогались.
+
+--------------------------------------------------------------------
+3. НОВЫЕ АТАКИ — ТОЛЬКО ДАННЫЕ (58 шт., id 674–731)
+--------------------------------------------------------------------
+Базовые поля (тип/категория/сила/точность/PP/приоритет/цель/
+контакт/звук/hits/crit/drain) заполнены по PokeAPI.
+Эффекты ниже в движке НЕ реализованы (effect_id/effect_status_id/
+attack_stat_changes не заполнялись), кроме отмеченного:
+
+- 674 Apple Acid — понижение Спец.Защиты цели на 1 не реализовано.
+- 675 Aura Wheel — смена типа по форме и +1 Скорость не реализованы
+  (тип/данные взяты у amped-формы).
+- 676 Aurora Veil — экран на 5 ходов и требование града/снега
+  не реализованы. Это атака gen7, отсутствовавшая в каталоге.
+- 677 Barb Barrage — 50% отравления и двойная сила по отравленной
+  цели не реализованы.
+- 678 Body Press — расчёт урона от Защиты вместо Атаки не реализован.
+- 679 Bolt Beak — двойная сила при ходе первым не реализована.
+- 680 Branch Poke — без дополнительных эффектов.
+- 681 Breaking Swipe — понижение Атаки всех противников не реализовано
+  (в одиночном бою сведено к одной цели).
+- 682 Burning Jealousy — ожог целей с повышенными статами не реализован.
+- 683 Coaching — бафф Атаки/Защиты союзников не реализован.
+- 684 Court Change — обмен эффектами поля не реализован.
+- 685 Decorate — +2 Атаки и Спец.Атаки цели не реализованы.
+- 686 Dire Claw — 50% шанс статуса (яд/паралич/сон) не реализован.
+- 687 Dragon Darts — попадание по двум разным целям не реализовано
+  (hits_min/max=2 заданы).
+- 688 Dragon Energy — зависимость силы от HP пользователя не
+  реализована.
+- 689 Drum Beating — понижение Скорости цели на 1 не реализовано.
+- 690 Dual Wingbeat — hits_min/max=2 заданы.
+- 691 Dynamax Cannon — двойной урон по Динамакс/Гигантамакс не
+  реализован.
+- 692 Eternabeam — пропуск следующего хода не реализован.
+- 693 Expanding Force — усиление/задевание всех на Psychic Terrain
+  не реализовано.
+- 694 False Surrender — never_misses=1 задан.
+- 695 Fishious Rend — двойная сила при ходе первым не реализована.
+- 696 Flip Turn — возврат в команду после атаки не реализован.
+- 697 Grassy Glide — приоритет +1 на Grassy Terrain не реализован
+  (priority=0 как в PokeAPI).
+- 698 Grav Apple — понижение Защиты цели на 1 не реализовано.
+- 699 Headlong Rush — понижение своей Защиты/Спец.Защиты на 1
+  не реализовано.
+- 700 Jaw Lock — взаимный захват цели не реализован.
+- 701 Jungle Healing — лечение 25% и снятие статусов у союзников
+  не реализовано.
+- 702 Lash Out — двойная сила при пониженных статах не реализована.
+- 703 Life Dew — лечение 25% себе и союзникам не реализовано.
+- 704 Magic Powder — смена типа цели на Psychic не реализована.
+- 705 Meteor Assault — пропуск следующего хода не реализован.
+- 706 Meteor Beam — +1 Спец.Атаки пользователя не реализован.
+- 707 Misty Explosion — создание Misty Terrain не реализовано.
+- 708 No Retreat — +1 ко всем статам и запрет ухода не реализованы.
+- 709 Obstruct — защита и -2 Защиты контактному атакующему
+  не реализованы.
+- 710 Octolock — захват и понижение Защиты/Спец.Защиты каждый ход
+  не реализованы.
+- 711 Overdrive — задевание всех противников не реализовано
+  (в одиночном бою сведено к одной цели).
+- 712 Poltergeist — провал без предмета у цели не реализован.
+- 713 Psyshield Bash — +1 Защиты пользователя не реализован.
+- 714 Pyro Ball — 10% ожога не реализованы.
+- 715 Rising Voltage — усиление на Electric Terrain не реализовано.
+- 716 Scale Shot — +1 Скорость / -1 Защита за удар не реализованы.
+- 717 Scorching Sands — 30% ожога не реализованы.
+- 718 Skitter Smack — понижение Спец.Атаки цели на 1 не реализовано.
+- 719 Snipe Shot — игнорирование перенаправления и повышенный crit
+  заданы только данными (crit_rate=1); механика перенаправления
+  в движке отсутствует.
+- 720 Spirit Break — понижение Спец.Атаки цели на 1 не реализовано.
+- 721 Springtide Storm — 30% понижения Атаки не реализованы.
+- 722 Steel Beam — понижение своей Спец.Атаки на 2 не реализовано.
+- 723 Steel Roller — провал на Grassy Terrain и снятие арены
+  не реализованы.
+- 724 Stone Axe — установка Stealth Rock не реализована.
+- 725 Stuff Cheeks — +2 Защиты и поедание ягоды не реализованы.
+- 726 Tar Shot — -1 Скорость и уязвимость к огню не реализованы.
+- 727 Teatime — поедание ягод всеми не реализовано.
+- 728 Terrain Pulse — смена типа/силы от арены не реализована.
+- 729 Thunder Cage — захват и повторный урон не реализованы.
+- 730 Triple Axel — три удара с растущей точностью/силой не
+  реализованы (hits=3 задано).
+- 731 Wicked Blow — гарантированный крит задан crit_rate=6.
+
+Дубли уровней одной атаки в лёрнсете свёрнуты по PK
+`(pokemon_id, attack_id, learn_method_id)` с минимальным уровнем.
+
+Лёрнсет-фолбэков не потребовалось: у всех 96 видов есть хотя бы
+одна level-up урон-атака.
+
+--------------------------------------------------------------------
+4. АТАКИ GEN8, НЕ ДОБАВЛЕННЫЕ В КАТАЛОГ (51)
+--------------------------------------------------------------------
+Не входят в выбранные лёрнсеты базовых видов (#810–905) по PokeAPI
+sword-shield / legends-arceus. Не добавлялись как данные, чтобы не
+плодить мёртвые строки; при добавлении форм/Макс-механик их нужно
+завести вместе с носителями.
+
+Max-мувы (19): Max Airstream, Max Darkness, Max Flare, Max Flutterby,
+Max Geyser, Max Guard, Max Hailstorm, Max Knuckle, Max Lightning,
+Max Mindstorm, Max Ooze, Max Overgrowth, Max Phantasm, Max Quake,
+Max Rockfall, Max Starfall, Max Steelspike, Max Strike, Max Wyrmwind.
+
+Форменные/подписные и прочие (32): Astral Barrage, Behemoth Bash,
+Behemoth Blade, Bitter Malice, Bleakwind Storm, Ceaseless Edge,
+Chloroblast, Clangorous Soul, Corrosive Gas, Eerie Spell, Esper Wing,
+Fiery Wrath, Freezing Glare, Glacial Lance, Infernal Parade,
+Lunar Blessing, Mountain Gale, Mystical Power, Power Shift,
+Raging Fury, Sandsear Storm, Shell Side Arm, Shelter, Snap Trap,
+Strange Steam, Surging Strikes, Take Heart, Thunderous Kick,
+Triple Arrows, Victory Dance, Wave Crash, Wildbolt Storm.
+
+Примечание: часть этих атак принадлежит Hisuian/Galarian формам,
+часть — Макс-механикам или видам других поколений, часть — event-
+ходам. Лёрнсеты #899–905 ограничены данными PokeAPI
+`legends-arceus` (8–10 ходов на вид).
+
+--------------------------------------------------------------------
+5. СПОСОБНОСТИ — МЕХАНИКИ
+--------------------------------------------------------------------
+Новые строки каталога (id 251–277, effect_key=NULL), механики не
+реализованы:
+  251 Подбор мяча (Ball Fetch)
+  252 Ледяное ржание (Chilling Neigh)
+  253 Хлопковый пух (Cotton Down)
+  254 Неустрашимый щит (Dauntless Shield)
+  255 Драконья пасть (Dragon's Maw)
+  256 Мрачное ржание (Grim Neigh)
+  257 Глотательная ракета (Gulp Missile)
+  258 Переключение голода (Hunger Switch)
+  259 Ледяное лицо (Ice Face)
+  260 Ледяная чешуя (Ice Scales)
+  261 Бесстрашный клинок (Intrepid Sword)
+  262 Либеро (Libero)
+  263 Лёгкий металл (Light Metal) — старая способность, отсутствовала
+  264 Зеркальная броня (Mirror Armor)
+  265 Гиблое тело (Perish Body)
+  266 Точка силы (Power Spot)
+  267 Хвост-пропеллер (Propeller Tail)
+  268 Панк-рок (Punk Rock)
+  269 Созревание (Ripen)
+  270 Песчаный плевок (Sand Spit)
+  271 Очистка экрана (Screen Cleaner)
+  272 Стойкость (Stalwart)
+  273 Паровой двигатель (Steam Engine)
+  274 Стальной дух (Steely Spirit)
+  275 Транзистор (Transistor)
+  276 Невидимый кулак (Unseen Fist)
+  277 Блуждающий дух (Wandering Spirit)
+Из 34 способностей gen8 в каталог попали 26 — только те, что есть
+у базовых видов #810–905. Form-only способности (Mimicry,
+Gorilla Tactics, Neutralizing Gas, Pastel Veil, Quick Draw, Curious
+Medicine, As One) не заводились.
+
+Смаплены на существующие строки (без создания дублей):
+- Magic Bounce -> 96 «Магическая накидка»;
+- Sharpness -> 237 «Острота»;
+- Defiant -> 51 «Дерзость» (дубль 249 «Неповиновение» не
+  использовался);
+- Sand Rush -> 221 «Широкие лапы» (дубль 250 «Песчаный бег»
+  не использовался).
+Механики существующих способностей не менялись.
+
+--------------------------------------------------------------------
+6. ПРОЧЕЕ
+--------------------------------------------------------------------
+- Описания видов — шаблонные: «X — покемон/легендарный покемон/
+  мифический покемон восьмого поколения (регион Галар/Хисуи).
+  Национальный №N.»
+- is_legendary выставлен по каноническому списку проекта
+  (`server/db/legendaries.go`): #888–898 и #905.
+- Локации, NPC, TM/HM, предметы, формы не трогались.
+- `PRAGMA foreign_key_check` содержит 51 pre-existing нарушение;
+  новых при импорте gen8 не появилось (см. TEST_gen8.txt).
+====================================================================

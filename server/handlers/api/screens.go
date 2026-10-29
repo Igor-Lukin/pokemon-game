@@ -53,6 +53,13 @@ type SideState struct {
 	HealingWishPending bool
 	LuckyChantTurns    int // Наговор: по этой стороне нельзя крит (field_effects.go)
 	LuckyChantSetTurn  int
+	// [batch7] Командные ауры-таймеры (5 раундов).
+	SweetVeilTurns     int
+	SweetVeilSetTurn   int
+	FlowerVeilTurns    int
+	FlowerVeilSetTurn  int
+	FriendGuardTurns   int
+	FriendGuardSetTurn int
 }
 
 // sideFor — сторона указанного покемона: активный покемон игрока -> PlayerSide,
@@ -191,6 +198,13 @@ func safeguardBlocks(effectID int) bool {
 // effectiveSpeed (статус/бусты Скорости считаются там).
 func tailwindSpeed(bs *BattleState, p *BattlePokemon) int {
 	s := effectiveSpeed(p)
+	// [batch6] Погодное удвоение Скорости (Водоплавающий/Хлорофилл).
+	if mult := abilityWeatherSpeedMult(bs, p); mult > 1 {
+		s = int(float64(s) * mult)
+	}
+	if mult := abilitySpeedMultExtra(bs, p); mult != 1 {
+		s = int(float64(s) * mult)
+	}
 	if sideFor(bs, p).TailwindTurns > 0 {
 		s *= 2
 	}
@@ -289,6 +303,15 @@ func tickOneSide(s *SideState, who string, round int, log *[]BattleLogEntry) {
 		if s.LuckyChantTurns == 0 {
 			*log = append(*log, BattleLogEntry{Round: round, Message: who + "Наговор развеялся."})
 		}
+	}
+	if s.SweetVeilTurns > 0 && round != s.SweetVeilSetTurn {
+		s.SweetVeilTurns--
+	}
+	if s.FlowerVeilTurns > 0 && round != s.FlowerVeilSetTurn {
+		s.FlowerVeilTurns--
+	}
+	if s.FriendGuardTurns > 0 && round != s.FriendGuardSetTurn {
+		s.FriendGuardTurns--
 	}
 }
 

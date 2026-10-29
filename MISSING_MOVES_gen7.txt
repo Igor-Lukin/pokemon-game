@@ -1,0 +1,171 @@
+====================================================================
+MISSING_MOVES_gen7 — хвосты седьмого поколения (#722–809, Алола)
+Дата: 2026-10-23. Скилл: adding-pokemon-generations.
+Связанные файлы: HANDOFF_gen7.txt, TEST_gen7.txt.
+====================================================================
+
+Ниже — всё, что сознательно НЕ добавлялось или добавлено
+приблизительно, и механики, которые остались на отдельные задачи.
+Данные покемонов/лёрнсетов/способностей/спрайтов при этом полные.
+
+--------------------------------------------------------------------
+1. Z-МУВЫ, Z-КРИСТАЛЛЫ И ПАРТНЁРСКИЕ МУВЫ
+--------------------------------------------------------------------
+- Z-мувы (generic `--physical`/`--special`, эксклюзивные вроде
+  Catastropika, Extreme Evoboost, Genesis Supernova и т.п.) в
+  `attacks`/`pokemon_attacks` НЕ добавлялись.
+- Z-кристаллы и Z-аксессуары в `items` не заводились.
+- Partner-мувы Let's Go (Pika Papow, Splishy Splash, Floaty Fall,
+  Bouncy Bubble, Buzzy Buzz, Sizzly Slide, Glitzy Glow, Baddy Bad,
+  Sappy Seed, Freezy Frost, Sparkly Swirl, Veevee Volley, Zippy Zap)
+  не добавлялись: они не входят в лёрнсеты USUM/SM целевых видов.
+- Отдельного решения владельца по Z-механикам не было.
+
+--------------------------------------------------------------------
+2. ФОРМЫ
+--------------------------------------------------------------------
+Отдельными видами НЕ заводились (только базовые виды):
+- Alolan forms (Rattata, Raticate, Raichu, Sandshrew, Sandslash,
+  Vulpix, Ninetales, Diglett, Dugtrio, Meowth, Persian, Geodude,
+  Graveler, Golem, Grimer, Muk, Exeggutor, Marowak);
+- Oricorio (Baile/Pom-Pom/Pa'u/Sensu) — взят Baile (Fire/Flying);
+- Lycanroc (Midday/Midnight/Dusk) — взят Midday;
+- Wishiwashi (Solo/School) — взят Solo;
+- Minior (Meteor/Core colors) — взят red-meteor;
+- Mimikyu (Disguised/Busted) — взят Disguised;
+- Necrozma (Dusk Mane/Dawn Wings/Ultra) — взят базовый;
+- Magearna (Original/Current), Zygarde forms, Ash-Greninja,
+  Poipole/Naganadel считаются обычными видами (Naganadel — эволюция);
+- Meltan/Melmetal — обычные виды, формы не добавлялись.
+`pokemon_forms` не трогался.
+
+--------------------------------------------------------------------
+3. ЭВОЛЮЦИИ — ПРИБЛИЖЕНИЯ И НЕМОДЕЛИРУЕМЫЕ УСЛОВИЯ
+--------------------------------------------------------------------
+Кросс-ген эволюций старых видов в gen7 нет. Внутригенная линия
+Meltan -> Melmetal добавлена. Эволюции gen7-видов в gen8+ не
+добавлялись.
+
+Приближения (в БД стоит наиболее близкий поддерживаемый метод):
+- Vikavolt 738 <- Charjabug 737: канон — level-up в Vast Poni Canyon /
+  Blush Mountain ИЛИ Thunder Stone. В БД method=3 (stone),
+  evolution_item_id=NULL. Предмет Thunder Stone в `items` отсутствует.
+- Crabominable 740 <- Crabrawler 739: канон — level-up на Mount
+  Lanakila ИЛИ Ice Stone. В БД method=3 (stone), item=NULL.
+  Ice Stone в `items` отсутствует.
+- Lycanroc 745 <- Rockruff 744: канон — level 25 + время суток/форма.
+  В БД level 25, condition=time_day (Midday). Midnight/Dusk и
+  Own Tempo не моделируются.
+- Gumshoos 735 <- Yungoos 734: level 20, condition=time_day
+  (поддерживается движком).
+- Lurantis 754 <- Fomantis 753: level 34, condition=time_day
+  (поддерживается движком).
+- Salazzle 758 <- Salandit 757: канон — только самка, level 33.
+  Пол в условии эволюции не проверяется; стоит level 33 без condition.
+- Tsareena 763 <- Steenee 762: канон — level-up, зная Stomp.
+  known_move не моделируется; приближение level 28.
+- Silvally 773 <- Type: Null 772: канон — friendship 160.
+  method=4, condition=NULL (как legacy friendship-строки проекта;
+  движок такие строки без condition сейчас не запускает).
+- Naganadel 804 <- Poipole 803: канон — level-up, зная Dragon Pulse.
+  known_move не моделируется; приближение level 41.
+- Solgaleo 791 / Lunala 792 <- Cosmoem 790: обе ветки level 53.
+  БД хранит обе строки; движок выбирает меньший id (Solgaleo).
+  Выбор по версии игры не моделируется.
+- Melmetal 809 <- Meltan 808: канон — Meltan Candies (Pokémon GO).
+  method=5 (item), evolution_item_id=NULL; предмет не заводился.
+
+Предметы эволюции (Thunder Stone, Ice Stone, Meltan Candies и др.)
+в `items` не заводились. Локации дикой ловли не трогались.
+
+--------------------------------------------------------------------
+4. НОВЫЕ АТАКИ — ТОЛЬКО ДАННЫЕ (25 шт., id 649–673)
+--------------------------------------------------------------------
+Базовые поля (тип/категория/сила/точность/PP/приоритет/цель/
+контакт/звук) заполнены по PokeAPI. Эффекты ниже в движке НЕ
+реализованы (effect_id/effect_status_id/attack_stat_changes не
+заполнялись), кроме отмеченного:
+
+- Accelerock (649) — priority=1 уже учтён полем priority.
+- Anchor Shot (650) — захват цели (trapping) не реализован.
+- Baneful Bunker (651) — защита хода + отравление контактного
+  атакующего не реализованы.
+- Beak Blast (652) — ожог атакующего до удара не реализован.
+- Brutal Swing (653) — задевание всех противников; в одиночном бою
+  сведено к одной цели.
+- Clanging Scales (654) — понижение своей Защиты на 1 не реализовано.
+- Darkest Lariat (655) — игнорирование изменений статов цели
+  не реализовано.
+- Double Iron Bash (656) — hits_min/max=2 заданы; 30% flinch
+  не реализован.
+- First Impression (657) — ограничение «первый ход после выхода»
+  не реализовано (priority=2 задан).
+- Floral Healing (658) — лечение цели (½, на Grassy Terrain ⅔)
+  не реализовано.
+- Gear Up (659) — бафф союзников с Plus/Minus не реализован.
+- High Horsepower (660) — без дополнительных эффектов.
+- Ice Hammer (661) — понижение своей Скорости на 1 не реализовано.
+- Liquidation (662) — 20% шанс понизить Защиту цели не реализован.
+- Multi-Attack (663) — смена типа от Memory не реализована.
+- Photon Geyser (664) — без дополнительных эффектов.
+- Plasma Fists (665) — превращение Normal-атак в Electric до конца
+  хода не реализовано.
+- Revelation Dance (666) — тип атаки = тип пользователя не реализован
+  (в БД стоит Normal, как у PokeAPI).
+- Smart Strike (667) — never_misses=1 задан.
+- Solar Blade (668) — зарядный ход не реализован.
+- Spectral Thief (669) — кража повышений статов не реализована.
+- Spirit Shackle (670) — захват цели не реализован.
+- Spotlight (671) — перенаправление атак не реализовано.
+- Throat Chop (672) — запрет звуковых атак на 2 хода не реализован.
+- Zing Zap (673) — 30% flinch не реализован.
+
+Лёрнсет-фолбэки (чтобы у каждого вида была level-up урон-атака):
+- Pyukumuku 771: канон — только статусные ходы; добавлен Water Gun
+  (id 84) на level 1.
+- Cosmog 789 и Cosmoem 790: канон — только статусные ходы; добавлен
+  Confusion (id 246) на level 1.
+
+Дубли уровней одной и той же атаки в лёрнсете свёрнуты по PK
+`(pokemon_id, attack_id, learn_method_id)` с сохранением минимального
+уровня (как требует skill).
+
+Meltan 808 / Melmetal 809: у PokeAPI нет данных USUM/SM. Использована
+ближайшая версия `lets-go-pikachu-lets-go-eevee` (15 и 33 строки
+соответственно); из-за неё понадобилась атака Double Iron Bash.
+Это отклонение от основного источника зафиксировано в TEST_gen7.txt.
+
+--------------------------------------------------------------------
+5. СПОСОБНОСТИ — МЕХАНИКИ
+--------------------------------------------------------------------
+Новые строки каталога (id 240–250, effect_key=NULL), механики не
+реализованы:
+  240 Гальванизация (Galvanize)
+  241 Сёрфер разрядов (Surge Surfer)
+  242 Узы битвы (Battle Bond)
+  243 Сборка силы (Power Construct)
+  244 Путаные волосы (Tangling Hair)
+  245 Алхимия (Power of Alchemy)
+  246 Психический баланс (Psychic Surge)
+  247 Цельнометаллическое тело (Full Metal Body)
+  248 Нейросила (Neuroforce)
+  249 Неповиновение (Defiant) — нужна Passimian
+  250 Песчаный бег (Sand Rush) — нужна Lycanroc
+Часть новых строк (240–245, 248) не имеет носителей среди базовых
+видов 722–809: их носители — Alolan forms / формы (Geodude-A,
+Raichu-A, Greninja-Ash, Zygarde, Diglett-A, Grimer-A, Necrozma-Ultra),
+которые отдельными видами не заводились.
+
+Остальные 31 английское имя из 42 способностей gen7 смаплены на
+существующие русские строки по смыслу/описанию/effect_key.
+Механики этих существующих способностей отдельно не проверялись и
+не менялись.
+
+--------------------------------------------------------------------
+6. ПРОЧЕЕ
+--------------------------------------------------------------------
+- Описания видов — шаблонные, как в gen2–gen6.
+- Локации, NPC, TM/HM, предметы, формы, Z-механики не трогались.
+- `PRAGMA foreign_key_check` содержит 51 pre-existing нарушение;
+  новых при импорте gen7 не появилось (см. TEST_gen7.txt).
+====================================================================

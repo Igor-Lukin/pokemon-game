@@ -1,0 +1,86 @@
+TEST_aegislash_forms.txt
+========================
+Дата: 2026-10-27
+Задача: боевые/альтернативные формы покемонов + Иджислаш (681) Blade Form,
+переключение в покедексе и в бою по способности «Королевское построение».
+
+Что сделано
+-----------
+1. Схема pokemon_forms расширена (идемпотентные ALTER в database.go):
+   form_label, trigger_mode ('hp'|'move'), trigger_move_id, trigger_move_kind,
+   is_base_form, form_order, form_description.
+2. server/db/pokemon_forms.go:
+   - BattleForm расширен новыми полями;
+   - db.FormFor (HP-формы) сохранён по поведению;
+   - db.FormForMove — выбор формы по использованному ходу;
+   - db.FormsForPokemon — список форм вида для покедекса;
+   - db.SeedPokemonForms — идемпотентный сид (вызывается из InitDB): ability 86
+     получает effect_key='stance_change', для 681 создаются shield (base) и blade.
+3. Боевой движок:
+   - abilityUsesMoveForm / abilityOnMoveUsed в abilities_battle.go;
+   - хук вызывается из executeDamagingMove (до расчёта урона) и
+     handleCustomStatusMove (до защитных ходов);
+   - abilityUpdateForm для stance_change не сбрасывает форму в конце хода;
+   - при смене покемона/выходе форма сбрасывается штатным resetAbilityForm;
+   - способность добавлена в implementedAbilityKeys (AI).
+4. Покедекс:
+   - GET /api/pokedex/pokemon/{id}/full?form=KEY;
+   - ответ дополнен form_key, form_name, forms[] (base + альтернативные);
+   - для выбранной формы подменяются image_url, типы, base_stats, описание;
+   - pokedex.js: кнопки .pokemon-form-btn, переключение повторным запросом;
+   - стили в pokedex.css.
+5. Боевая карточка: updateBattleCardHp обновляет не только HP, но и спрайт,
+   имя и типы — форма видна сразу после хода.
+6. Данные: 681-blade.gif скачан с Showdown в normal/ и mini/.
+7. Версия статики поднята до 23 (сброс кэша game.js/pokedex.js/css).
+
+Данные Иджислаша
+-----------------
+species 681 (base = Shield): HP 60 / Atk 50 / Def 140 / SpA 50 / SpD 140 / Spe 60
+форма blade:                HP 60 / Atk 150 / Def 50 / SpA 150 / SpD 50 / Spe 60
+множители: attack 3.0, defense 0.357142857, special_attack 3.0,
+special_defense 0.357142857, hp/speed 1.0.
+Типы обеих форм: Steel/Ghost (17/14).
+
+Проверки (выполнены)
+--------------------
+- go build ./...                         OK
+- go vet ./...                           OK
+- go test ./... -count=1                 OK (включая новые тесты)
+- node --check game.js / pokedex.js      OK
+- PRAGMA integrity_check                 ok
+- API smoke на реальной БД через httptest:
+    form=""    -> 200, name=Иджислаш, form_name=Защитная форма,
+                  image=681.gif, atk/def=50/140, forms=2
+    form=blade -> 200, name=Иджислаш, form_name=Атакующая форма,
+                  image=681-blade.gif, atk/def=150/50, forms=2
+- Автотесты движка:
+    TestStanceChangeFormByMove — damaging -> blade, статусный ход не меняет,
+    Королевский щит -> возврат в shield;
+    TestStanceChangeIntegratesWithMoveHooks — то же через executeDamagingMove
+    и handleCustomStatusMove;
+    TestPokedexFormsBaseAndBlade — список форм и подмена статов/спрайта.
+
+Не проверено живьём
+-------------------
+- Браузерный прогон покедекса и боя: на :8080 в момент работы был запущен
+  старый процесс сервера; нужен перезапуск (Ctrl+C -> go run ./server) и Ctrl+F5.
+- В БД нет ни одного экземпляра 681 у игроков (user_pokemons), поэтому живой
+  бой не запускался. Экземпляр можно выдать через админку/команду выдачи —
+  способность назначится автоматически (CreateUserPokemon).
+
+Как проверить вручную
+---------------------
+1. Выдать игроку Иджислаша (681), убедиться, что ability_id = 86
+   («Королевское построение», effect_key=stance_change).
+2. Покедекс -> #681: видны кнопки «Защитная форма» / «Атакующая форма»;
+   переключение меняет спрайт, типы, статы и описание.
+3. Бой: любой damaging-ход -> в логе «принимает другую форму», карточка и имя
+   становятся «Иджислаш (Атакующая форма)», Atk растёт, Def падает.
+4. Королевский щит -> возврат к «Иджислаш» (защитная форма), щит блокирует.
+5. Смена покемона -> при следующем выходе снова базовая форма.
+6. PvP: те же шаги для обеих сторон (форма хранится в BattlePokemon).
+
+Бэкап БД перед миграцией
+------------------------
+database/backups/pokemon.db.bak-before-aegislash-forms

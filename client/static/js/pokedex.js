@@ -50,6 +50,26 @@ const typeNames = [
   "Steel",
   "Fairy",
 ];
+const typeNamesRu = [
+  "Обычный",
+  "Огонь",
+  "Вода",
+  "Электрический",
+  "Трава",
+  "Лёд",
+  "Боевой",
+  "Ядовитый",
+  "Земляной",
+  "Летающий",
+  "Психический",
+  "Жук",
+  "Камень",
+  "Призрак",
+  "Дракон",
+  "Тёмный",
+  "Стальной",
+  "Фея",
+];
 const typesGrid = document.getElementById("pokedex-types-grid");
 if (typesGrid) {
   typesGrid.innerHTML = "";
@@ -57,12 +77,19 @@ if (typesGrid) {
     const num = idx + 1;
     const div = document.createElement("div");
     div.className = "type-icon";
-    div.title = type;
+    div.dataset.typeId = String(num);
+    div.title = typeNamesRu[idx] || type;
     const img = document.createElement("img");
     img.src = `/static/images/types/${num}.png`;
     img.alt = type;
     div.appendChild(img);
     typesGrid.appendChild(div);
+  });
+  typesGrid.addEventListener("click", (e) => {
+    const icon = e.target.closest(".type-icon");
+    if (!icon) return;
+    const typeId = parseInt(icon.dataset.typeId, 10);
+    if (!isNaN(typeId)) loadPokemonsByType(typeId);
   });
 }
 
@@ -71,7 +98,7 @@ let typesMap = {}; // id -> name
 let currentSuggestions = [];
 // Максимальный номер вида в покедексе — берётся из БД, а не хардкодится.
 // Так навигация «След./Пред.» работает для любого поколения без правок кода.
-let maxPokemonId = 251; // запасное значение до загрузки списка
+let maxPokemonId = 1025; // запасное значение до загрузки списка
 
 // Узнать реальный максимум id (последний в списке, он отсортирован по id)
 function loadMaxPokemonId() {
@@ -111,6 +138,85 @@ function resetPokedexView() {
   if (suggestionsDiv) suggestionsDiv.style.display = "none";
 }
 
+// Список покемонов (результаты поиска или фильтр по типу)
+function escapeHtml(value) {
+  return String(value == null ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeAttr(value) {
+  return escapeHtml(value).replace(/"/g, "&quot;");
+}
+
+function showPokedexList(title, list) {
+  const detailDiv = document.getElementById("pokedex-detail");
+  if (!detailDiv) return;
+
+  const subtitleElem = document.querySelector(".pokedex-subtitle");
+  const typesSectionElem = document.querySelector(".pokedex-types-section");
+  const typesGridElem = document.getElementById("pokedex-types-grid");
+  if (subtitleElem) subtitleElem.style.display = "none";
+  if (typesSectionElem) typesSectionElem.style.display = "none";
+  if (typesGridElem) typesGridElem.style.display = "none";
+
+  const cards = (list || [])
+    .map((p) => {
+      let typeImgs = `<img src="/static/images/types/${
+        p.primary_type_id || 1
+      }.png" class="pokedex-result-type" alt="">`;
+      if (p.secondary_type_id) {
+        typeImgs += `<img src="/static/images/types/${p.secondary_type_id}.png" class="pokedex-result-type" alt="">`;
+      }
+      return `<div class="pokedex-result-card" data-id="${p.id}">
+          <img class="pokedex-result-img" src="${escapeAttr(
+            p.image_url || "/static/images/default.png"
+          )}" alt="${escapeAttr(p.name)}">
+          <div class="pokedex-result-info">
+            <div class="pokedex-result-name">${escapeHtml(p.name)}</div>
+            <div class="pokedex-result-id">#${p.id}</div>
+            <div class="pokedex-result-types">${typeImgs}</div>
+          </div>
+        </div>`;
+    })
+    .join("");
+
+  detailDiv.innerHTML = `
+      <div class="pokedex-results">
+        <div class="pokedex-results-head">
+          <button class="pokedex-nav-btn" id="pokedex-results-back">◀ Назад</button>
+          <span class="pokedex-results-title">${escapeHtml(title)}</span>
+          <span class="pokedex-results-count">${(list || []).length}</span>
+        </div>
+        <div class="pokedex-results-grid">
+          ${cards || '<div class="no-attacks">Ничего не найдено</div>'}
+        </div>
+      </div>`;
+  detailDiv.style.display = "block";
+
+  document
+    .getElementById("pokedex-results-back")
+    ?.addEventListener("click", resetPokedexView);
+  detailDiv.querySelectorAll(".pokedex-result-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      const pid = parseInt(card.dataset.id, 10);
+      if (!isNaN(pid)) selectPokemon(pid);
+    });
+  });
+}
+
+function loadPokemonsByType(typeId) {
+  const title = `Тип: ${typeNamesRu[typeId - 1] || "#" + typeId}`;
+  fetch(`/api/pokedex/type/${typeId}`)
+    .then((res) => res.json())
+    .then((list) => showPokedexList(title, Array.isArray(list) ? list : []))
+    .catch((err) => {
+      console.error("Ошибка загрузки покемонов по типу:", err);
+      showPokedexList(title, []);
+    });
+}
+
 // Показать выпадающий список подсказок
 function showSuggestions(suggestions) {
   let suggestionsDiv = document.getElementById("pokedex-suggestions");
@@ -147,9 +253,12 @@ function showSuggestions(suggestions) {
   });
 }
 
-// Выбрать покемона по ID и показать детальную карточку
-function selectPokemon(pokemonId) {
-  fetch(`/api/pokedex/pokemon/${pokemonId}/full`)
+// Выбрать покемона по ID и показать детальную карточку.
+// formKey — необязательный ключ формы (пусто = базовая форма).
+function selectPokemon(pokemonId, formKey) {
+  let url = `/api/pokedex/pokemon/${pokemonId}/full`;
+  if (formKey) url += `?form=${encodeURIComponent(formKey)}`;
+  fetch(url)
     .then((res) => res.json())
     .then((pokemon) => showPokemonDetail(pokemon))
     .catch((err) => console.error("Ошибка загрузки деталей:", err));
@@ -204,22 +313,74 @@ function showPokemonDetail(pokemon) {
     typesHtml += `<img src="${secondaryTypeImg}" class="type-icon-img" alt="${pokemon.secondary_type}">`;
 
   // Эволюции
+  const conditionTextMap = {
+    atk_gt_def: "Атака > Защита",
+    atk_lt_def: "Атака < Защита",
+    atk_eq_def: "Атака = Защита",
+    time_day: "днём",
+    time_night: "ночью",
+    fairy_move: "знает атаку феи",
+  };
+  const formatEvolutionMethod = (evo) => {
+    if (!evo) return "";
+    const method = evo.method_name || "";
+    const condText = evo.condition
+      ? conditionTextMap[evo.condition] || evo.condition
+      : "";
+    let text = "";
+    if (method === "level" || (!method && evo.level)) {
+      text = evo.level ? `${evo.level} LvL` : "Уровень";
+    } else if (method === "stone") {
+      text = evo.item_name ? evo.item_name : "Камень";
+    } else if (method === "item") {
+      text = evo.item_name ? `Предмет: ${evo.item_name}` : "Предмет";
+    } else if (method === "breeding") {
+      text = "Разведение";
+    } else if (method === "trade") {
+      text = evo.item_name ? `Обмен (${evo.item_name})` : "Обмен";
+    } else if (method === "friendship") {
+      text = "Счастье 255";
+    } else if (!method && !evo.level) {
+      text = "Камень / обмен";
+    } else {
+      text = "Особый способ";
+    }
+    if (condText) text += ` (${condText})`;
+    return text;
+  };
+
+  const renderEvolutionNode = (evo) => {
+    const nodeHtml = `
+      <div class="evolution-item" data-id="${evo.id}">
+        <img src="${
+          evo.image_url || "/static/images/default.png"
+        }" class="evolution-img">
+        <span>${escapeHtml(evo.name)}</span>
+      </div>`;
+    const children = evo.children || [];
+    if (!children.length) return nodeHtml;
+    const branchRows = children
+      .map(
+        (child) => `<div class="evolution-branch-row">
+          <span class="evolution-step">
+            <span class="evolution-arrow">→</span>
+            <span class="evolution-method">${formatEvolutionMethod(child)}</span>
+          </span>
+          ${renderEvolutionNode(child)}
+        </div>`
+      )
+      .join("");
+    return `<div class="evolution-node-wrap">
+      ${nodeHtml}
+      <div class="evolution-children">${branchRows}</div>
+    </div>`;
+  };
+
   let evolutionHtml = "";
   if (pokemon.evolution_chain && pokemon.evolution_chain.length) {
-    evolutionHtml = `<div class="evolution-chain">`;
-    pokemon.evolution_chain.forEach((evo, idx) => {
-      evolutionHtml += `
-                <div class="evolution-item" data-id="${evo.id}">
-                    <img src="${
-                      evo.image_url || "/static/images/default.png"
-                    }" class="evolution-img">
-                    <span>${evo.name}</span>
-                </div>
-            `;
-      if (idx < pokemon.evolution_chain.length - 1)
-        evolutionHtml += `<span class="evolution-arrow">→</span>`;
-    });
-    evolutionHtml += `</div>`;
+    evolutionHtml = `<div class="evolution-chain">${pokemon.evolution_chain
+      .map(renderEvolutionNode)
+      .join("")}</div>`;
   } else {
     evolutionHtml = `<p>Не эволюционирует</p>`;
   }
@@ -256,9 +417,11 @@ function showPokemonDetail(pokemon) {
       else if (atk.category_id === 2) categoryClass = "attack-special";
       else if (atk.category_id === 3) categoryClass = "attack-status";
       let levelOrTm = "";
-      if (atk.learn_method === "level-up") levelOrTm = `Ур. ${atk.level}`;
-      else if (atk.learn_method === "tm") levelOrTm = `TM${atk.level}`;
-      else if (atk.learn_method === "egg") levelOrTm = "";
+      if (atk.learn_method === "level-up") levelOrTm = `${atk.level} LvL`;
+      else if (atk.learn_method === "tm") {
+        const kind = atk.tm_kind === "hm" ? "HM" : "TM";
+        levelOrTm = atk.level ? `${kind}${String(atk.level).padStart(2, "0")}` : kind;
+      } else if (atk.learn_method === "egg") levelOrTm = "";
       else if (atk.learn_method === "tutor") levelOrTm = "";
       const atkJson = JSON.stringify(atk).replace(/"/g, '&quot;');
       html += `
@@ -305,9 +468,11 @@ function showPokemonDetail(pokemon) {
   // Способности
   let abilitiesHtml = `<ul class="ability-list">`;
   pokemon.abilities.forEach((ab) => {
-    abilitiesHtml += `<li>${ab.name} ${
-      ab.is_hidden ? '<span class="hidden-ability">(скрытая)</span>' : ""
-    }</li>`;
+    abilitiesHtml += `<li class="divAbility clickable" title="Описание способности" data-ability-name="${escapeAttr(
+      ab.name
+    )}" data-ability-desc="${escapeAttr(ab.description)}">${escapeHtml(
+      ab.name
+    )} ${ab.is_hidden ? '<span class="hidden-ability">(скрытая)</span>' : ""}</li>`;
   });
   abilitiesHtml += `</ul>`;
 
@@ -321,14 +486,37 @@ function showPokemonDetail(pokemon) {
   // Прочее (заглушка)
   const otherHtml = `<p>Информация будет добавлена позже.</p>`;
 
+  // Формы: переключатель, если у вида есть альтернативные формы.
+  const forms = Array.isArray(pokemon.forms) ? pokemon.forms : [];
+  const currentFormKey = pokemon.form_key || "";
+  const formsHtml =
+    forms.length > 1
+      ? `<div class="pokemon-forms">${forms
+          .map((f) => {
+            const isActive =
+              (currentFormKey && f.key === currentFormKey) ||
+              (!currentFormKey && f.is_base);
+            return `<button class="pokemon-form-btn${
+              isActive ? " active" : ""
+            }" data-form-key="${escapeAttr(f.key)}">${escapeHtml(
+              f.name
+            )}</button>`;
+          })
+          .join("")}</div>`
+      : "";
+  const formSuffix = pokemon.form_name
+    ? ` · ${escapeHtml(pokemon.form_name)}`
+    : "";
+
   // Основной HTML карточки
   detailDiv.innerHTML = `
         <div class="pokedex-card">
             <div class="pokedex-nav">
                 <button class="pokedex-nav-btn" id="pokedex-prev-btn" ${pokemon.id <= 1 ? 'disabled' : ''}>◀ Пред.</button>
-                <span class="pokedex-nav-title">#${pokemon.id} ${pokemon.name}</span>
+                <span class="pokedex-nav-title">#${pokemon.id} ${pokemon.name}${formSuffix}</span>
                 <button class="pokedex-nav-btn" id="pokedex-next-btn" ${pokemon.id >= maxPokemonId ? 'disabled' : ''}>След. ▶</button>
             </div>
+            ${formsHtml}
             <div class="card-top">
                 <div class="card-left">
                     <div class="pokemon-gif-wrapper">
@@ -428,6 +616,14 @@ function showPokemonDetail(pokemon) {
     });
   });
 
+  // Переключение форм
+  detailDiv.querySelectorAll(".pokemon-form-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.formKey || "";
+      selectPokemon(pokemon.id, key);
+    });
+  });
+
   // Prev/Next buttons
   document.getElementById("pokedex-prev-btn")?.addEventListener("click", () => {
     if (pokemon.id > 1) selectPokemon(pokemon.id - 1);
@@ -440,7 +636,7 @@ function showPokemonDetail(pokemon) {
 // Поиск подсказок при вводе
 function onSearchInput() {
   const query = pokedexSearchInput.value.trim();
-  if (query.length < 2) {
+  if (query.length < 1) {
     const suggestionsDiv = document.getElementById("pokedex-suggestions");
     if (suggestionsDiv) suggestionsDiv.style.display = "none";
     return;
@@ -448,7 +644,7 @@ function onSearchInput() {
   fetch(`/api/pokedex/search?q=${encodeURIComponent(query)}`)
     .then((res) => res.json())
     .then((results) => {
-      currentSuggestions = results.slice(0, 5);
+      currentSuggestions = Array.isArray(results) ? results.slice(0, 20) : [];
       showSuggestions(currentSuggestions);
     })
     .catch((err) => console.error("Ошибка поиска:", err));
@@ -458,20 +654,22 @@ function onSearchInput() {
 function onSearchSubmit() {
   const query = pokedexSearchInput.value.trim();
   if (query === "") return;
+  const suggestionsDiv = document.getElementById("pokedex-suggestions");
+  if (suggestionsDiv) suggestionsDiv.style.display = "none";
   fetch(`/api/pokedex/search?q=${encodeURIComponent(query)}`)
     .then((res) => res.json())
     .then((results) => {
-      if (results.length === 0) {
-        alert("Покемон не найден");
+      const list = Array.isArray(results) ? results : [];
+      if (list.length === 1) {
+        selectPokemon(list[0].id);
         return;
       }
-      let exact = results.find(
-        (p) => p.name.toLowerCase() === query.toLowerCase()
-      );
-      let pokemon = exact || results[0];
-      selectPokemon(pokemon.id);
+      showPokedexList(`Поиск: «${query}»`, list);
     })
-    .catch((err) => console.error("Ошибка поиска:", err));
+    .catch((err) => {
+      console.error("Ошибка поиска:", err);
+      showPokedexList(`Поиск: «${query}»`, []);
+    });
 }
 
 // Инициализация элементов поиска

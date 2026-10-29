@@ -76,6 +76,25 @@ func MoveUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Переход возможен только по существующему выходу текущей локации.
+	var currentLocation int
+	if err := db.DB.QueryRow("SELECT location_id FROM users WHERE id = ?", userID).Scan(&currentLocation); err != nil {
+		http.Error(w, "User not found", http.StatusNotFound)
+		return
+	}
+	var linked int
+	if err := db.DB.QueryRow(
+		"SELECT COUNT(*) FROM location_exits WHERE from_location = ? AND to_location = ?",
+		currentLocation, req.LocationID,
+	).Scan(&linked); err != nil {
+		http.Error(w, "Failed to check route", http.StatusInternalServerError)
+		return
+	}
+	if linked == 0 {
+		http.Error(w, "Сюда нет пути", http.StatusBadRequest)
+		return
+	}
+
 	_, err = db.DB.Exec("UPDATE users SET location_id = ? WHERE id = ?", req.LocationID, userID)
 	if err != nil {
 		http.Error(w, "Failed to update location", http.StatusInternalServerError)

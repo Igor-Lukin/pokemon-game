@@ -1,0 +1,72 @@
+====================================================================
+MISSING_MOVES_gen3 — остаток по 3-му поколению
+Дата: 2026-10-23. Основа: данные PokeAPI (generation/3) + сверка с БД.
+====================================================================
+
+1. СТАНДАРТНЫЕ АТАКИ GEN3
+--------------------------------------------------------------------
+Все стандартные атаки, нужные лёрнсетам #252–386, заведены в attacks
+(12 новых строк, id 578–589):
+  Covet, Crabhammer, Endeavor, Fake Out, Mega Kick, Poison Fang,
+  Secret Power, Shadow Punch, Skill Swap, Smelling Salts, Superpower,
+  Trick.
+
+ЧТО ИЗ НИХ ЕЩЁ НЕ РЕАЛИЗОВАНО В ДВИЖКЕ (данные есть, механики — отдельно):
+  • Covet — кража held-предмета (аналог Thief, id 574);
+  • Endeavor — фиксированный урон: HP цели становится равно HP пользователя;
+  • Fake Out — только в первый ход после выхода (в данных flinch 100%);
+  • Smelling Salts — ×2 по парализованной цели + снятие паралича;
+  • Skill Swap — обмен способностями;
+  • Trick — обмен предметами;
+  • Secret Power — эффект зависит от террейна/локации;
+  • Poison Fang — сильное отравление 30% (в данных status_id=7, chance=30);
+  • Shadow Punch — never miss (в данных never_misses=1);
+  • Crabhammer — повышенный крит (в данных crit_rate=1);
+  • Superpower — само-снижение Atk/Def сделано ДАННЫМИ
+    (attack_stat_changes: -1 Atk, -1 Def, target=self, 100%).
+
+21 Shadow-атака (Shadow Rush, Shadow Blast, Shadow Blitz, Shadow Bolt,
+Shadow Break, Shadow Chill, Shadow End, Shadow Fire, Shadow Rave,
+Shadow Storm, Shadow Wave, Shadow Down, Shadow Half, Shadow Hold,
+Shadow Mist, Shadow Panic, Shadow Shed, Shadow Sky, …) НЕ заводились:
+это побочные атаки GameCube (XD/Colosseum), их нет в стандартных
+лёрнсетах Emerald/Ruby-Sapphire/FireRed-LeafGreen.
+
+2. ПРЕДМЕТЫ ЭВОЛЮЦИИ, КОТОРЫХ НЕТ В items
+--------------------------------------------------------------------
+  • Water Stone  — Lombre (271) -> Ludicolo (272);
+  • Leaf Stone   — Nuzleaf (274) -> Shiftry (275);
+  • Moon Stone   — Skitty (300) -> Delcatty (301);
+  • Deep Sea Tooth — Clamperl (366) -> Huntail (367);
+  • Deep Sea Scale — Clamperl (366) -> Gorebyss (368).
+Эволюции заданы методами stone/item БЕЗ evolution_item_id (как в gen2).
+
+3. НЕРЕАЛИЗУЕМЫЕ / УПРОЩЁННЫЕ УСЛОВИЯ ЭВОЛЮЦИИ
+--------------------------------------------------------------------
+  • Wurmple (265) -> Silcoon (266) / Cascoon (268): обе ветки level 7;
+    развилка не моделируется, движок выберет первую по id.
+  • Nincada (290) -> Shedinja (292): специальная эволюция «пустой слот +
+    покебол»; Shedinja оставлен без evolves_from.
+  • Feebas (349) -> Milotic (350): условие beauty 170 не моделируется,
+    приближено friendship (method=4).
+  • Roselia (315) <- Budew (406) и Chimecho (358) <- Chingling (433):
+    родители из 4-го поколения, в игре их нет — виды оставлены без
+    evolves_from.
+  • Кламперл: две ветки (Huntail/Gorebyss) через trade+held item;
+    в БД обе заданы, но trade-эволюции движком не поддерживаются.
+
+4. СПОСОБНОСТИ
+--------------------------------------------------------------------
+  • Для #152–386 назначены базовые и скрытые способности (slot 1/2/3).
+  • В каталог добавлены 6 отсутствовавших способностей (effect_key пуст,
+    механики — отдельно): Проницательность (Frisk), Сбор урожая (Harvest),
+    Многослойная чешуя (Multiscale), Нервозность (Unnerve),
+    Попутный ветер (Wind Rider), Чудесная кожа (Wonder Skin).
+  • Эффекты способностей не реализовывались — это отдельная задача.
+
+5. ЛОКАЦИИ
+--------------------------------------------------------------------
+Дикая ловля #252–386 не настраивалась (pokemon_locations не трогали).
+Виды доступны через админ-выдачу, покедекс и эволюцию; владелец может
+расставить локации в админке.
+====================================================================

@@ -85,6 +85,13 @@ body {
 .header-icon:hover {
   transform: scale(1.08);
 }
+.header-icon.is-disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.header-icon.is-disabled:hover {
+  transform: none;
+}
 .header-right {
   flex: 1;
   display: flex;
@@ -560,6 +567,15 @@ body {
   height: 36px;
   text-align: right;
 }
+.minicard .boxright .icons2 .starter {
+  color: #c99a17;
+  font-size: 12px;
+  text-shadow: 0 0 2px rgba(201, 154, 23, 0.55);
+}
+.pokemonBoxCard.starter-card .minicardContainer:before {
+  border-color: #c99a17;
+  box-shadow: 0 0 0 1px rgba(201, 154, 23, 0.4);
+}
 .minicard .boxright .items {
   margin-top: 5px;
   clear: both;
@@ -654,6 +670,21 @@ div.barEXP div {
 .pokemonBoxCard .info .pokemonBoxLabel {
   width: 100%;
 }
+.pk-gender {
+  font-weight: 700;
+  margin-left: 4px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.pk-gender-m {
+  color: #3b6fb6;
+}
+.pk-gender-f {
+  color: #c0567c;
+}
+.pk-gender-n {
+  color: var(--pk-ink-faint);
+}
 .pokemonBoxCard .info .info-row {
   display: flex;
   align-items: center;
@@ -692,6 +723,31 @@ div.barEXP div {
 }
 .pokemonBoxCard .stats .statContainer.happy .statTitle {
   width: 162px;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.pokemonBoxCard .stats .statContainer.happy .happyValue {
+  font-size: 10px;
+  color: var(--pk-ink-faint);
+}
+.pokemonBoxCard .btnEvolve {
+  margin: 4px 0 0;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid var(--pk-sepia);
+  background: var(--pk-paper-2);
+  color: var(--pk-sepia);
+  border-radius: var(--pk-radius);
+}
+.pokemonBoxCard .btnEvolve:hover {
+  background: var(--pk-sepia);
+  color: var(--pk-paper);
+}
+.battle-card-pokedex {
+  cursor: pointer;
 }
 .pokemonBoxCard .stats .statTitle {
   width: 100px;
@@ -706,6 +762,11 @@ div.barEXP div {
   height: 100%;
   border-radius: 2px;
   background-color: var(--pk-sepia);
+}
+.pokemonBoxCard .stats .barHappy div {
+  height: 100%;
+  border-radius: 2px;
+  background-color: var(--pk-sepia-2);
 }
 .pokemonBoxCard .stats .statContainer {
   display: flex;
@@ -1288,19 +1349,15 @@ div.barEXP div {
 }
 
 /* Секция яиц */
-.egg-section {
-  border-top: 1px solid var(--pk-line);
-  padding: 8px 6px 4px;
-}
-.egg-section-title {
-  font-weight: 700;
-  font-size: 0.82rem;
-  color: var(--pk-ink);
-  margin-bottom: 6px;
-}
 .egg-list {
   max-height: 180px;
   overflow-y: auto;
+}
+.inventory-eggs {
+  padding: 0 2px;
+}
+.inventory-eggs .egg-list {
+  max-height: 350px;
 }
 .egg-item {
   display: flex;
@@ -1328,24 +1385,6 @@ div.barEXP div {
   color: var(--pk-ink-faint);
   font-size: 0.78rem;
   font-variant-numeric: tabular-nums;
-}
-.egg-hatch-btn {
-  color: #fff;
-  background: var(--pk-sepia);
-  border: 1px solid var(--pk-sepia);
-  padding: 6px 12px;
-  cursor: pointer;
-  font-weight: 600;
-  font-size: 0.8rem;
-  white-space: nowrap;
-  border-radius: var(--pk-radius);
-}
-.egg-hatch-btn:hover:not(:disabled) {
-  background: #855a37;
-}
-.egg-hatch-btn:disabled {
-  opacity: 0.45;
-  cursor: default;
 }
 
 /* Боевой лог */
@@ -1433,6 +1472,12 @@ div.barEXP div {
   font-weight: 700;
   margin: 0 0 2px 0;
 }
+.turn-heal {
+  font-size: 11px;
+  color: #2b8a3e;
+  font-weight: 700;
+  margin: 0 0 2px 0;
+}
 .turn-stat-change {
   font-size: 11px;
   color: #2b8a3e;
@@ -1448,6 +1493,9 @@ div.barEXP div {
   margin: 2px 0;
 }
 .log-fainted {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   color: #c92a2a;
   font-weight: 700;
   margin: 2px 0;
@@ -1779,6 +1827,14 @@ div.barEXP div {
   color: var(--pk-ink-faint);
   font-size: 11px;
 }
+.learnable-item-level.tm-source-badge {
+  color: #fff;
+  background: var(--pk-sepia);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
 .learnable-item-cat {
   font-size: 11px;
   color: var(--pk-ink-faint);
@@ -1894,86 +1950,6 @@ div.barEXP div {
 .evolution-popup-success .evolution-popup-info {
   font-size: 18px;
   color: var(--pk-ink-soft);
-}
-
-/* ===== EV POPUP ===== */
-.ev-popup {
-  display: none;
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 10000;
-  align-items: center;
-  justify-content: center;
-}
-.ev-popup-content {
-  background: var(--pk-paper);
-  border: 1px solid var(--pk-line-2);
-  border-radius: var(--pk-radius);
-  padding: 16px;
-  min-width: 260px;
-  box-shadow: var(--pk-shadow);
-}
-.ev-popup-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-family: var(--pk-serif);
-  font-weight: 700;
-  font-size: 14px;
-  margin-bottom: 12px;
-  color: var(--pk-sepia);
-}
-.ev-popup-close {
-  cursor: pointer;
-  color: var(--pk-ink-faint);
-  font-size: 16px;
-}
-.ev-popup-close:hover {
-  color: var(--pk-sepia);
-}
-.ev-popup-stat {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  color: var(--pk-ink-soft);
-}
-.ev-popup-row {
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: var(--pk-ink-soft);
-}
-.ev-popup-row label {
-  width: auto;
-}
-.ev-popup-input {
-  width: 80px;
-  padding: 3px 6px;
-  font-size: 13px;
-  border: 1px solid var(--pk-line-2);
-  background: var(--pk-paper);
-  color: var(--pk-ink);
-  border-radius: var(--pk-radius);
-}
-.ev-popup-error {
-  color: #c0392b;
-  font-size: 11px;
-}
-.ev-popup-submit {
-  margin-top: 8px;
-  padding: 5px 20px;
-  color: #fff;
-  background: var(--pk-sepia);
-  border: 1px solid var(--pk-sepia);
-  border-radius: var(--pk-radius);
-  cursor: pointer;
-  font-weight: 600;
-}
-.ev-popup-submit:hover {
-  background: #855a37;
 }
 
 /* ======================== Инвентарь ======================== */
@@ -2253,6 +2229,16 @@ div.barEXP div {
   margin-left: auto;
   color: #2b8a3e;
   font-size: 11px;
+}
+.inv-pokemon-option.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.inv-pokemon-option.disabled:hover {
+  background: transparent;
+}
+.inv-pokemon-option.disabled .hp {
+  color: #c92a2a;
 }
 
 /* Quantity selector for candy */

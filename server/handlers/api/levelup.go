@@ -10,7 +10,7 @@ import (
 // DB update, and learnable attack re-init. Returns the new pokemon ID (may have evolved),
 // evolution info, new max_hp (for battle state sync), and an error.
 func applyLevelUp(userPokemonID, pokemonID, level int, iv, ev [6]int, natureID int, availableEV int) (int, *EvolutionInfo, int, error) {
-	evoInfo, err := checkEvolutionByIDs(pokemonID, level)
+	evoInfo, err := checkEvolutionFor(userPokemonID, pokemonID, level)
 	if err != nil {
 		return 0, nil, 0, err
 	}

@@ -9,6 +9,7 @@ import (
 	"pokemon-game/server/handlers/auth"
 	"pokemon-game/server/handlers/game"
 	"pokemon-game/server/session"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,6 +45,17 @@ func lastSeenMiddleware(next http.Handler) http.Handler {
 	})
 }
 
+// noCacheAPIMiddleware запрещает кэширование ответов /api (статика не
+// затрагивается и продолжает кэшироваться).
+func noCacheAPIMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func SetupRoutes() *mux.Router {
 	r := mux.NewRouter()
 	database := db.DB
@@ -51,17 +63,26 @@ func SetupRoutes() *mux.Router {
 	// Auth handlers
 	auth.InitHandlers(database)
 
+	// Анти-брутфорс: 10 попыток входа с IP за 10 минут, 5 регистраций в час.
+	loginLimiter := newRateLimiter(10, 10*time.Minute)
+	registerLimiter := newRateLimiter(5, time.Hour)
+
 	// Routes
 	r.HandleFunc("/", handlers.HomeHandler).Methods("GET")
 	r.HandleFunc("/register", auth.RegisterHandler).Methods("GET")
-	r.HandleFunc("/register", auth.RegisterPostHandler).Methods("POST")
+	r.Handle("/register", registerLimiter.middleware(http.HandlerFunc(auth.RegisterPostHandler))).Methods("POST")
 	r.HandleFunc("/login", auth.LoginHandler).Methods("GET")
-	r.HandleFunc("/login", auth.LoginPostHandler).Methods("POST")
+	r.Handle("/login", loginLimiter.middleware(http.HandlerFunc(auth.LoginPostHandler))).Methods("POST")
 	r.HandleFunc("/game", game.GameHandler).Methods("GET")
 	r.HandleFunc("/game", game.GamePostHandler).Methods("POST")
 
 	// Admin routes++
 	r.HandleFunc("/admin", admin.IndexHandler).Methods("GET")
+	// regions
+	r.HandleFunc("/admin/regions", admin.RegionsHandler).Methods("GET")
+	r.HandleFunc("/admin/regions/create", admin.CreateRegionHandler).Methods("GET", "POST")
+	r.HandleFunc("/admin/regions/edit", admin.EditRegionHandler).Methods("GET", "POST")
+	r.HandleFunc("/admin/regions/delete", admin.DeleteRegionHandler).Methods("POST")
 	// locations
 	r.HandleFunc("/admin/locations", admin.LocationsHandler).Methods("GET")
 	r.HandleFunc("/admin/locations/create", admin.CreateLocationHandler).Methods("GET", "POST")
@@ -85,6 +106,10 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/admin/npc/team/add", admin.AddNPCPokemonHandler).Methods("POST")
 	r.HandleFunc("/admin/npc/team/edit", admin.EditNPCPokemonHandler).Methods("POST")
 	r.HandleFunc("/admin/npc/team/delete", admin.DeleteNPCPokemonHandler).Methods("POST")
+	// npc — AI-команда (генерация/предпросмотр/пул)
+	r.HandleFunc("/admin/npc/ai-team/generate", admin.GenerateNPCAITeamHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/ai-team/save", admin.SaveNPCAITeamHandler).Methods("POST")
+	r.HandleFunc("/admin/npc/ai-team/delete", admin.DeleteNPCAITeamHandler).Methods("POST")
 	// abilities
 	r.HandleFunc("/admin/abilities", admin.AbilitiesHandler).Methods("GET")
 	r.HandleFunc("/admin/abilities/create", admin.CreateAbilityHandler).Methods("GET", "POST")
@@ -103,6 +128,7 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/admin/pokemons/ability/add", admin.AddPokemonAbilityHandler).Methods("POST")
 	r.HandleFunc("/admin/pokemons/ability/remove", admin.RemovePokemonAbilityHandler).Methods("POST")
 	r.HandleFunc("/admin/pokemons/location/add", admin.AddPokemonLocationHandler).Methods("POST")
+	r.HandleFunc("/admin/pokemons/location/edit", admin.EditPokemonLocationHandler).Methods("POST")
 	r.HandleFunc("/admin/pokemons/location/remove", admin.RemovePokemonLocationHandler).Methods("POST")
 	r.HandleFunc("/admin/pokemons/attack/add", admin.AddPokemonAttackHandler).Methods("POST")
 	r.HandleFunc("/admin/pokemons/attack/remove", admin.RemovePokemonAttackHandler).Methods("POST")
@@ -132,6 +158,7 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/api/battle/switch", api.SwitchHandler).Methods("POST")
 	r.HandleFunc("/api/battle/run", api.RunHandler).Methods("POST")
 	r.HandleFunc("/api/battle/catch", api.CatchHandler).Methods("POST")
+	r.HandleFunc("/api/battle/use-item", api.UseBattleItemHandler).Methods("POST")
 	// Тренерский бой vs команда NPC (поток B)
 	r.HandleFunc("/api/battle/trainer/start", api.TrainerBattleStartHandler).Methods("POST")
 
@@ -143,6 +170,7 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/api/pokedex/pokemon/{id}", api.GetPokemonInfo).Methods("GET")
 	r.HandleFunc("/api/pokedex/pokemon/{id}/full", api.GetPokemonFullInfo).Methods("GET")
 	r.HandleFunc("/api/pokedex/search", api.SearchPokemons).Methods("GET")
+	r.HandleFunc("/api/pokedex/type/{id}", api.GetPokemonsByType).Methods("GET")
 	r.HandleFunc("/api/pokedex/list", api.GetAllPokemons).Methods("GET")
 
 	r.HandleFunc("/api/types", api.GetAllTypes).Methods("GET")
@@ -152,9 +180,13 @@ func SetupRoutes() *mux.Router {
 	r.HandleFunc("/api/user/pokemon/{id}/attacks", api.GetUserPokemonAttacks).Methods("GET")
 	r.HandleFunc("/api/user/pokemon/{id}/learnable", api.GetLearnableAttacksHandler).Methods("GET")
 	r.HandleFunc("/api/user/pokemon/{id}/learn", api.LearnAttackHandler).Methods("POST")
+	r.HandleFunc("/api/user/pokemon/{id}/use-tm", api.UseTMHandler).Methods("POST")
+	r.HandleFunc("/api/tm/{item_id}/targets", api.GetTMTargetsHandler).Methods("GET")
 	r.HandleFunc("/api/user/pokemon/{id}/evolution", api.GetEvolutionHandler).Methods("GET")
 	r.HandleFunc("/api/user/pokemon/{id}/evolve", api.EvolveHandler).Methods("POST")
+	r.HandleFunc("/api/evolution-items/{item_id}/targets", api.GetEvolutionItemTargetsHandler).Methods("GET")
 	r.HandleFunc("/api/user/pokemon/{id}/ev", api.DistributeEVHandler).Methods("POST")
+	r.HandleFunc("/api/user/pokemon/{id}/starter", api.SetStarterHandler).Methods("POST")
 	r.HandleFunc("/api/user/pokemon/{id}/hold", api.HoldItemHandler).Methods("POST")
 	r.HandleFunc("/api/user/pokemon/{id}/unhold", api.UnholdItemHandler).Methods("POST")
 
@@ -212,6 +244,7 @@ func SetupRoutes() *mux.Router {
 
 	// Отметка активности игрока (last_seen) на всех маршрутах.
 	r.Use(lastSeenMiddleware)
+	r.Use(noCacheAPIMiddleware)
 
 	return r
 }

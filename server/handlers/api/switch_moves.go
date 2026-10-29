@@ -13,8 +13,10 @@ import mathrand "math/rand"
 // если у цели остался последний/единственный покемон.
 
 // phazeMoves — ходы принудительной смены противника.
-//   30 Рык, 372 Вихрь — чисто статусные (вызов из статусной ветки processTurn);
-//   177 Неистовый бросок — урон + фазинг (вызов из executeDamagingMove после удара).
+//
+//	30 Рык, 372 Вихрь — чисто статусные (вызов из статусной ветки processTurn);
+//	177 Неистовый бросок — урон + фазинг (вызов из executeDamagingMove после удара).
+//
 // Диспетчеризуются по id в handlePhazeMove (не через effect_status_id). Наборы
 // не пересекаются по маршруту: 30/372 (power 0) идут статусной веткой, 177 —
 // урон-веткой, поэтому двойного вызова нет.
@@ -28,9 +30,15 @@ var phazeMoves = map[int]bool{
 // противника (defender) и выводит случайного другого в сознании. Провал:
 //   - defender — дикий (bs.WildPokemon): у дикого нет команды на замену;
 //   - у defender не осталось других покемонов (последний/единственный).
+//
 // Против игрока: приоритет хода -6, поэтому игрок уже отходил в этот ход.
 func handlePhazeMove(bs *BattleState, attacker, defender *BattlePokemon, move *BattleMove, log *[]BattleLogEntry) {
 	if !phazeMoves[move.ID] {
+		return
+	}
+	// [batch7] Присоски/Стойкость/Хвост-пропеллер не дают выгнать с поля.
+	if abilityKeyIn(defender, "suction_cups", "anchor") {
+		abilityLog(defender, bs.Turn, log, "", "удерживается на поле — выгнать нельзя")
 		return
 	}
 	if defender == bs.WildPokemon {
@@ -71,9 +79,9 @@ func isSwitchMove(moveID int) bool {
 }
 
 const (
-	moveBatonPass   = 551 // Эстафета — смена с переносом бустов статов
-	moveTeleport    = 536 // Телепорт — завершить бой с диким (run_success)
-	moveHelpingHand = 443 // Рука помощи — +1 Атака выбранному в команде, -1 Защита себе
+	moveBatonPass    = 551 // Эстафета — смена с переносом бустов статов
+	moveTeleport     = 536 // Телепорт — завершить бой с диким (run_success)
+	moveHelpingHand  = 443 // Рука помощи — +1 Атака выбранному в команде, -1 Защита себе
 	moveAromaticMist = 423 // Ароматный шлейф — +1 СпЗащита выбранному в команде
 )
 
@@ -159,6 +167,7 @@ func performInBattleSwitch(bs *BattleState, userPokemonID int, log *[]BattleLogE
 
 	// Уходящий покемон теряет боевые волатили (как при обычной смене).
 	old := &bs.PlayerTeam[bs.ActiveIdx]
+	abilityOnSwitchOut(old, bs.Turn, log) // [batch6] Регенератор
 	old.ChargingMoveID = 0
 	old.Invulnerable = false
 	old.LockedMoveID = 0
@@ -170,24 +179,25 @@ func performInBattleSwitch(bs *BattleState, userPokemonID int, log *[]BattleLogE
 	old.Rooted = false
 	old.AquaRing = false
 	old.WishPending = false
-	old.BattleTypes = nil // смена типа заканчивается при уходе (type_moves.go)
+	old.BattleTypes = nil  // смена типа заканчивается при уходе (type_moves.go)
 	old.HealBlockTurns = 0 // Запрет регенерации спадает при уходе (heal_moves.go)
-	old.SureHit = false        // подготовительные флаги спадают при уходе (focus_moves.go)
+	old.SureHit = false    // подготовительные флаги спадают при уходе (focus_moves.go)
 	old.SureCrit = false
 	old.ChargedElectric = false
 	old.Foresighted = false
 	old.MiracleEyed = false
-	old.DestinyBond = false // Связь судеб спадает при уходе (sacrifice_moves.go)
-	old.Grudge = false      // Жалостливый взор спадает при уходе (sacrifice_moves.go)
-	old.Electrified = false // Электризация спадает при уходе (field_effects.go)
-	old.MagnetRiseTurns = 0 // Магнетизм спадает при уходе (field_effects.go)
-	old.LevitatedTurns = 0 // Левитация спадает при уходе (field_effects.go)
-	old.ActiveTurns = 0 // счётчик ходов на поле сбрасывается (Татами Блок)
+	old.DestinyBond = false              // Связь судеб спадает при уходе (sacrifice_moves.go)
+	old.Grudge = false                   // Жалостливый взор спадает при уходе (sacrifice_moves.go)
+	old.Electrified = false              // Электризация спадает при уходе (field_effects.go)
+	old.MagnetRiseTurns = 0              // Магнетизм спадает при уходе (field_effects.go)
+	old.LevitatedTurns = 0               // Левитация спадает при уходе (field_effects.go)
+	old.ActiveTurns = 0                  // счётчик ходов на поле сбрасывается (Татами Блок)
 	old.BideTurns, old.BideDamage = 0, 0 // Выжидание прерывается (counter_moves.go)
-	old.YawnTurns = 0 // дремота Зевка спадает при уходе (status_extra_moves.go)
-	restoreTransform(old) // Трансформация откатывается (transform_moves.go)
-	restoreBaseStats(old) // обмен/усреднение статов отменяется (stat_swap_moves.go)
-	resetBlockState(old)  // Овации/Запрет/Подстрекательство снимаются (block_moves.go)
+	old.YawnTurns = 0                    // дремота Зевка спадает при уходе (status_extra_moves.go)
+	resetAbilityForm(old, bs.Turn, log)  // форма по HP откатывается (batch5)
+	restoreTransform(old)                // Трансформация откатывается (transform_moves.go)
+	restoreBaseStats(old)                // обмен/усреднение статов отменяется (stat_swap_moves.go)
+	resetBlockState(old)                 // Овации/Запрет/Подстрекательство снимаются (block_moves.go)
 
 	bs.ActiveIdx = newIdx
 	active := &bs.PlayerTeam[bs.ActiveIdx]

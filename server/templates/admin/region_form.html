@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{{if .ID}}Edit{{else}}Create{{end}} Region</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+  </head>
+  <body>
+    <h1>{{if .ID}}Edit{{else}}Create{{end}} Region</h1>
+    <form method="POST">
+      <label>Name:</label><br />
+      <input type="text" name="name" value="{{.Name}}" required /><br /><br />
+
+      <label>Current weather:</label><br />
+      <select name="current_weather_id" required>
+        {{range .Weathers}}
+        <option
+          value="{{.ID}}"
+          {{if eq .ID $.CurrentWeatherID}}selected{{end}}
+        >
+          {{.Name}} (ID {{.ID}})
+        </option>
+        {{end}}
+      </select><br /><br />
+
+      <button type="submit">Save</button>
+      <a href="/admin/regions">Cancel</a>
+    </form>
+  </body>
+</html>

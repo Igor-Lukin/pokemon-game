@@ -75,8 +75,9 @@ func formulaFixedDamage(attacker, defender *BattlePokemon, move *BattleMove) (in
 	isOHKO := ohkoMoves[move.ID]
 	isFinal := move.ID == 342   // Финальный ход — урон = текущий HP пользователя
 	isPsywave := move.ID == 305 // Психическая волна — случайный урон
-	isNightShade := move.ID == 280 // Ночная тень — урон = уровень пользователя
-	if !isFixed && !isHalf && !isOHKO && !isFinal && !isPsywave && !isNightShade {
+	// Ночная тень (280) и Сейсмический бросок (569) — урон = уровень пользователя.
+	isLevelDamage := move.ID == 280 || move.ID == 569
+	if !isFixed && !isHalf && !isOHKO && !isFinal && !isPsywave && !isLevelDamage {
 		return 0, 0, false
 	}
 	// Иммунитет по типу — атака не действует.
@@ -93,7 +94,7 @@ func formulaFixedDamage(attacker, defender *BattlePokemon, move *BattleMove) (in
 		dmg = attacker.CurrentHP
 	case isPsywave:
 		dmg = attacker.Level * (50 + mathrand.Intn(101)) / 100 // 50%..150% уровня
-	case isNightShade:
+	case isLevelDamage:
 		dmg = attacker.Level // урон точно равен уровню пользователя
 	}
 	if dmg < 1 {
@@ -115,10 +116,11 @@ func sharesType(a, b *BattlePokemon) bool {
 }
 
 // powerDoubled — удваивается ли мощность атаки при условии на цель:
-//   218 Пробуждающий удар — цель спит (StatusID==5);
-//   317 Сглаз            — у цели есть мажорный статус (есть в statusRegistry);
-//   277 Морская вода     — HP цели <= половины максимального;
-//   31  Веношок          — цель отравлена (яд/сильный яд).
+//
+//	218 Пробуждающий удар — цель спит (StatusID==5);
+//	317 Сглаз            — у цели есть мажорный статус (есть в statusRegistry);
+//	277 Морская вода     — HP цели <= половины максимального;
+//	31  Веношок          — цель отравлена (яд/сильный яд).
 func powerDoubled(defender *BattlePokemon, move *BattleMove) bool {
 	switch move.ID {
 	case 218:
@@ -152,8 +154,9 @@ func applyTriAttackEffect(defender *BattlePokemon, move *BattleMove, round int, 
 
 // weightBasedPower — мощность атак, зависящих от веса. (мощность, true) для
 // таких атак; (0, false) — иначе.
-//   208 Подножка / 336 Травяные путы — по весу ЦЕЛИ (20..120).
-//   215 Пресс — по отношению веса пользователя к весу цели (40..120).
+//
+//	208 Подножка / 336 Травяные путы — по весу ЦЕЛИ (20..120).
+//	215 Пресс — по отношению веса пользователя к весу цели (40..120).
 func weightBasedPower(attacker, defender *BattlePokemon, move *BattleMove) (int, bool) {
 	switch move.ID {
 	case 208, 336:
@@ -203,8 +206,9 @@ func heavySlamPower(att, def float64) int {
 }
 
 // escalatingPower — «нарастающие» атаки:
-//   279 Накопленная энергия — 20 + 20 за каждую ступень ПОВЫШЕНИЯ статов польз.
-//   355 Эхо-Волны — 40 за каждый ход подряд этой атакой (макс 200).
+//
+//	279 Накопленная энергия — 20 + 20 за каждую ступень ПОВЫШЕНИЯ статов польз.
+//	355 Эхо-Волны — 40 за каждый ход подряд этой атакой (макс 200).
 func escalatingPower(attacker *BattlePokemon, move *BattleMove) (int, bool) {
 	switch move.ID {
 	case 279:
@@ -235,6 +239,15 @@ func escalatingPower(attacker *BattlePokemon, move *BattleMove) (int, bool) {
 			s = 5
 		}
 		return 30 * (1 << uint(s-1)), true
+	case 561: // Яростный резец (Fury Cutter) — ×2 за каждый ход подряд: 40..160 (макс 3)
+		s := attacker.SameStreak
+		if s < 1 {
+			s = 1
+		}
+		if s > 3 {
+			s = 3
+		}
+		return 40 * (1 << uint(s-1)), true
 	}
 	return 0, false
 }

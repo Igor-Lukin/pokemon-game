@@ -1,0 +1,223 @@
+====================================================================
+TEST_gen9 — ОТЧЁТ ПО ВНЕСЕНИЮ ДЕВЯТОГО ПОКОЛЕНИЯ (#906–1025, Палдея)
+Исполнитель: ИИ-агент. Дата: 2026-10-23.
+Основа: PokeAPI (pokemon / pokemon-species / generation-9 /
+evolution-chain / move), спрайты — Pokémon Showdown (ani/*.gif, dex/*.png) и
+PokeAPI official-artwork для PNG-fallback.
+ТЗ: HANDOFF_gen9.txt. Скилл: adding-pokemon-generations.
+====================================================================
+
+ИТОГ: ГОТОВО (данные). Все 120 видов #906–1025 внесены, включая
+12 легендарных/мифических и парадоксов. Лёрнсеты, способности
+(base+hidden), эволюции и спрайты проставлены. Движок не менялся;
+недостающие механики вынесены в MISSING_MOVES_gen9.txt.
+
+--------------------------------------------------------------------
+1. ЧТО ВНЕСЕНО (числа)
+--------------------------------------------------------------------
+                     было      стало     дельта
+  pokemons           905       1025      +120
+  attacks            729        791       +62
+  abilities          268        303       +35
+  pokemon_attacks  47909      54849     +6940
+  pokemon_abilities 2124       2371      +247
+
+  • Виды #906–1025: 120/120, min/max id = 906/1025.
+  • Новые атаки: 62 (id 732–793, подряд). 61 ход gen9 + Raging Fury
+    (ход gen8/PLA, отсутствовавший в каталоге, но нужный лёрнсетам
+    gen9). Все — только данные; механики — в MISSING_MOVES_gen9.txt.
+  • Новые способности каталога: 35 (id 278–312). Это все способности
+    gen9, реально используемые видами #906–1025, включая Supreme
+    Overlord из gen8, которой не было в каталоге. Sharpness уже была
+    (id 237). 11 форменных/Тера-способностей не заводились.
+  • Спрайты: 120 анимированных .gif из Pokémon Showdown +
+    мини-копии в mini/ (106 GIF). Для 14 видов анимированного GIF нет —
+    PNG-fallback (Showdown dex/*.png; для 1022–1025 — PokeAPI
+    official-artwork), image_url указывает на .png: 990–995, 1006,
+    1008, 1010, 1017, 1022–1025.
+  • pokedex.js: запасной maxPokemonId 905 -> 1025.
+
+--------------------------------------------------------------------
+2. ДАННЫЕ ВИДОВ (сверено с PokeAPI, 0 расхождений)
+--------------------------------------------------------------------
+Для всех 120 видов: id = национальный номер; русское имя; описание;
+современные типы; 6 base-статов; height/weight; category_power =
+base_experience; experience_group = 3; rarity = 1; пол/бесполость;
+catch_rate; image_url; is_legendary.
+Примеры (совпадают с PokeAPI):
+  #906 Спригатито   [Grass]            HP40  Atk61  Def54  SpA45  SpD45  Spe65
+  #908 Мяускарада   [Grass/Dark]       HP76  Atk110 Def70  SpA81  SpD70  Spe123
+  #911 Скеледирж    [Fire/Ghost]       HP104 Atk75  Def100 SpA110 SpD75  Spe66
+  #914 Куаквавал    [Water/Fighting]   HP85  Atk120 Def80  SpA85  SpD75  Spe85
+  #934 Гарганакл    [Rock]             HP100 Atk100 Def130 SpA45  SpD90  Spe35
+  #959 Тинкатон     [Fairy/Steel]      HP85  Atk75  Def77  SpA70  SpD105 Spe94
+  #964 Палафин      [Water]            HP100 Atk70  Def72  SpA53  SpD62  Spe75
+  #979 Аннаялейп    [Fighting/Ghost]   HP110 Atk115 Def80  SpA50  SpD90  Spe90
+  #983 Кингамбит    [Dark/Steel]       HP100 Atk135 Def120 SpA60  SpD85  Spe50
+  #984 Великий Бивень[Ground/Fighting] HP115 Atk131 Def131 SpA53  SpD53  Spe87
+  #1000 Голденго    [Steel/Ghost]      HP87  Atk60  Def95  SpA133 SpD91  Spe84
+  #1007 Корайдон    [Fighting/Dragon]  HP100 Atk135 Def115 SpA85  SpD100 Spe135
+  #1008 Мирайдон    [Electric/Dragon]  HP100 Atk85  Def100 SpA135 SpD115 Spe135
+  #1017 Огерпон     [Grass]            HP80  Atk120 Def84  SpA60  SpD96  Spe110
+  #1024 Терапагос   [Normal]           HP90  Atk65  Def80  SpA65  SpD80  Spe60
+  #1025 Печарант    [Poison/Ghost]     HP88  Atk88  Def160 SpA88  SpD88  Spe88
+Двутипных: 77. Бесполых: 33 (924–925, 984–995, 999–1010,
+1012–1013, 1020–1023, 1025). Только самок: 4 (957–959, 1017).
+Oinkologne 916 в PokeAPI — male-форма
+(gender_rate=0), поэтому 100% самцов; female-форма не добавлялась.
+Легендарные/мифические: 12 — #1001–1004, #1007–1008, #1014–1017,
+#1024 (легендарные), #1025 (мифический).
+Описания непустые у всех; формат:
+  «X — покемон/легендарный покемон/мифический покемон девятого
+   поколения (регион Палдея). Национальный №N.»
+
+--------------------------------------------------------------------
+3. ЛЁРНСЕТЫ
+--------------------------------------------------------------------
+Источник — PokeAPI, version group `scarlet-violet` (включает ходы
+DLC The Teal Mask / The Indigo Disk, которые PokeAPI отдаёт в этом
+же version group).
+Методы после свёртки дублей по PK:
+  level-up 1816, machine 4905, egg 215, tutor 4 => 6940 строк.
+Сопоставление с attacks — по нормализованному eng_name.
+  • Не хватало 62 атак — добавлены в attacks (id 732–793).
+  • Пропусков из-за отсутствующих атак после импорта нет.
+  • У каждого вида есть level-up атаки и хотя бы одна урон-атака.
+    Фолбэки не потребовались.
+  • Дубли одной атаки на разных уровнях свёрнуты: в БД остаётся
+    минимальный уровень (требование PK).
+  • Max/форменные/Тера-мувы в лёрнсеты не включались.
+
+--------------------------------------------------------------------
+4. ЭВОЛЮЦИИ
+--------------------------------------------------------------------
+  • 47 видов диапазона имеют evolves_from, 73 — базовые.
+  • Методы: level 38, stone 3, item 6.
+  • Внутригенная линия: стартовики, Lechonk, Tarountula, Nymble,
+    Pawmi, Tandemaus, Fidough, Smoliv, Nacli, Charcadet (2 ветки),
+    Tadbulb, Wattrel, Maschiff, Shroodle, Toedscool, Capsakid,
+    Flittle, Tinkatink, Wiglett, Finizen, Varoom, Glimmet, Greavard,
+    Cetoddle, Frigibax, Poltchageist, Dipplin->Hydrapple.
+  • Кросс-ген из старых поколений в gen9 (6):
+      Primeape 57 -> Annihilape 979;
+      Girafarig 203 -> Farigiraf 981;
+      Dunsparce 206 -> Dudunsparce 982;
+      Bisharp 625 -> Kingambit 983;
+      Applin 840 -> Dipplin 1011;
+      Duraludon 884 -> Archaludon 1018.
+  • Сознательно НЕ связывался Clodsire 980 с базовым Wooper 194:
+    канон требует Paldean Wooper, которой в БД нет. 980 — базовый.
+  • Приближения: Pawmo->Pawmot level 28, Bramblin->Brambleghast
+    level 30, Rellor->Rabsca level 30 (шаги не моделируются);
+    Primeape->Annihilape level 45 (Rage Fist 20 раз);
+    Girafarig->Farigiraf level 32 и Dunsparce->Dudunsparce level 32
+    (known move); Bisharp->Kingambit level 52 (3 defeated Bisharp);
+    Dipplin->Hydrapple level 40 (Dragon Cheer).
+  • Предметные: Charcadet->Armarouge/Ceruledge, Applin->Dipplin,
+    Poltchageist->Sinistcha, Duraludon->Archaludon, Gimmighoul->
+    Gholdengo — method=5, evolution_item_id=NULL; камни
+    Tadbulb->Bellibolt, Capsakid->Scovillain, Cetoddle->Cetitan —
+    method=3, item=NULL.
+  • Greavard->Houndstone: level 30 + condition='time_night'
+    (движок поддерживает).
+  • Эволюции gen9-видов в gen10+ НЕ добавлялись. Циклов и «висящих»
+    evolves_from_id нет.
+  • Подробности — MISSING_MOVES_gen9.txt, §2.
+
+--------------------------------------------------------------------
+5. СПОСОБНОСТИ
+--------------------------------------------------------------------
+  • 120 видов, 247 строк pokemon_abilities:
+      slot 1 — 120, slot 2 — 42, slot 3 (hidden) — 85.
+      base 162, hidden 85. У каждого вида есть базовая способность.
+  • 121 уникальное английское имя; 86 смаплены на существующие
+    русские строки, 35 заведены новыми (id 278–312, effect_key=NULL).
+  • Sharpness -> 237, Stalwart -> 272, Early Bird -> 58.
+  • Скрытые: is_hidden=1 <=> slot=3; дублей hidden/base и дублей
+    слота нет. Экземпляров новых видов в user_pokemons нет,
+    бэкфилл не требовался.
+  • Сверка «PokeAPI ability -> строка БД» по всем 120 видам:
+    0 расхождений (включая скрытые и слоты).
+  • Механики новых способностей не реализованы — см. MISSING.
+
+--------------------------------------------------------------------
+6. ПРОВЕРКИ
+--------------------------------------------------------------------
+  go build ./... ....................................... OK
+  go vet ./... ......................................... OK
+  go test ./... -count=1 ............................... OK
+  node --check client/static/js/pokedex.js ............. OK
+  node --check client/static/js/game.js ................ OK
+  PRAGMA integrity_check ............................... ok
+  Виды #906–1025: 120/120; статы/типы/пол/рост/вес/catch/base_exp/
+    имена/описания/картинки сверены с PokeAPI — 0 расхождений;
+    is_legendary сверен с PokeAPI (12 видов) и с обновлённым
+    каноническим списком server/db/legendaries.go (только
+    #1001–1004, #1007–1008, #1014–1017, #1024–1025; парадоксы
+    остаются обычными видами).
+  У всех 120: непустой description, image_url, category_power > 0,
+    catch_rate > 0, хотя бы одна способность, level-up урон-атака.
+  Дубли pokemons.name / attacks.name / attacks.eng_name /
+    abilities.name — 0.
+  Сироты pokemon_attacks / pokemon_abilities — 0.
+  Новые атаки: 62/62; id 732–793; тип/категория/сила/точность/PP/
+    приоритет/цель сверены с PokeAPI — 0 расхождений (для never-miss
+    атак accuracy=100, never_misses=1).
+  Новые способности: 35/35 строк, описания непустые,
+    effect_key=NULL.
+  Файлы спрайтов normal/ и mini/: 120/120 для gen9; все gen9-файлы
+    валидны, размеры > 500 Б (GIF или PNG).
+  Эволюции: 47 evolved / 73 base; 6 кросс-ген связей; 0 ссылок на
+    gen10+, 0 циклов, 0 висящих id; Clodsire 980 не связан с Wooper.
+  Лёрнсеты: 6940 строк; сверка с PokeAPI по (атака, метод, min
+    level) — 0 расхождений.
+  Регрессия по бэкапу before-gen9:
+    – pokemons #1–905 — 0 изменений;
+    – attacks #1–731 — 0 изменений;
+    – abilities #1–277 — 0 изменений;
+    – pokemon_attacks старых видов — 0 изменений (47909/47909);
+    – pokemon_abilities старых видов — 0 изменений (2124/2124);
+    – user_pokemons — 0 изменений.
+  PRAGMA foreign_key_check: 51 pre-existing нарушения — ровно
+    столько же, сколько в бэкапе; новых нет, не исправлялись
+    (известный дефект проекта, в т.ч. attacks.effect_status_id=9).
+
+  Живой HTTP-смоук (сервер :8080, БД читается на лету):
+    GET /api/pokedex/list                -> 200, 1025 видов,
+                                            последний #1025 «Печарант»;
+                                            #906 «Спригатито» присутствует;
+    GET /api/pokedex/pokemon/906/full    -> 200, 2 способности, 52 атаки;
+    GET /api/pokedex/pokemon/908/full    -> 200, 2 способности, 81 атака;
+    GET /api/pokedex/pokemon/916/full    -> 200, 3 способности, 54 атаки;
+    GET /api/pokedex/pokemon/925/full    -> 200, 3 способности, 56 атак;
+    GET /api/pokedex/pokemon/982/full    -> 200, 3 способности, 91 атака;
+    GET /api/pokedex/pokemon/984/full    -> 200, 1 способность, 68 атак;
+    GET /api/pokedex/pokemon/1000/full   -> 200, 1 способность, 52 атаки;
+    GET /api/pokedex/pokemon/1007/full   -> 200, 1 способность, 83 атаки;
+    GET /api/pokedex/pokemon/1017/full   -> 200, 1 способность, 64 атаки;
+    GET /api/pokedex/pokemon/1024/full   -> 200, 1 способность, 64 атаки;
+    GET /api/pokedex/pokemon/1025/full   -> 200, 1 способность, 39 атак;
+    GET /static/images/pokemons/{normal,mini}/906.gif -> 200 image/gif;
+    GET /static/images/pokemons/{normal,mini}/990.png -> 200 image/png;
+    GET /static/images/pokemons/{normal,mini}/1017.png -> 200 image/png;
+    GET /static/images/pokemons/{normal,mini}/1025.png -> 200 image/png.
+
+  Полноценный браузерный бой новым gen9-покемоном не проводился:
+  аккаунт владельца не создавался/не менялся. Код создания экземпляра
+  (utils.CreateUserPokemon) не менялся и работает по данным БД.
+
+--------------------------------------------------------------------
+7. ФАЙЛЫ / БЭКАП
+--------------------------------------------------------------------
+  database/pokemon.db
+  client/static/images/pokemons/{normal,mini}/906.gif … 1025.gif/.png
+  client/static/js/pokedex.js (maxPokemonId fallback 1025)
+  server/db/legendaries.go (канонический список gen9 — 12 видов)
+  .opencode/skills/db-data-migrations/SKILL.md (срез чисел)
+  MISSING_MOVES_gen9.txt
+  TEST_gen9.txt
+  HANDOFF_STATUS.txt (обновлён)
+  Бэкап перед успешным импортом:
+    database/backups/pokemon.db.bak-before-gen9-20261023-172049
+  Скрипты импорта/проверок — вне репозитория (scratchpad).
+====================================================================

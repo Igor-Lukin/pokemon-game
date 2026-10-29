@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Восточный Джотто — вариант D «Кольцо Ветров»</title>
+<style>
+  :root {
+    --bg: #0e151d; --panel: #151f2a; --line: #2b3d50;
+    --text: #e8eef5; --muted: #93a6b8; --gold: #f2c94c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: radial-gradient(circle at 30% 0%, #17324a 0%, var(--bg) 55%);
+    color: var(--text); font-family: "Segoe UI", Tahoma, Arial, sans-serif; min-height: 100vh;
+  }
+  header {
+    padding: 22px 28px 12px; display: flex; flex-wrap: wrap; align-items: flex-end;
+    gap: 18px 32px; border-bottom: 1px solid var(--line);
+    background: rgba(10, 16, 23, .72); backdrop-filter: blur(8px);
+  }
+  h1 { margin: 0; font-size: 28px; letter-spacing: .3px; }
+  .sub { color: var(--muted); font-size: 14px; margin-top: 4px; max-width: 900px; }
+  .stats { display: flex; gap: 22px; margin-left: auto; flex-wrap: wrap; }
+  .stat b { display: block; font-size: 22px; color: var(--gold); }
+  .stat span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .8px; }
+  .wrap { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 18px; padding: 18px; max-width: 1900px; margin: 0 auto; }
+  .map-card { background: linear-gradient(180deg, rgba(27,40,54,.85), rgba(15,23,32,.95)); border: 1px solid var(--line); border-radius: 18px; padding: 10px; overflow: hidden; }
+  svg#map { width: 100%; height: auto; display: block; }
+  .edge { stroke: #49617a; stroke-width: 4; stroke-linecap: round; opacity: .78; }
+  .edge.shortcut { stroke: #d9a7e0; stroke-width: 3; stroke-dasharray: 7 7; opacity: .65; }
+  .node { cursor: pointer; transition: opacity .15s; }
+  .node:hover { opacity: .82; }
+  .node:focus { outline: none; }
+  .node.selected rect { stroke: var(--gold); stroke-width: 4; }
+  .node-id { font-size: 11px; font-weight: 600; }
+  .node-name { font-size: 14px; font-weight: 700; }
+  .node-level { font-size: 12px; font-weight: 600; }
+  .start-badge { fill: var(--gold); font-size: 13px; font-weight: 800; letter-spacing: 1.2px; }
+  .city-label { fill: rgba(242,201,76,.55); font-size: 13px; font-weight: 700; letter-spacing: 1px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 14px; padding: 10px 14px 6px; color: var(--muted); font-size: 12px; }
+  .legend-item { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-item i { width: 13px; height: 13px; border-radius: 4px; display: inline-block; border: 1px solid #0b1118; }
+  aside { background: linear-gradient(180deg, var(--panel), #101923); border: 1px solid var(--line); border-radius: 18px; padding: 18px; align-self: start; position: sticky; top: 18px; max-height: calc(100vh - 36px); overflow: auto; }
+  aside h2 { margin: 0 0 4px; font-size: 22px; }
+  .type-pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; margin-bottom: 12px; }
+  .badges { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0 14px; }
+  .badge { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #223246; color: #cfe0f1; }
+  .badge.heal { background: #1d3a2c; color: #a9edc1; }
+  .badge.nursery { background: #3a2d1d; color: #f4d49b; }
+  .desc { color: #c7d5e3; line-height: 1.45; font-size: 14px; }
+  .section-title { margin: 18px 0 8px; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+  .theme { background: #1d2b3a; border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; font-size: 13px; color: #d8e6f4; }
+  .exits { display: flex; flex-wrap: wrap; gap: 7px; }
+  .exit-btn { border: 1px solid var(--line); background: #1d2b3a; color: var(--text); padding: 5px 9px; border-radius: 9px; cursor: pointer; font-size: 13px; }
+  .exit-btn:hover { border-color: var(--gold); }
+  .hint { color: var(--muted); font-size: 12px; line-height: 1.45; margin-top: 14px; }
+  .route { padding: 0 18px 26px; max-width: 1900px; margin: 0 auto; }
+  .route h2 { margin: 4px 0 4px; font-size: 22px; }
+  .route .lead { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+  .route-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+  .route-card { background: linear-gradient(180deg, #172433, #111b26); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .route-card h3 { margin: 0 0 10px; font-size: 15px; color: var(--gold); }
+  .route-card ol { margin: 0; padding-left: 20px; color: #d5e2ef; line-height: 1.6; font-size: 14px; }
+  .route-card ul { margin: 0; padding-left: 18px; color: #d5e2ef; line-height: 1.6; font-size: 14px; }
+  .route-card li span { color: var(--muted); }
+  footer { color: var(--muted); font-size: 12px; padding: 0 28px 22px; }
+  @media (max-width: 1100px) {
+    .wrap { grid-template-columns: 1fr; }
+    aside { position: static; max-height: none; }
+    .stats { margin-left: 0; }
+    .route-grid { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Восточный Джотто — вариант D «Кольцо Ветров»</h1>
+    <div class="sub">
+      Полностью авторская схема: пять городов-кластеров, кольцо диких зон, срезки и обратный северный путь.
+      Интерьеры здесь — такие же локации, как и всё остальное.
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>31</b><span>локация</span></div>
+    <div class="stat"><b>40</b><span>связей</span></div>
+    <div class="stat"><b>5</b><span>городов</span></div>
+    <div class="stat"><b>12–15</b><span>часов</span></div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div>
+    <div class="map-card">
+      <svg id="map" viewBox="0 0 1500 900" role="img" aria-label="Карта варианта D Кольцо Ветров">
+<defs><filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.35"/></filter></defs>
+<polyline points="750,450 520,450 360,450 220,450 120,380 250,560 350,680 420,760 520,820 620,760 760,800 900,760 950,820 1050,760 1050,600 1180,520 1280,400 1200,180 1100,300 950,250 850,180 750,260 750,350 750,450" fill="none" stroke="#f2c94c" stroke-width="3" stroke-dasharray="8 12" opacity="0.22"/>
+<ellipse cx="750" cy="410" rx="190" ry="110" fill="rgba(242,201,76,.055)" stroke="rgba(242,201,76,.28)" stroke-width="1.5" stroke-dasharray="6 8"/>
+<text x="750" y="292" text-anchor="middle" class="city-label">Голденрод</text>
+<ellipse cx="160" cy="455" rx="150" ry="145" fill="rgba(242,201,76,.055)" stroke="rgba(242,201,76,.28)" stroke-width="1.5" stroke-dasharray="6 8"/>
+<text x="160" y="302" text-anchor="middle" class="city-label">Оливин</text>
+<ellipse cx="1265" cy="185" rx="155" ry="135" fill="rgba(242,201,76,.055)" stroke="rgba(242,201,76,.28)" stroke-width="1.5" stroke-dasharray="6 8"/>
+<text x="1265" y="42" text-anchor="middle" class="city-label">Олстон</text>
+<ellipse cx="1050" cy="800" rx="165" ry="105" fill="rgba(242,201,76,.055)" stroke="rgba(242,201,76,.28)" stroke-width="1.5" stroke-dasharray="6 8"/>
+<text x="1050" y="687" text-anchor="middle" class="city-label">Флауренция</text>
+<ellipse cx="420" cy="800" rx="165" ry="105" fill="rgba(242,201,76,.055)" stroke="rgba(242,201,76,.28)" stroke-width="1.5" stroke-dasharray="6 8"/>
+<text x="420" y="687" text-anchor="middle" class="city-label">Вархолл</text>
+<line class="edge" x1="750" y1="450" x2="870" y2="450"/>
+<line class="edge" x1="750" y1="450" x2="630" y2="450"/>
+<line class="edge" x1="870" y1="450" x2="630" y2="450"/>
+<line class="edge" x1="870" y1="450" x2="750" y2="350"/>
+<line class="edge" x1="750" y1="450" x2="750" y2="350"/>
+<line class="edge" x1="220" y1="450" x2="120" y2="380"/>
+<line class="edge" x1="220" y1="450" x2="140" y2="540"/>
+<line class="edge" x1="120" y1="380" x2="140" y2="540"/>
+<line class="edge" x1="1200" y1="180" x2="1300" y2="120"/>
+<line class="edge" x1="1200" y1="180" x2="1300" y2="250"/>
+<line class="edge" x1="1300" y1="120" x2="1300" y2="250"/>
+<line class="edge" x1="1050" y1="760" x2="950" y2="820"/>
+<line class="edge" x1="1050" y1="760" x2="1150" y2="820"/>
+<line class="edge" x1="950" y1="820" x2="1150" y2="820"/>
+<line class="edge" x1="420" y1="760" x2="320" y2="820"/>
+<line class="edge" x1="420" y1="760" x2="520" y2="820"/>
+<line class="edge" x1="320" y1="820" x2="520" y2="820"/>
+<line class="edge" x1="750" y1="450" x2="520" y2="450"/>
+<line class="edge" x1="520" y1="450" x2="360" y2="450"/>
+<line class="edge" x1="360" y1="450" x2="220" y2="450"/>
+<line class="edge" x1="120" y1="380" x2="250" y2="560"/>
+<line class="edge" x1="250" y1="560" x2="350" y2="680"/>
+<line class="edge" x1="350" y1="680" x2="420" y2="760"/>
+<line class="edge" x1="520" y1="820" x2="620" y2="760"/>
+<line class="edge" x1="620" y1="760" x2="760" y2="800"/>
+<line class="edge" x1="760" y1="800" x2="900" y2="760"/>
+<line class="edge" x1="900" y1="760" x2="950" y2="820"/>
+<line class="edge" x1="1050" y1="760" x2="1050" y2="600"/>
+<line class="edge" x1="1050" y1="600" x2="1180" y2="520"/>
+<line class="edge" x1="1180" y1="520" x2="1280" y2="400"/>
+<line class="edge" x1="1280" y1="400" x2="1200" y2="180"/>
+<line class="edge" x1="1300" y1="250" x2="1100" y2="300"/>
+<line class="edge" x1="1100" y1="300" x2="950" y2="250"/>
+<line class="edge" x1="950" y1="250" x2="750" y2="260"/>
+<line class="edge" x1="750" y1="260" x2="750" y2="350"/>
+<line class="edge" x1="1100" y1="300" x2="850" y2="180"/>
+<line class="edge" x1="850" y1="180" x2="750" y2="260"/>
+<line class="edge shortcut" x1="630" y1="450" x2="480" y2="380"/>
+<line class="edge shortcut" x1="480" y1="380" x2="360" y2="450"/>
+<line class="edge shortcut" x1="760" y1="800" x2="1280" y2="400"/>
+<g class="node selected" data-id="200" tabindex="0" role="button" aria-label="Площадь Голденрода">
+<rect x="668" y="421" width="164" height="58" rx="14" fill="#f2c94c" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="678" y="437" class="node-id" fill="#2a2108" opacity="0.72">#200</text>
+<text x="678" y="455" class="node-name" fill="#2a2108">Площадь Голденрода</text>
+<text x="820" y="437" text-anchor="end" class="node-level" fill="#2a2108" opacity="0.8">2–6</text>
+<text x="750" y="410" text-anchor="middle" class="start-badge">СТАРТ</text>
+</g>
+<g class="node" data-id="201" tabindex="0" role="button" aria-label="Новый район">
+<rect x="788" y="421" width="164" height="58" rx="14" fill="#a8d8ea" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="798" y="437" class="node-id" fill="#10222b" opacity="0.72">#201</text>
+<text x="798" y="455" class="node-name" fill="#10222b">Новый район</text>
+<text x="940" y="437" text-anchor="end" class="node-level" fill="#10222b" opacity="0.8">3–8</text>
+</g>
+<g class="node" data-id="202" tabindex="0" role="button" aria-label="Старый район">
+<rect x="548" y="421" width="164" height="58" rx="14" fill="#a8d8ea" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="558" y="437" class="node-id" fill="#10222b" opacity="0.72">#202</text>
+<text x="558" y="455" class="node-name" fill="#10222b">Старый район</text>
+<text x="700" y="437" text-anchor="end" class="node-level" fill="#10222b" opacity="0.8">4–9</text>
+</g>
+<g class="node" data-id="203" tabindex="0" role="button" aria-label="Вокзал Голденрода">
+<rect x="668" y="321" width="164" height="58" rx="14" fill="#c3cbd4" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="678" y="337" class="node-id" fill="#1a1f24" opacity="0.72">#203</text>
+<text x="678" y="355" class="node-name" fill="#1a1f24">Вокзал Голденрода</text>
+<text x="820" y="337" text-anchor="end" class="node-level" fill="#1a1f24" opacity="0.8">5–10</text>
+</g>
+<g class="node" data-id="204" tabindex="0" role="button" aria-label="Порт Оливина">
+<rect x="138" y="421" width="164" height="58" rx="14" fill="#f2c94c" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="148" y="437" class="node-id" fill="#2a2108" opacity="0.72">#204</text>
+<text x="148" y="455" class="node-name" fill="#2a2108">Порт Оливина</text>
+<text x="290" y="437" text-anchor="end" class="node-level" fill="#2a2108" opacity="0.8">9–14</text>
+</g>
+<g class="node" data-id="205" tabindex="0" role="button" aria-label="Причал Оливина">
+<rect x="38" y="351" width="164" height="58" rx="14" fill="#8ecae6" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="48" y="367" class="node-id" fill="#0b2230" opacity="0.72">#205</text>
+<text x="48" y="385" class="node-name" fill="#0b2230">Причал Оливина</text>
+<text x="190" y="367" text-anchor="end" class="node-level" fill="#0b2230" opacity="0.8">10–15</text>
+</g>
+<g class="node" data-id="206" tabindex="0" role="button" aria-label="Маяк Оливина">
+<rect x="58" y="511" width="164" height="58" rx="14" fill="#d9a7e0" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="68" y="527" class="node-id" fill="#26112a" opacity="0.72">#206</text>
+<text x="68" y="545" class="node-name" fill="#26112a">Маяк Оливина</text>
+<text x="210" y="527" text-anchor="end" class="node-level" fill="#26112a" opacity="0.8">11–16</text>
+</g>
+<g class="node" data-id="207" tabindex="0" role="button" aria-label="Площадь Олстона">
+<rect x="1118" y="151" width="164" height="58" rx="14" fill="#f2c94c" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="1128" y="167" class="node-id" fill="#2a2108" opacity="0.72">#207</text>
+<text x="1128" y="185" class="node-name" fill="#2a2108">Площадь Олстона</text>
+<text x="1270" y="167" text-anchor="end" class="node-level" fill="#2a2108" opacity="0.8">24–28</text>
+</g>
+<g class="node" data-id="208" tabindex="0" role="button" aria-label="Кузница Олстона">
+<rect x="1218" y="91" width="164" height="58" rx="14" fill="#9aacb8" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="1228" y="107" class="node-id" fill="#131c22" opacity="0.72">#208</text>
+<text x="1228" y="125" class="node-name" fill="#131c22">Кузница Олстона</text>
+<text x="1370" y="107" text-anchor="end" class="node-level" fill="#131c22" opacity="0.8">25–29</text>
+</g>
+<g class="node" data-id="209" tabindex="0" role="button" aria-label="Стальной стадион">
+<rect x="1218" y="221" width="164" height="58" rx="14" fill="#d9a7e0" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="1228" y="237" class="node-id" fill="#26112a" opacity="0.72">#209</text>
+<text x="1228" y="255" class="node-name" fill="#26112a">Стальной стадион</text>
+<text x="1370" y="237" text-anchor="end" class="node-level" fill="#26112a" opacity="0.8">26–30</text>
+</g>
+<g class="node" data-id="210" tabindex="0" role="button" aria-label="Оранжерея Флауренции">
+<rect x="968" y="731" width="164" height="58" rx="14" fill="#c6e88f" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="978" y="747" class="node-id" fill="#1d260c" opacity="0.72">#210</text>
+<text x="978" y="765" class="node-name" fill="#1d260c">Оранжерея Флауренции</text>
+<text x="1120" y="747" text-anchor="end" class="node-level" fill="#1d260c" opacity="0.8">21–25</text>
+</g>
+<g class="node" data-id="211" tabindex="0" role="button" aria-label="Рынок Флауренции">
+<rect x="868" y="791" width="164" height="58" rx="14" fill="#f2c94c" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="878" y="807" class="node-id" fill="#2a2108" opacity="0.72">#211</text>
+<text x="878" y="825" class="node-name" fill="#2a2108">Рынок Флауренции</text>
+<text x="1020" y="807" text-anchor="end" class="node-level" fill="#2a2108" opacity="0.8">21–26</text>
+</g>
+<g class="node" data-id="212" tabindex="0" role="button" aria-label="Пасека Флауренции">
+<rect x="1068" y="791" width="164" height="58" rx="14" fill="#d9e8a3" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="1078" y="807" class="node-id" fill="#1c240b" opacity="0.72">#212</text>
+<text x="1078" y="825" class="node-name" fill="#1c240b">Пасека Флауренции</text>
+<text x="1220" y="807" text-anchor="end" class="node-level" fill="#1c240b" opacity="0.8">22–26</text>
+</g>
+<g class="node" data-id="213" tabindex="0" role="button" aria-label="Базар Вархолла">
+<rect x="338" y="731" width="164" height="58" rx="14" fill="#f2c94c" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="348" y="747" class="node-id" fill="#2a2108" opacity="0.72">#213</text>
+<text x="348" y="765" class="node-name" fill="#2a2108">Базар Вархолла</text>
+<text x="490" y="747" text-anchor="end" class="node-level" fill="#2a2108" opacity="0.8">16–21</text>
+</g>
+<g class="node" data-id="214" tabindex="0" role="button" aria-label="Музей Вархолла">
+<rect x="238" y="791" width="164" height="58" rx="14" fill="#b08b6b" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="248" y="807" class="node-id" fill="#21150b" opacity="0.72">#214</text>
+<text x="248" y="825" class="node-name" fill="#21150b">Музей Вархолла</text>
+<text x="390" y="807" text-anchor="end" class="node-level" fill="#21150b" opacity="0.8">17–22</text>
+</g>
+<g class="node" data-id="215" tabindex="0" role="button" aria-label="Автовокзал Вархолла">
+<rect x="438" y="791" width="164" height="58" rx="14" fill="#c3cbd4" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="448" y="807" class="node-id" fill="#1a1f24" opacity="0.72">#215</text>
+<text x="448" y="825" class="node-name" fill="#1a1f24">Автовокзал Вархолла</text>
+<text x="590" y="807" text-anchor="end" class="node-level" fill="#1a1f24" opacity="0.8">16–21</text>
+</g>
+<g class="node" data-id="216" tabindex="0" role="button" aria-label="Западный тракт">
+<rect x="438" y="421" width="164" height="58" rx="14" fill="#b8e0a8" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="448" y="437" class="node-id" fill="#12240f" opacity="0.72">#216</text>
+<text x="448" y="455" class="node-name" fill="#12240f">Западный тракт</text>
+<text x="590" y="437" text-anchor="end" class="node-level" fill="#12240f" opacity="0.8">5–10</text>
+</g>
+<g class="node" data-id="217" tabindex="0" role="button" aria-label="Стеклянные Скалы">
+<rect x="278" y="421" width="164" height="58" rx="14" fill="#b0b0b0" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="288" y="437" class="node-id" fill="#1f1f1f" opacity="0.72">#217</text>
+<text x="288" y="455" class="node-name" fill="#1f1f1f">Стеклянные Скалы</text>
+<text x="430" y="437" text-anchor="end" class="node-level" fill="#1f1f1f" opacity="0.8">7–12</text>
+</g>
+<g class="node" data-id="218" tabindex="0" role="button" aria-label="Подземный коллектор">
+<rect x="398" y="351" width="164" height="58" rx="14" fill="#9b8ac4" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="408" y="367" class="node-id" fill="#160f24" opacity="0.72">#218</text>
+<text x="408" y="385" class="node-name" fill="#160f24">Подземный коллектор</text>
+<text x="550" y="367" text-anchor="end" class="node-level" fill="#160f24" opacity="0.8">8–14</text>
+</g>
+<g class="node" data-id="219" tabindex="0" role="button" aria-label="Солончаки">
+<rect x="268" y="651" width="164" height="58" rx="14" fill="#e0c27a" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="278" y="667" class="node-id" fill="#2a210b" opacity="0.72">#219</text>
+<text x="278" y="685" class="node-name" fill="#2a210b">Солончаки</text>
+<text x="420" y="667" text-anchor="end" class="node-level" fill="#2a210b" opacity="0.8">14–19</text>
+</g>
+<g class="node" data-id="220" tabindex="0" role="button" aria-label="Затонувший храм">
+<rect x="168" y="531" width="164" height="58" rx="14" fill="#b08b6b" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="178" y="547" class="node-id" fill="#21150b" opacity="0.72">#220</text>
+<text x="178" y="565" class="node-name" fill="#21150b">Затонувший храм</text>
+<text x="320" y="547" text-anchor="end" class="node-level" fill="#21150b" opacity="0.8">12–17</text>
+</g>
+<g class="node" data-id="221" tabindex="0" role="button" aria-label="Топь Туманов">
+<rect x="538" y="731" width="164" height="58" rx="14" fill="#6fb3a0" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="548" y="747" class="node-id" fill="#0c211c" opacity="0.72">#221</text>
+<text x="548" y="765" class="node-name" fill="#0c211c">Топь Туманов</text>
+<text x="690" y="747" text-anchor="end" class="node-level" fill="#0c211c" opacity="0.8">17–22</text>
+</g>
+<g class="node" data-id="222" tabindex="0" role="button" aria-label="Кристальный грот">
+<rect x="678" y="771" width="164" height="58" rx="14" fill="#a9e3e6" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="688" y="787" class="node-id" fill="#0b2528" opacity="0.72">#222</text>
+<text x="688" y="805" class="node-name" fill="#0b2528">Кристальный грот</text>
+<text x="830" y="787" text-anchor="end" class="node-level" fill="#0b2528" opacity="0.8">19–24</text>
+</g>
+<g class="node" data-id="223" tabindex="0" role="button" aria-label="Птичий утёс">
+<rect x="818" y="731" width="164" height="58" rx="14" fill="#c9a66b" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="828" y="747" class="node-id" fill="#241a0d" opacity="0.72">#223</text>
+<text x="828" y="765" class="node-name" fill="#241a0d">Птичий утёс</text>
+<text x="970" y="747" text-anchor="end" class="node-level" fill="#241a0d" opacity="0.8">20–25</text>
+</g>
+<g class="node" data-id="224" tabindex="0" role="button" aria-label="Цветущий тракт">
+<rect x="968" y="571" width="164" height="58" rx="14" fill="#b8e0a8" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="978" y="587" class="node-id" fill="#12240f" opacity="0.72">#224</text>
+<text x="978" y="605" class="node-name" fill="#12240f">Цветущий тракт</text>
+<text x="1120" y="587" text-anchor="end" class="node-level" fill="#12240f" opacity="0.8">21–26</text>
+</g>
+<g class="node" data-id="225" tabindex="0" role="button" aria-label="Заброшенная станция">
+<rect x="1098" y="491" width="164" height="58" rx="14" fill="#9aacb8" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="1108" y="507" class="node-id" fill="#131c22" opacity="0.72">#225</text>
+<text x="1108" y="525" class="node-name" fill="#131c22">Заброшенная станция</text>
+<text x="1250" y="507" text-anchor="end" class="node-level" fill="#131c22" opacity="0.8">22–27</text>
+</g>
+<g class="node" data-id="226" tabindex="0" role="button" aria-label="Лес Забвения">
+<rect x="1198" y="371" width="164" height="58" rx="14" fill="#7fbf7f" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="1208" y="387" class="node-id" fill="#0e1f0e" opacity="0.72">#226</text>
+<text x="1208" y="405" class="node-name" fill="#0e1f0e">Лес Забвения</text>
+<text x="1350" y="387" text-anchor="end" class="node-level" fill="#0e1f0e" opacity="0.8">23–28</text>
+</g>
+<g class="node" data-id="227" tabindex="0" role="button" aria-label="Северный тракт">
+<rect x="1018" y="271" width="164" height="58" rx="14" fill="#b8e0a8" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="1028" y="287" class="node-id" fill="#12240f" opacity="0.72">#227</text>
+<text x="1028" y="305" class="node-name" fill="#12240f">Северный тракт</text>
+<text x="1170" y="287" text-anchor="end" class="node-level" fill="#12240f" opacity="0.8">16–21</text>
+</g>
+<g class="node" data-id="228" tabindex="0" role="button" aria-label="Ветряная станция">
+<rect x="868" y="221" width="164" height="58" rx="14" fill="#9aacb8" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="878" y="237" class="node-id" fill="#131c22" opacity="0.72">#228</text>
+<text x="878" y="255" class="node-name" fill="#131c22">Ветряная станция</text>
+<text x="1020" y="237" text-anchor="end" class="node-level" fill="#131c22" opacity="0.8">14–19</text>
+</g>
+<g class="node" data-id="229" tabindex="0" role="button" aria-label="Старая мельница">
+<rect x="668" y="231" width="164" height="58" rx="14" fill="#b08b6b" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="678" y="247" class="node-id" fill="#21150b" opacity="0.72">#229</text>
+<text x="678" y="265" class="node-name" fill="#21150b">Старая мельница</text>
+<text x="820" y="247" text-anchor="end" class="node-level" fill="#21150b" opacity="0.8">12–17</text>
+</g>
+<g class="node" data-id="230" tabindex="0" role="button" aria-label="Пепельная роща">
+<rect x="768" y="151" width="164" height="58" rx="14" fill="#7fbf7f" stroke="#0b1118" stroke-width="2" filter="url(#shadow)"/>
+<text x="778" y="167" class="node-id" fill="#0e1f0e" opacity="0.72">#230</text>
+<text x="778" y="185" class="node-name" fill="#0e1f0e">Пепельная роща</text>
+<text x="920" y="167" text-anchor="end" class="node-level" fill="#0e1f0e" opacity="0.8">13–18</text>
+</g>
+</svg>
+      <div class="legend"><span class="legend-item"><i style="background:#f2c94c"></i>Город</span><span class="legend-item"><i style="background:#a8d8ea"></i>Район</span><span class="legend-item"><i style="background:#b8e0a8"></i>Маршрут</span><span class="legend-item"><i style="background:#7fbf7f"></i>Лес</span><span class="legend-item"><i style="background:#c9a66b"></i>Горы</span><span class="legend-item"><i style="background:#8ecae6"></i>Вода</span><span class="legend-item"><i style="background:#6fb3a0"></i>Болото</span><span class="legend-item"><i style="background:#d9e8a3"></i>Ферма</span><span class="legend-item"><i style="background:#b0b0b0"></i>Скалы</span><span class="legend-item"><i style="background:#b08b6b"></i>Руины</span><span class="legend-item"><i style="background:#9b8ac4"></i>Пещера</span><span class="legend-item"><i style="background:#e0c27a"></i>Пустыня</span><span class="legend-item"><i style="background:#9aacb8"></i>Промзона</span><span class="legend-item"><i style="background:#a9e3e6"></i>Лёд</span><span class="legend-item"><i style="background:#d9a7e0"></i>Особая</span><span class="legend-item"><i style="background:#c6e88f"></i>Сад</span><span class="legend-item"><i style="background:#c3cbd4"></i>Транспорт</span></div>
+    </div>
+    <div class="hint" style="padding: 8px 14px 0;">
+      Пунктирная золотая линия — рекомендуемое кольцо. Фиолетовые пунктирные связи — срезки.
+      Клик по локации — уровни, тема спавнов и переходы.
+    </div>
+  </div>
+  <aside id="details"></aside>
+</div>
+
+<section class="route">
+  <h2>Как проходить</h2>
+  <div class="lead">Кольцо можно идти в любую сторону, но уровни сбалансированы под направление «запад → юг → восток → север».</div>
+  <div class="route-grid">
+    <div class="route-card">
+      <h3>Рекомендуемое кольцо</h3>
+      <ol>
+        <li>Голденрод: Площадь, Новый район, Старый район, Вокзал <span>(2–10)</span></li>
+        <li>Западный тракт → Стеклянные Скалы → Оливин <span>(5–16)</span></li>
+        <li>Затонувший храм → Солончаки → Вархолл <span>(12–22)</span></li>
+        <li>Топь Туманов → Кристальный грот → Птичий утёс → Флауренция <span>(17–26)</span></li>
+        <li>Цветущий тракт → Заброшенная станция → Лес Забвения → Олстон <span>(21–30)</span></li>
+        <li>Северный тракт → Ветряная станция → Пепельная роща → Старая мельница → Голденрод <span>(12–21)</span></li>
+      </ol>
+    </div>
+    <div class="route-card">
+      <h3>Срезки и возвраты</h3>
+      <ul>
+        <li>Старый район ↔ Подземный коллектор ↔ Стеклянные Скалы</li>
+        <li>Кристальный грот ↔ Лес Забвения</li>
+        <li>Старая мельница ↔ Вокзал Голденрода</li>
+        <li>Пепельная роща ↔ Северный тракт ↔ Старая мельница</li>
+      </ul>
+      <p class="hint">Срезки дают короткие пути, но не отменяют уровни: слабой командой лучше идти по кольцу.</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  Вариант D — макет, в БД не внедрён. Города сохранили прежние названия; все маршруты, зоны и интерьеры — авторские.
+  IDs 200–230: 200–215 городские локации, 216–230 дикие зоны.
+</footer>
+
+<script>
+const REGION_DATA = {"200": {"id": 200, "name": "Площадь Голденрода", "type": "Город, старт", "typeKey": "city", "levels": "2–6", "theme": "Normal / Flying / Electric", "description": "Стартовая площадь столицы: монстроцентр, академия и первые тренеры.", "city": "Голденрод", "healing": true, "nursery": true, "exits": [201, 202, 203, 216]}, "201": {"id": 201, "name": "Новый район", "type": "Район", "typeKey": "district", "levels": "3–8", "theme": "Electric / Steel / Normal", "description": "Деловой район: радиобашня, магазины и электрический гул проводов.", "city": "Голденрод", "healing": false, "nursery": false, "exits": [200, 202, 203]}, "202": {"id": 202, "name": "Старый район", "type": "Район", "typeKey": "district", "levels": "4–9", "theme": "Dark / Poison / Ghost", "description": "Старые кварталы: мастерские, полиция и тени в переулках.", "city": "Голденрод", "healing": false, "nursery": false, "exits": [200, 201, 218]}, "203": {"id": 203, "name": "Вокзал Голденрода", "type": "Транспорт", "typeKey": "transport", "levels": "5–10", "theme": "Electric / Normal / Steel", "description": "Вокзал Голденрода: поезда на север и запах горячего металла.", "city": "Голденрод", "healing": false, "nursery": false, "exits": [201, 200, 229]}, "204": {"id": 204, "name": "Порт Оливина", "type": "Город-порт", "typeKey": "city", "levels": "9–14", "theme": "Water / Normal / Flying", "description": "Порт Оливина: склады, чайки и морская соль.", "city": "Оливин", "healing": true, "nursery": false, "exits": [205, 206, 217]}, "205": {"id": 205, "name": "Причал Оливина", "type": "Вода", "typeKey": "water", "levels": "10–15", "theme": "Water / Flying / Ice", "description": "Причал: лодки, рыбный рынок и вода под ногами.", "city": "Оливин", "healing": false, "nursery": false, "exits": [204, 206, 220]}, "206": {"id": 206, "name": "Маяк Оливина", "type": "Особая", "typeKey": "special", "levels": "11–16", "theme": "Electric / Water / Psychic", "description": "Маяк: стеклянный фонарь, ветер и странные сны.", "city": "Оливин", "healing": false, "nursery": false, "exits": [204, 205]}, "207": {"id": 207, "name": "Площадь Олстона", "type": "Город", "typeKey": "city", "levels": "24–28", "theme": "Rock / Fighting / Normal", "description": "Площадь Олстона: цирковые флаги и горный воздух.", "city": "Олстон", "healing": true, "nursery": false, "exits": [208, 209, 226]}, "208": {"id": 208, "name": "Кузница Олстона", "type": "Промзона", "typeKey": "industrial", "levels": "25–29", "theme": "Fire / Steel / Rock", "description": "Кузница: жар, искры и звон стали.", "city": "Олстон", "healing": false, "nursery": false, "exits": [207, 209]}, "209": {"id": 209, "name": "Стальной стадион", "type": "Особая", "typeKey": "special", "levels": "26–30", "theme": "Steel / Fighting / Electric", "description": "Стальной стадион: арена, где решают силу и выдержка.", "city": "Олстон", "healing": false, "nursery": false, "exits": [207, 208, 227]}, "210": {"id": 210, "name": "Оранжерея Флауренции", "type": "Сад", "typeKey": "garden", "levels": "21–25", "theme": "Grass / Fairy / Bug", "description": "Оранжерея Флауренции: стеклянные купола и вечное цветение.", "city": "Флауренция", "healing": true, "nursery": true, "exits": [211, 212, 224]}, "211": {"id": 211, "name": "Рынок Флауренции", "type": "Город", "typeKey": "city", "levels": "21–26", "theme": "Normal / Fairy / Grass", "description": "Рынок Флауренции: специи, цветы и гомон торговцев.", "city": "Флауренция", "healing": false, "nursery": false, "exits": [210, 212, 223]}, "212": {"id": 212, "name": "Пасека Флауренции", "type": "Ферма", "typeKey": "farm", "levels": "22–26", "theme": "Bug / Grass / Flying", "description": "Пасека: ульи, клевер и жужжание над полем.", "city": "Флауренция", "healing": false, "nursery": false, "exits": [210, 211]}, "213": {"id": 213, "name": "Базар Вархолла", "type": "Город", "typeKey": "city", "levels": "16–21", "theme": "Ground / Fire / Normal", "description": "Базар Вархолла: пустыня, ткань и пряности.", "city": "Вархолл", "healing": true, "nursery": false, "exits": [214, 215, 219]}, "214": {"id": 214, "name": "Музей Вархолла", "type": "Руины", "typeKey": "ruin", "levels": "17–22", "theme": "Rock / Ghost / Psychic", "description": "Музей Вархолла: камни, таблички и портреты древних.", "city": "Вархолл", "healing": false, "nursery": false, "exits": [213, 215]}, "215": {"id": 215, "name": "Автовокзал Вархолла", "type": "Транспорт", "typeKey": "transport", "levels": "16–21", "theme": "Electric / Steel / Normal", "description": "Автовокзал: пыльные автобусы и расписание в никуда.", "city": "Вархолл", "healing": false, "nursery": false, "exits": [213, 214, 221]}, "216": {"id": 216, "name": "Западный тракт", "type": "Маршрут", "typeKey": "route", "levels": "5–10", "theme": "Normal / Flying / Grass", "description": "Западный тракт: первый большой путь из столицы.", "city": null, "healing": false, "nursery": false, "exits": [200, 217]}, "217": {"id": 217, "name": "Стеклянные Скалы", "type": "Скалы", "typeKey": "rocks", "levels": "7–12", "theme": "Rock / Electric / Ground", "description": "Стеклянные Скалы: острые грани, статика и эхо.", "city": null, "healing": false, "nursery": false, "exits": [216, 204, 218]}, "218": {"id": 218, "name": "Подземный коллектор", "type": "Пещера", "typeKey": "cave", "levels": "8–14", "theme": "Poison / Dark / Water", "description": "Подземный коллектор: вода, ржавчина и шорох в темноте.", "city": null, "healing": false, "nursery": false, "exits": [202, 217]}, "219": {"id": 219, "name": "Солончаки", "type": "Пустыня", "typeKey": "desert", "levels": "14–19", "theme": "Ground / Fire / Poison", "description": "Солончаки: белая корка, жар и трещины под ногами.", "city": null, "healing": false, "nursery": false, "exits": [220, 213]}, "220": {"id": 220, "name": "Затонувший храм", "type": "Руины", "typeKey": "ruin", "levels": "12–17", "theme": "Water / Psychic / Ghost", "description": "Затонувший храм: вода в залах и свет сквозь трещины.", "city": null, "healing": false, "nursery": false, "exits": [205, 219]}, "221": {"id": 221, "name": "Топь Туманов", "type": "Болото", "typeKey": "swamp", "levels": "17–22", "theme": "Water / Poison / Ghost", "description": "Топь Туманов: камыш, туман и огни над водой.", "city": null, "healing": false, "nursery": false, "exits": [215, 222]}, "222": {"id": 222, "name": "Кристальный грот", "type": "Лёд", "typeKey": "ice", "levels": "19–24", "theme": "Ice / Rock / Water", "description": "Кристальный грот: лёд, кварц и звон капель.", "city": null, "healing": false, "nursery": false, "exits": [221, 223, 226]}, "223": {"id": 223, "name": "Птичий утёс", "type": "Горы", "typeKey": "mountain", "levels": "20–25", "theme": "Flying / Normal / Dragon", "description": "Птичий утёс: ветер, гнёзда и обрыв.", "city": null, "healing": false, "nursery": false, "exits": [222, 211]}, "224": {"id": 224, "name": "Цветущий тракт", "type": "Маршрут", "typeKey": "route", "levels": "21–26", "theme": "Grass / Fairy / Bug", "description": "Цветущий тракт: луга, цветы и насекомые.", "city": null, "healing": false, "nursery": false, "exits": [210, 225]}, "225": {"id": 225, "name": "Заброшенная станция", "type": "Промзона", "typeKey": "industrial", "levels": "22–27", "theme": "Electric / Steel / Ghost", "description": "Заброшенная станция: ржавые пути и искры в темноте.", "city": null, "healing": false, "nursery": false, "exits": [224, 226]}, "226": {"id": 226, "name": "Лес Забвения", "type": "Лес", "typeKey": "forest", "levels": "23–28", "theme": "Bug / Grass / Dark", "description": "Лес Забвения: деревья, сумрак и чужие шаги.", "city": null, "healing": false, "nursery": false, "exits": [225, 207, 222]}, "227": {"id": 227, "name": "Северный тракт", "type": "Маршрут", "typeKey": "route", "levels": "16–21", "theme": "Normal / Flying / Ice", "description": "Северный тракт: холодный ветер и редкие путники.", "city": null, "healing": false, "nursery": false, "exits": [209, 228, 230]}, "228": {"id": 228, "name": "Ветряная станция", "type": "Промзона", "typeKey": "industrial", "levels": "14–19", "theme": "Electric / Flying / Steel", "description": "Ветряная станция: лопасти, провода и гудящий воздух.", "city": null, "healing": false, "nursery": false, "exits": [227, 229]}, "229": {"id": 229, "name": "Старая мельница", "type": "Руины", "typeKey": "ruin", "levels": "12–17", "theme": "Grass / Normal / Ghost", "description": "Старая мельница: вода, жернова и скрип.", "city": null, "healing": false, "nursery": false, "exits": [228, 203, 230]}, "230": {"id": 230, "name": "Пепельная роща", "type": "Лес", "typeKey": "forest", "levels": "13–18", "theme": "Fire / Grass / Dark", "description": "Пепельная роща: серый пепел, обугленные стволы и тлеющие угли.", "city": null, "healing": false, "nursery": false, "exits": [227, 229]}};
+const COLOR = {"city": "#f2c94c", "district": "#a8d8ea", "route": "#b8e0a8", "forest": "#7fbf7f", "mountain": "#c9a66b", "water": "#8ecae6", "swamp": "#6fb3a0", "farm": "#d9e8a3", "rocks": "#b0b0b0", "ruin": "#b08b6b", "cave": "#9b8ac4", "desert": "#e0c27a", "industrial": "#9aacb8", "ice": "#a9e3e6", "special": "#d9a7e0", "garden": "#c6e88f", "transport": "#c3cbd4"};
+const INK = {"city": "#2a2108", "district": "#10222b", "route": "#12240f", "forest": "#0e1f0e", "mountain": "#241a0d", "water": "#0b2230", "swamp": "#0c211c", "farm": "#1c240b", "rocks": "#1f1f1f", "ruin": "#21150b", "cave": "#160f24", "desert": "#2a210b", "industrial": "#131c22", "ice": "#0b2528", "special": "#26112a", "garden": "#1d260c", "transport": "#1a1f24"};
+
+function renderDetails(id) {
+  const d = REGION_DATA[String(id)];
+  if (!d) return;
+  document.querySelectorAll('.node').forEach(n => n.classList.toggle('selected', n.dataset.id === String(id)));
+  const badges = [];
+  if (d.healing) badges.push('<span class="badge heal">Лечение</span>');
+  if (d.nursery) badges.push('<span class="badge nursery">Питомник</span>');
+  if (d.city) badges.push(`<span class="badge">${d.city}</span>`);
+  const exits = d.exits.map(eid => {
+    const e = REGION_DATA[String(eid)];
+    return `<button class="exit-btn" data-goto="${eid}">${e ? e.name : '#' + eid}</button>`;
+  }).join('');
+  const panel = document.getElementById('details');
+  panel.innerHTML = `
+    <div class="type-pill" style="background:${COLOR[d.typeKey]};color:${INK[d.typeKey]}">${d.type}</div>
+    <h2>${d.name}</h2>
+    <div class="badges">${badges.join('') || '<span class="badge">Рядовая локация</span>'}<span class="badge">Уровни ${d.levels}</span></div>
+    <div class="desc">${d.description}</div>
+    <div class="section-title">Тема спавнов</div>
+    <div class="theme">${d.theme}</div>
+    <div class="section-title">Переходы</div>
+    <div class="exits">${exits || '—'}</div>
+    <div class="hint">В варианте D у каждой локации, включая городские интерьеры, своя таблица спавнов и свои уровни.</div>
+  `;
+  panel.querySelectorAll('[data-goto]').forEach(btn => {
+    btn.addEventListener('click', () => renderDetails(Number(btn.dataset.goto)));
+  });
+}
+
+document.querySelectorAll('.node').forEach(node => {
+  const open = () => renderDetails(Number(node.dataset.id));
+  node.addEventListener('click', open);
+  node.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } });
+});
+
+renderDetails(200);
+</script>
+</body>
+</html>

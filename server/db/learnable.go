@@ -49,6 +49,18 @@ func InitLearnableAttacks(userPokemonID, pokemonID, level int) error {
 			WHERE user_pokemon_id = ? AND attack_id = ? AND current_pp = 0
 		`, a.attackID, userPokemonID, a.attackID)
 	}
+	// Если TM/HM-атака стала доступна по уровню, она перестаёт быть «вещью из
+	// предмета»: при замене такая атака останется в списке как обычная.
+	DB.Exec(`
+		UPDATE user_pokemon_learnable_attacks
+		SET source = 'level', source_item_id = NULL
+		WHERE user_pokemon_id = ? AND source IN ('tm', 'hm')
+		  AND attack_id IN (
+		      SELECT attack_id FROM pokemon_attacks
+		      WHERE pokemon_id = ? AND learn_method_id = 1 AND level_learned_at <= ?
+		  )
+	`, userPokemonID, pokemonID, level)
+
 	log.Printf("InitLearnableAttacks: user_pokemon=%d pokemon=%d level=%d — inserted %d attacks", userPokemonID, pokemonID, level, inserted)
 	return nil
 }

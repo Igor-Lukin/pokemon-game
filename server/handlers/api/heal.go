@@ -15,8 +15,24 @@ func HealHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var hasHealing int
+	err := db.DB.QueryRow(`
+		SELECT COALESCE(l.has_healing, 0)
+		FROM users u
+		LEFT JOIN locations l ON l.id = u.location_id
+		WHERE u.id = ?`, userID).Scan(&hasHealing)
+	if err != nil {
+		log.Printf("HealHandler: location lookup error: %v", err)
+		http.Error(w, "Пользователь не найден", http.StatusNotFound)
+		return
+	}
+	if hasHealing != 1 {
+		http.Error(w, "Здесь нет Покецентра", http.StatusBadRequest)
+		return
+	}
+
 	// Restore HP to max for all user's pokemon
-	_, err := db.DB.Exec("UPDATE user_pokemons SET current_hp = max_hp, status_id = 1 WHERE user_id = ?", userID)
+	_, err = db.DB.Exec("UPDATE user_pokemons SET current_hp = max_hp, status_id = 1 WHERE user_id = ?", userID)
 	if err != nil {
 		log.Printf("HealHandler: HP update error: %v", err)
 		http.Error(w, "Failed to heal", http.StatusInternalServerError)

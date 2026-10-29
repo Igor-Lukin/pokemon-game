@@ -1,0 +1,228 @@
+====================================================================
+TEST_gen7 — ОТЧЁТ ПО ВНЕСЕНИЮ СЕДЬМОГО ПОКОЛЕНИЯ (#722–809, Алола)
+Исполнитель: ИИ-агент. Дата: 2026-10-23.
+Основа: PokeAPI (pokemon / pokemon-species / generation-7 /
+evolution-chain / move), спрайты — Pokémon Showdown (ani/*.gif).
+ТЗ: HANDOFF_gen7.txt. Скилл: adding-pokemon-generations.
+====================================================================
+
+ИТОГ: ГОТОВО (данные). Все 88 видов #722–809 внесены, включая
+11 легендарных и 5 мифических. Лёрнсеты, способности (base+hidden),
+эволюции и спрайты проставлены. Движок не менялся; недостающие
+механики вынесены в MISSING_MOVES_gen7.txt.
+
+--------------------------------------------------------------------
+1. ЧТО ВНЕСЕНО (числа)
+--------------------------------------------------------------------
+                     было      стало     дельта
+  pokemons           721       809       +88
+  attacks            646       671       +25
+  abilities          230       241       +11
+  pokemon_attacks  38146     43325      +5179
+  pokemon_abilities 1727      1898      +171
+
+  • Виды #722–809: 88/88, min/max id = 722/809.
+  • Новые атаки: 25 обычных ходов, id 649–673 (подряд).
+    Все — только данные; механики перечислены в
+    MISSING_MOVES_gen7.txt. Z-мувы, Z-кристаллы, partner-мувы
+    Let's Go и формы не добавлялись. В диапазоне id 1–648
+    остались 2 старых пропуска, поэтому count attacks = 671
+    при max(id) = 673.
+  • Новые способности каталога: 11 (id 240–250):
+    9 отсутствовавших способностей gen7 (Galvanize, Surge Surfer,
+    Battle Bond, Power Construct, Tangling Hair, Power of Alchemy,
+    Psychic Surge, Full Metal Body, Neuroforce) + Defiant и
+    Sand Rush, которых не было в каталоге, но они нужны видам
+    (Passimian, Lycanroc). effect_key=NULL, механики — отдельно.
+  • Спрайты: 88 анимированных .gif из Pokémon Showdown в
+    normal/722.gif … 809.gif и мини-копии в mini/ (88+88 файлов).
+    PNG-fallback не понадобился.
+  • pokedex.js: запасной maxPokemonId 721 -> 809.
+
+--------------------------------------------------------------------
+2. ДАННЫЕ ВИДОВ (сверено с PokeAPI, 0 расхождений)
+--------------------------------------------------------------------
+Для всех 88 видов: id = национальный номер; русское имя; описание;
+современные типы; 6 base-статов; height/weight; category_power =
+base_experience; experience_group = 3; rarity = 1; пол/бесполость;
+catch_rate; image_url = normal/NNN.gif; is_legendary.
+Примеры (совпадают с PokeAPI):
+  #722 Роулет      [Grass/Flying]      HP68  Atk55  Def55  SpA50  SpD50  Spe42
+  #724 Десидьюай   [Grass/Ghost]       HP78  Atk107 Def75  SpA100 SpD100 Spe70
+  #727 Инсинероар  [Fire/Dark]         HP95  Atk115 Def90  SpA80  SpD90  Spe60
+  #730 Примарина   [Water/Fairy]       HP80  Atk74  Def74  SpA126 SpD116 Spe60
+  #738 Викаволт    [Bug/Electric]      HP77  Atk70  Def90  SpA145 SpD75  Spe43
+  #745 Лайканрок   [Rock]              HP75  Atk115 Def65  SpA55  SpD65  Spe112
+  #748 Токсапекс   [Poison/Water]      HP50  Atk63  Def152 SpA53  SpD142 Spe35
+  #763 Царина      [Grass]             HP72  Atk120 Def98  SpA50  SpD98  Spe72
+  #778 Мимикью     [Ghost/Fairy]       HP55  Atk90  Def80  SpA50  SpD105 Spe96
+  #784 Коммо-о     [Dragon/Fighting]   HP75  Atk110 Def125 SpA100 SpD105 Spe85
+  #791 Солгалео    [Psychic/Steel]     HP137 Atk137 Def107 SpA113 SpD89  Spe97
+  #792 Лунала      [Psychic/Ghost]     HP137 Atk113 Def89  SpA137 SpD107 Spe97
+  #800 Некрозма    [Psychic]           HP97  Atk107 Def101 SpA127 SpD89  Spe79
+  #801 Магирна     [Steel/Fairy]       HP80  Atk95  Def115 SpA130 SpD115 Spe65
+  #807 Зераора     [Electric]          HP88  Atk112 Def75  SpA102 SpD80  Spe143
+  #809 Мелметал    [Steel]             HP135 Atk143 Def143 SpA80  SpD65  Spe34
+Двутипных: 55. Бесполых: 29.
+Легендарные (PokeAPI is_legendary): 11 — Type: Null, Silvally,
+4 тапу, Cosmog, Cosmoem, Solgaleo, Lunala, Necrozma.
+Мифические: 5 — Magearna, Marshadow, Zeraora, Meltan, Melmetal.
+Ultra Beasts: 11 — Nihilego … Guzzlord, Poipole, Naganadel,
+Stakataka, Blacephalon (по PokeAPI не legendary/mythical).
+Как и в gen2–gen6, у мифических в `is_legendary` стоит 1
+(в описании — «мифический покемон»). Флаг `is_legendary`
+дополнительно сверен с каноническим списком проекта
+(server/db/legendaries.go, «включая Ultra Beasts»):
+`is_legendary=1` у 27 видов gen7 — 772, 773, 785–809.
+Описания при этом различают легендарных/мифических по PokeAPI.
+Описания непустые у всех; формат:
+  «X — покемон/легендарный покемон/мифический покемон седьмого
+   поколения (регион Алола). Национальный №N.»
+
+--------------------------------------------------------------------
+3. ЛЁРНСЕТЫ
+--------------------------------------------------------------------
+Источник — PokeAPI, версия Ultra Sun / Ultra Moon.
+86 видов имеют данные USUM; fallback Sun/Moon не потребовался.
+Meltan 808 и Melmetal 809 в PokeAPI не имеют USUM/SM — использована
+ближайшая версия `lets-go-pikachu-lets-go-eevee` (15 и 33 строки).
+Методы после свёртки дублей по PK:
+  level-up 1334, machine 2662, egg 163, tutor 1020 => 5179 строк.
+Сопоставление с attacks — по нормализованному eng_name.
+  • Не хватало 25 обычных атак — добавлены в attacks (id 649–673).
+  • Пропусков из-за отсутствующих атак после импорта нет.
+  • У каждого вида есть level-up атаки и хотя бы одна урон-атака.
+    Фолбэки (канон — только статусы): Pyukumuku 771 — Water Gun
+    (id 84, level 1); Cosmog 789 и Cosmoem 790 — Confusion
+    (id 246, level 1). Отмечено в MISSING.
+  • Дубли одной атаки на разных уровнях свёрнуты: в БД остаётся
+    минимальный уровень (требование PK).
+  • TM/tutor/egg — как данные (механик TM в бою нет).
+  • Z-мувы и partner-мувы в лёрнсеты не включались.
+
+--------------------------------------------------------------------
+4. ЭВОЛЮЦИИ
+--------------------------------------------------------------------
+  • 33 вида gen7 имеют evolves_from; 55 — базовые.
+  • Методы: level 29, stone 2, friendship 1, item 1.
+  • Линии внутри #722–809: стартовики, Пикипек, Янгос, Граббин,
+    Крабролер, Кьютифлай, Рокрафф, Марини, Мадбрей, Дьюпайдер,
+    Фомантис, Мореллул, Саландит, Стаффул, Баунсвит, Вимпод,
+    Сандигаст, Type: Null, Джангмо-о, Космог (2 ветки),
+    Пойпол, Мелтан.
+  • Кросс-ген: эволюций старых видов в gen7 нет; старые строки
+    покемонов не менялись.
+  • Приближения и немоделируемые условия (подробно в MISSING):
+      Vikavolt 738 — stone (Thunder Stone, item=NULL);
+      Crabominable 740 — stone (Ice Stone, item=NULL);
+      Lycanroc 745 — level 25 + time_day (Midday);
+      Salazzle 758 — только самка, level 33 без condition;
+      Tsareena 763 — known move Stomp, приближение level 28;
+      Silvally 773 — friendship, method=4, condition=NULL;
+      Naganadel 804 — known move Dragon Pulse, приближение level 41;
+      Solgaleo/Lunala 791/792 — обе ветки level 53, движок выберет
+        Solgaleo (меньший id);
+      Melmetal 809 — method=5 (item), item=NULL (Meltan Candies).
+  • Эволюции gen7-видов в gen8+ НЕ добавлялись.
+  • Alolan forms и прочие формы отдельными видами не заводились.
+  • Ссылок на gen8+ нет; циклов и «висящих» evolves_from нет.
+
+--------------------------------------------------------------------
+5. СПОСОБНОСТИ
+--------------------------------------------------------------------
+  • 88 видов, 171 строка pokemon_abilities:
+      slot 1 — 88, slot 2 — 30, slot 3 (hidden) — 53.
+      base 118, hidden 53. У каждого вида есть базовая способность.
+  • 90 уникальных английских имён; 79 смаплены на существующие
+    русские строки по смыслу/описанию/effect_key, 11 заведены
+    новыми (id 240–250, effect_key=NULL).
+  • Скрытые: is_hidden=1 <=> slot=3; дублей hidden/base и дублей
+    слота нет. Экземпляров новых видов в user_pokemons нет,
+    бэкфилл не требовался.
+  • Сверка «PokeAPI ability -> русская строка» по всем 88 видам:
+    0 расхождений (включая скрытые и слоты).
+  • Механики новых способностей не реализованы — см. MISSING.
+
+--------------------------------------------------------------------
+6. ПРОВЕРКИ
+--------------------------------------------------------------------
+  go build ./... ....................................... OK
+  go vet ./... ......................................... OK
+  go test ./... -count=1 ............................... OK
+  node --check client/static/js/pokedex.js ............. OK
+  node --check client/static/js/game.js ................ OK
+  PRAGMA integrity_check ............................... ok
+  Виды #722–809: 88/88; статы/типы/пол/рост/вес/catch/base_exp/
+    имена/описания/картинки сверены с PokeAPI — 0 расхождений;
+    is_legendary сверен с каноническим списком проекта (legendaries.go).
+  У всех 88: непустой description, image_url, category_power > 0,
+    catch_rate > 0, хотя бы одна способность, level-up урон-атака.
+  Дубли pokemons.name / attacks.name / attacks.eng_name /
+    abilities.name — 0.
+  Сироты pokemon_attacks / pokemon_abilities — 0.
+  Новые атаки: 25/25; id 649–673; тип/категория/сила/точность/PP/
+    приоритет сверены с PokeAPI — 0 расхождений.
+  Новые способности: 11/11 строк, описания непустые,
+    effect_key=NULL.
+  Файлы спрайтов normal/ и mini/: 809/809 (включая #722–809),
+    все gen7-файлы — валидные GIF (GIF87a/GIF89a), размеры > 100 Б.
+  Эволюции: 33 evolved / 55 base; 0 ссылок на gen8+, 0 циклов,
+    0 висящих id; методы сверены с планом.
+  Лёрнсеты: 5179 строк; сверка с PokeAPI по (атака, метод, min
+    level) — 0 расхождений (3 документированных фолбэка разрешены).
+  Регрессия по бэкапу before-gen7:
+    – pokemons #1–721 — 0 изменений (721/721);
+    – attacks #1–648 — 0 изменений (646/646);
+    – abilities #1–239 — 0 изменений (230/230);
+    – pokemon_attacks старых видов — 0 изменений (38146/38146);
+    – pokemon_abilities старых видов — 0 изменений (1727/1727);
+    – user_pokemons — 0 изменений (525/525).
+  PRAGMA foreign_key_check: 51 pre-existing нарушения — ровно
+    столько же, сколько в бэкапе; новых нет, не исправлялись
+    (известный дефект проекта, в т.ч. attacks.effect_status_id=9).
+
+  Живой HTTP-смоук (сервер :8080, БД читается на лету):
+    GET /api/pokedex/list                -> 200, 809 видов,
+                                            последний #809 «Мелметал»;
+                                            #722 «Роулет» присутствует;
+    GET /api/pokedex/pokemon/722/full    -> 200, 2 способности, 59 атак;
+    GET /api/pokedex/pokemon/735/full    -> 200, 3 способности, 58 атак;
+    GET /api/pokedex/pokemon/745/full    -> 200, 3 способности, 56 атак;
+    GET /api/pokedex/pokemon/746/full    -> 200, 1 способность, 50 атак;
+    GET /api/pokedex/pokemon/771/full    -> 200, 2 способности, 46 атак;
+    GET /api/pokedex/pokemon/772/full    -> 200, 1 способность, 55 атак;
+    GET /api/pokedex/pokemon/773/full    -> 200, 1 способность, 84 атаки;
+    GET /api/pokedex/pokemon/778/full    -> 200, 1 способность, 73 атаки;
+    GET /api/pokedex/pokemon/785/full    -> 200, 2 способности, 70 атак;
+    GET /api/pokedex/pokemon/800/full    -> 200, 1 способность, 79 атак;
+    GET /api/pokedex/pokemon/808/full    -> 200, 1 способность, 15 атак;
+    GET /api/pokedex/pokemon/809/full    -> 200, 1 способность, 33 атаки;
+    GET /static/images/pokemons/normal/722.gif -> 200 image/gif;
+    GET /static/images/pokemons/mini/722.gif   -> 200 image/gif;
+    GET /static/images/pokemons/normal/741.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/772.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/778.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/782.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/785.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/809.gif -> 200 image/gif.
+
+  Полноценный браузерный бой новым gen7-покемоном не проводился:
+  аккаунт владельца не создавался/не менялся. Код создания экземпляра
+  (utils.CreateUserPokemon) не менялся и работает по данным БД.
+
+--------------------------------------------------------------------
+7. ФАЙЛЫ / БЭКАП
+--------------------------------------------------------------------
+  database/pokemon.db
+  client/static/images/pokemons/{normal,mini}/722.gif … 809.gif
+  client/static/js/pokedex.js (maxPokemonId fallback 809)
+  .opencode/skills/db-data-migrations/SKILL.md (срез чисел)
+  MISSING_MOVES_gen7.txt
+  TEST_gen7.txt
+  HANDOFF_STATUS.txt (обновлён)
+  Бэкап перед успешным импортом:
+    database/backups/pokemon.db.bak-before-gen7-20261023-162545
+  (в ходе отладки создано ещё 5 таких же pre-import бэкапов,
+   все до записи данных.)
+  Скрипты импорта/проверок — вне репозитория (scratchpad).
+====================================================================

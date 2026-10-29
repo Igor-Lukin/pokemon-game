@@ -37,12 +37,12 @@ func TrainerBattleStartHandler(w http.ResponseWriter, r *http.Request) {
 
 	// NPC + настройки команды (поля от потока A).
 	var npcName, teamMode string
-	var npcLoc, teamSize, minLevel, maxLevel int
+	var npcLoc, teamSize, minLevel, maxLevel, aiLevel int
 	err := db.DB.QueryRow(`
 		SELECT name, location_id, COALESCE(team_mode,'random'), COALESCE(team_size,6),
-		       COALESCE(min_level,5), COALESCE(max_level,10)
+		       COALESCE(min_level,5), COALESCE(max_level,10), COALESCE(ai_level,0)
 		FROM npc WHERE id = ?`, req.NPCID).
-		Scan(&npcName, &npcLoc, &teamMode, &teamSize, &minLevel, &maxLevel)
+		Scan(&npcName, &npcLoc, &teamMode, &teamSize, &minLevel, &maxLevel, &aiLevel)
 	if err != nil {
 		http.Error(w, "NPC не найден", http.StatusNotFound)
 		return
@@ -56,7 +56,7 @@ func TrainerBattleStartHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Команда NPC (>=1 боеспособного).
-	enemyTeam, err := buildNPCTeam(req.NPCID, teamMode, teamSize, minLevel, maxLevel)
+	enemyTeam, err := buildNPCTeam(req.NPCID, teamMode, teamSize, minLevel, maxLevel, aiLevel)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -73,6 +73,7 @@ func TrainerBattleStartHandler(w http.ResponseWriter, r *http.Request) {
 		EnemyTeam:      enemyTeam,
 		EnemyActiveIdx: 0,
 		EnemySmart:     true, // все тренеры «умные» (random/fixed убраны) -> ИИ-замены всегда
+		AILevel:        aiLevel,
 
 		WildPokemon:    &enemyTeam[0], // указатель в срез: EnemyTeam строим один раз, не append-им
 		TrainerName:    npcName,
@@ -141,9 +142,8 @@ func TrainerBattleStartHandler(w http.ResponseWriter, r *http.Request) {
 // [12]): всегда buildSmartNPCTeam с фиксированным уровнем minL. Параметры mode/maxL
 // сохранены в сигнатуре для совместимости, но не влияют на состав. random-набор
 // остался ТОЛЬКО как защитный фолбэк на случай пустого умного пула (бой не падает).
-func buildNPCTeam(npcID int, mode string, size, minL, maxL int) ([]BattlePokemon, error) {
+func buildNPCTeam(npcID int, mode string, size, minL, maxL, aiLevel int) ([]BattlePokemon, error) {
 	_ = mode
-	_ = npcID
 	if size < 1 {
 		size = 1
 	} else if size > 6 {
@@ -156,7 +156,19 @@ func buildNPCTeam(npcID int, mode string, size, minL, maxL int) ([]BattlePokemon
 		maxL = minL
 	}
 
-	// Умная генерация — единственный штатный путь.
+	// Новый бот (ai_level >= 1): сначала пул сохранённых команд, затем свежий драфт.
+	if aiLevel >= 1 {
+		if saved, ok := loadSavedAITeam(npcID, aiLevel, minL); ok && len(saved) > 0 {
+			return saved, nil
+		}
+		if ai, err := buildAITeam(npcID, aiLevel, size, minL); err == nil && len(ai) > 0 {
+			return ai, nil
+		} else if err != nil {
+			log.Printf("[ai-team] драфт L%d не удался (%v) -> legacy smart-фолбэк", aiLevel, err)
+		}
+	}
+
+	// Умная генерация — штатный путь для ai_level 0 (и фолбэк для нового бота).
 	if smart, err := buildSmartNPCTeam(size, minL); err == nil && len(smart) > 0 {
 		return smart, nil
 	} else if err != nil {

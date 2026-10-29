@@ -15,6 +15,7 @@ type NurseryPokemon struct {
 	PokemonID int    `json:"pokemon_id"`
 	Name      string `json:"name"`
 	Level     int    `json:"level"`
+	Gender    string `json:"gender"`
 	ImageURL  string `json:"image_url"`
 }
 
@@ -34,14 +35,14 @@ func GetUserPokemonsForNursery(w http.ResponseWriter, r *http.Request) {
 		id, convErr := strconv.Atoi(search)
 		if convErr == nil {
 			rows, err = db.DB.Query(`
-				SELECT up.id, up.pokemon_id, p.name, up.level, p.image_url
+				SELECT up.id, up.pokemon_id, p.name, up.level, COALESCE(up.gender, ''), p.image_url
 				FROM user_pokemons up
 				JOIN pokemons p ON up.pokemon_id = p.id
 				WHERE up.user_id = ? AND (up.position = 0 OR up.position IS NULL) AND (up.pokemon_id = ? OR p.name LIKE ?)
 				ORDER BY up.created_at`, userID, id, "%"+search+"%")
 		} else {
 			rows, err = db.DB.Query(`
-				SELECT up.id, up.pokemon_id, p.name, up.level, p.image_url
+				SELECT up.id, up.pokemon_id, p.name, up.level, COALESCE(up.gender, ''), p.image_url
 				FROM user_pokemons up
 				JOIN pokemons p ON up.pokemon_id = p.id
 				WHERE up.user_id = ? AND (up.position = 0 OR up.position IS NULL) AND p.name LIKE ?
@@ -49,7 +50,7 @@ func GetUserPokemonsForNursery(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		rows, err = db.DB.Query(`
-			SELECT up.id, up.pokemon_id, p.name, up.level, p.image_url
+			SELECT up.id, up.pokemon_id, p.name, up.level, COALESCE(up.gender, ''), p.image_url
 			FROM user_pokemons up
 			JOIN pokemons p ON up.pokemon_id = p.id
 			WHERE up.user_id = ? AND (up.position = 0 OR up.position IS NULL)
@@ -65,7 +66,7 @@ func GetUserPokemonsForNursery(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var np NurseryPokemon
 		var imageURL sql.NullString
-		if err := rows.Scan(&np.ID, &np.PokemonID, &np.Name, &np.Level, &imageURL); err != nil {
+		if err := rows.Scan(&np.ID, &np.PokemonID, &np.Name, &np.Level, &np.Gender, &imageURL); err != nil {
 			continue
 		}
 		if imageURL.Valid {
@@ -154,7 +155,7 @@ func SendToNurseryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = db.DB.Exec("UPDATE user_pokemons SET position = 0 WHERE id = ? AND user_id = ?", req.UserPokemonID, userID)
+	_, err = db.DB.Exec("UPDATE user_pokemons SET position = 0, is_starter = 0 WHERE id = ? AND user_id = ?", req.UserPokemonID, userID)
 	if err != nil {
 		http.Error(w, "Failed to update", http.StatusInternalServerError)
 		return

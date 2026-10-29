@@ -1,0 +1,106 @@
+TEST_happiness — дружба → счастье 255, «Сладкая ягода», отображение счастья
+==========================================================================
+Дата: 2026-10-26
+Часть задачи «Исправления ошибок в разных механиках».
+
+ЗАДАЧА
+------
+1) Покедекс показывал friendship-эволюции как «Дружба»; механики не было:
+   method=4 без condition вообще не участвовал в checkEvolutionFor, а
+   Эспеон/Умбреон/Сильвеон/Фросмот эволюционировали по условию (день/ночь/
+   фейи-атака) без проверки счастья.
+2) Нужно: эволюция при счастье 255 (максимум), подпись в покедексе
+   «Счастье 255», предмет «Сладкая ягода» (+5 счастья), 100 000 шт. ADMIN.
+3) Счастье не отдавалось в /api/user/team и не было видно числом; полоска
+   не заливалась (у .barHappy div не было стилей).
+
+СДЕЛАНО
+-------
+1) server/handlers/api/evolution.go:
+   - const evoHappinessMax = 255; evolutionContext.happiness;
+     buildEvolutionContext читает COALESCE(happiness,0);
+   - checkEvolutionFor: method 4 проходит только при happiness >= 255,
+     затем проверяется condition (пустое = ок). Это включает и условные ветки
+     (Эспеон/Умбреон/Фросмот/Сильвеон) — по решению владельца все «дружба» →
+     «счастье»;
+   - evolveByInfo() — общий помощник применения ветки (owner-check, пересчёт
+     статов, UPDATE с гардом по старому виду, InitLearnableAttacks,
+     RemapAbilityOnEvolve).
+
+2) server/handlers/api/inventory.go:
+   - новый case effect_type="happiness" → useHappiness();
+   - useHappiness: +effect_value за каждую ягоду, кламп 255, расход ровно
+     применённых единиц; при достижении 255 сразу вызывает checkEvolutionFor и
+     evolveByInfo (эволюция в момент максимума, а не только на левелапе);
+     ошибки: «Счастье уже максимальное», чужой покемон.
+
+3) server/db/database.go:
+   - seedHappinessBerry(): id=166 «Сладкая ягода», category_id=6 (berry),
+     effect_type='happiness', effect_value=5, price=0,
+     image_url=/static/images/items/sweet_berry.png; вызов из InitDB
+     (идемпотентно INSERT OR IGNORE).
+
+4) server/handlers/api/user_pokemons.go:
+   - TeamPokemon.Happiness (json "happiness"), SELECT COALESCE(up.happiness,0)
+     и Scan; /api/user/team теперь отдаёт счастье.
+
+5) client/static/js/game.js:
+   - карточка: «Счастье  X/255» + полоска от реального значения
+     (fallback был || 100 — убран);
+   - инвентарь: effect_type "happiness" в списках использования; выбор
+     количества ягод (showQuantitySelector обобщён по effectType: «Сколько
+     ягод использовать?»); тост с сообщением сервера.
+
+6) client/static/css/game.css:
+   - .barHappy div — height/border-radius/background (var(--pk-sepia-2)),
+     без этого заливка не рисовалась;
+   - .statContainer.happy .statTitle flex + .happyValue для числа.
+
+7) client/static/js/pokedex.js:
+   - method "friendship" → «Счастье 255» (условие дописывается в скобках:
+     «Счастье 255 (ночью)» и т.п.).
+
+8) client/static/images/items/sweet_berry.png — PokeAPI berry sprite
+   (pecha-berry, 30×30 → 85×85 RGBA LANCZOS).
+
+ТЕСТЫ
+-----
+[x] новый server/handlers/api/evolution_friendship_test.go:
+    порог 254 (нет) / 255 (да); условная ветка Эспеона (день да, ночь нет);
+    useHappiness 250→255 с авто-эволюцией; избыточная заявка 10 ягод при
+    нехватке 2 — расход 1; ошибка на максимуме; чужой покемон → errPermission;
+[x] evolution_condition_test.go обновлён: колонка happiness, тестовые
+    инстансы с happiness=255 (проверяются развилки, не порог);
+[x] go build / go vet — OK;
+[x] go test ./server/handlers/api/ -run "...Friendship|Branches|ItemAllLines" — PASS;
+[x] node --check game.js / pokedex.js — OK;
+[x] PRAGMA integrity_check — ok.
+
+ЖИВОЙ ПРОГОН (сервер :8080, новый билд; временный пользователь удалён)
+---------------------------------------------------------------------
+[x] /api/user/team: поле happiness присутствует (до: 0);
+[x] POST /api/inventory/use {item 166, qty 51} → 200:
+    «Счастье: 255/255 (+255) Блиссей эволюционировал!»;
+[x] после: вид 113 → 242 (Блиссей), happiness 255, ягод 60→9;
+[x] ADMIN (id 2) выдан предмет 166 ×100 000 (в БД); владелец потратил 51
+    на своего #440 (осталось 99 949) — счастье 255 применилось;
+[x] #440 остаётся Хаппини при 255: его эволюция — Овальный камень (см.
+    TEST_oval_stone.txt), не счастье — это корректно;
+[x] журнал сервера без ошибок; временный пользователь/покемоны/ягоды удалены.
+
+БД / ДАННЫЕ
+-----------
+items.id=166 «Сладкая ягода» (berry, effect happiness 5);
+user_items: ADMIN(id=2) ×99 949 на момент отчёта.
+Бэкап: database/backups/pokemon_pre_oval_stone_20261026_153441.db
+(изменения этой задачи только аддитивные: INSERT OR IGNORE предмета и ягод).
+
+ПРИМЕЧАНИЯ
+----------
+- Счастье сейчас растёт только «Сладкой ягодой» (+5) и стартовым бонусом
+  шаров при ловле (Френдбол +20, Лавбол +30, Люксбол +20).
+- Левелап-путь сохранён: если покемон уже на 255, но условие не совпало
+  (например, Сильвеону нужна фейи-атака), он эволюционирует при следующем
+  левелапе, когда условие станет верным.
+- Сервер оставлен запущенным на :8080 с новым билдом (SESSION_KEY
+  local-happy-test-key) для проверки владельцем: обновить страницу Ctrl+F5.

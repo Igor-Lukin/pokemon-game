@@ -230,12 +230,51 @@
         />
       </div>
       <div class="form-group">
-        <label>Evolution Item ID (if item method):</label>
+        <label>Evolution Item (if item/trade/stone method):</label>
+        <select name="evolution_item_id">
+          <option value="">-- None --</option>
+          {{range .EvoItems}}
+          <option
+            value="{{.ID}}"
+            {{if
+            and
+            $.Pokemon.EvolutionItemID.Valid
+            (eq
+            .ID
+            $.Pokemon.EvolutionItemID.Int64)}}selected{{end}}
+          >
+            {{.Name}} (ID {{.ID}})
+          </option>
+          {{end}}
+        </select>
+      </div>
+      {{$cond := ""}}
+      {{if .Pokemon.EvolutionCondition.Valid}}{{$cond = .Pokemon.EvolutionCondition.String}}{{end}}
+      <div class="form-group">
+        <label>Evolution Condition:</label>
+        <select name="evolution_condition">
+          <option value="" {{if eq $cond ""}}selected{{end}}>-- None --</option>
+          <option value="time_day" {{if eq $cond "time_day"}}selected{{end}}>time_day (день)</option>
+          <option value="time_night" {{if eq $cond "time_night"}}selected{{end}}>time_night (ночь)</option>
+          <option value="atk_gt_def" {{if eq $cond "atk_gt_def"}}selected{{end}}>atk_gt_def (Atk &gt; Def)</option>
+          <option value="atk_lt_def" {{if eq $cond "atk_lt_def"}}selected{{end}}>atk_lt_def (Atk &lt; Def)</option>
+          <option value="atk_eq_def" {{if eq $cond "atk_eq_def"}}selected{{end}}>atk_eq_def (Atk = Def)</option>
+          <option value="fairy_move" {{if eq $cond "fairy_move"}}selected{{end}}>fairy_move (знает Fairy-атаку)</option>
+        </select>
+        <small style="display: block; opacity: 0.7"
+          >Для friendship-эволюций пустое условие означает «ветка не активна».</small
+        >
+      </div>
+      <div class="form-group">
+        <label>Evolution Priority:</label>
         <input
           type="number"
-          name="evolution_item_id"
-          value="{{if .Pokemon.EvolutionItemID.Valid}}{{.Pokemon.EvolutionItemID.Int64}}{{end}}"
+          name="evolution_priority"
+          value="{{if .Pokemon.EvolutionPriority.Valid}}{{.Pokemon.EvolutionPriority.Int64}}{{else}}0{{end}}"
         />
+        <small style="display: block; opacity: 0.7"
+          >Больше = приоритетнее при нескольких подходящих ветках.</small
+        >
       </div>
       {{end}}
       <div class="form-group">
@@ -309,19 +348,59 @@
 
     <hr />
     <h2>Habitat Locations</h2>
+    <p>
+      <small>
+        Rarity — вес: больше = чаще. Можно число (например, 90) или метку
+        common / uncommon / rare. Уровни задают диапазон дикой встречи.
+      </small>
+    </p>
     <h3>Current Locations</h3>
     {{if .Locations}}
     <table border="1">
       <tr>
         <th>Location</th>
+        <th>Region</th>
+        <th>Min Lv</th>
+        <th>Max Lv</th>
         <th>Rarity</th>
         <th>Action</th>
       </tr>
       {{range .Locations}}
       <tr>
         <td>{{.Name}}</td>
-        <td>{{.Rarity}}</td>
-        <td>
+        <td>{{.RegionName}}</td>
+        <td colspan="4">
+          <form
+            action="/admin/pokemons/location/edit"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="pokemon_id" value="{{$.Pokemon.ID}}" />
+            <input type="hidden" name="location_id" value="{{.ID}}" />
+            <input
+              type="number"
+              name="min_level"
+              value="{{.MinLevel}}"
+              min="1"
+              max="100"
+              style="width: 70px"
+            />
+            <input
+              type="number"
+              name="max_level"
+              value="{{.MaxLevel}}"
+              min="1"
+              max="100"
+              style="width: 70px"
+            />
+            <input
+              type="text"
+              name="rarity"
+              value="{{.Rarity}}"
+              size="10"
+            />
+            <button type="submit">Update</button>
+          </form>
           <form
             action="/admin/pokemons/location/remove"
             method="POST"
@@ -350,13 +429,31 @@
       <select name="location_id" required>
         <option value="">-- Select location --</option>
         {{range .AllLocations}}
-        <option value="{{.ID}}">{{.Name}}</option>
+        <option value="{{.ID}}">{{.Name}} — {{.RegionName}}</option>
         {{end}}
       </select>
       <input
+        type="number"
+        name="min_level"
+        value="1"
+        min="1"
+        max="100"
+        placeholder="Min Lv"
+        style="width: 80px"
+      />
+      <input
+        type="number"
+        name="max_level"
+        value="20"
+        min="1"
+        max="100"
+        placeholder="Max Lv"
+        style="width: 80px"
+      />
+      <input
         type="text"
         name="rarity"
-        placeholder="Rarity (e.g., common, rare)"
+        placeholder="Rarity / weight (e.g., 90)"
         size="20"
       />
       <button type="submit">Add</button>

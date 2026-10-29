@@ -244,14 +244,16 @@ func CatchHandler(w http.ResponseWriter, r *http.Request) {
 				}
 			} else {
 				logEntries = append(logEntries, makeEntry(bs.Turn, wild, wildMove, 0, false, 1, false))
-				if wc := applyEffectByID(bs, wild, active, wildMove, bs.Turn, &logEntries, sideFor(bs, active)); wc > 0 {
-					setBattleWeather(bs, wc, &logEntries)
+				if wildMove.CategoryID == 3 && !abilityAbsorbsStatusMove(bs, wild, active, wildMove, bs.Turn, &logEntries) {
+					if wc := applyEffectByID(bs, wild, active, wildMove, bs.Turn, &logEntries, sideFor(bs, active)); wc > 0 {
+						setBattleWeather(bs, wc, &logEntries)
+					}
+					applyStatChanges(wild, active, wildMove, bs.BattleWeatherID, bs.Turn, &logEntries, sideFor(bs, active))
+					applyHeal(wild, active, wildMove, bs.BattleWeatherID, bs.Turn, &logEntries)
+					handleCustomStatusMove(bs, wild, active, wildMove, bs.Turn, &logEntries)
+					applySideMove(bs, wild, active, wildMove, &logEntries)
+					handlePhazeMove(bs, wild, active, wildMove, &logEntries)
 				}
-				applyStatChanges(wild, active, wildMove, bs.BattleWeatherID, bs.Turn, &logEntries, sideFor(bs, active))
-				applyHeal(wild, active, wildMove, bs.BattleWeatherID, bs.Turn, &logEntries)
-				handleCustomStatusMove(bs, wild, active, wildMove, bs.Turn, &logEntries)
-				applySideMove(bs, wild, active, wildMove, &logEntries)
-				handlePhazeMove(bs, wild, active, wildMove, &logEntries)
 			}
 			// Дикий мог выгнать игрока Рыком/Вихрем — перечитываем активного.
 			active = &bs.PlayerTeam[bs.ActiveIdx]
@@ -261,6 +263,11 @@ func CatchHandler(w http.ResponseWriter, r *http.Request) {
 	// Конец хода: погода и таймеры стороны (как в SwitchHandler).
 	postProcessWeather(bs, &logEntries)
 	tickSideTimers(bs, &logEntries)
+	// [batch5] onEndTurn parity для провала ловли (тоже ход-смена).
+	abilityOnEndTurn(bs, active, bs.Turn, &logEntries)
+	abilityOnEndTurn(bs, bs.WildPokemon, bs.Turn, &logEntries)
+	heldItemOnEndTurn(bs, active, bs.Turn, &logEntries)
+	heldItemOnEndTurn(bs, bs.WildPokemon, bs.Turn, &logEntries)
 
 	// Обморок активного — как в MoveHandler: смена или поражение.
 	respType := "catch_fail"

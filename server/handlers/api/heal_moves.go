@@ -39,8 +39,8 @@ const (
 	moveHealBlock     = 472 // Запрет регенерации: цель не лечится N ходов
 	moveRoost         = 72  // Насест: лечит 50% + до конца хода теряет Летающий тип
 	healBlockDuration = 5   // раундов действия Запрета регенерации
-	overTimeHealDenom = 16 // 1/16 макс. HP за ход (Укоренение/Водный покров)
-	restSleepTurns = 2 // Отдых спит фиксированно 2 хода
+	overTimeHealDenom = 16  // 1/16 макс. HP за ход (Укоренение/Водный покров)
+	restSleepTurns    = 2   // Отдых спит фиксированно 2 хода
 )
 
 // handleHealMove — кастомные лечащие статусные ходы. defender нужен только Крику
@@ -157,6 +157,10 @@ func healBlockMove(foe *BattlePokemon, round int, log *[]BattleLogEntry) {
 	if foe == nil {
 		return
 	}
+	if foe.AbilityKey == "aroma_veil" {
+		abilityLog(foe, round, log, "", "аромат защищает от Запрета регенерации")
+		return
+	}
 	foe.HealBlockTurns = healBlockDuration
 	*log = append(*log, BattleLogEntry{
 		Round: round, PokemonName: foe.Name, PokemonImage: foe.ImageURL,
@@ -208,12 +212,14 @@ func healBy(p *BattlePokemon, amount int, msg string, round int, log *[]BattleLo
 	if amount < 1 {
 		amount = 1
 	}
+	before := p.CurrentHP
 	p.CurrentHP += amount
 	if p.CurrentHP > p.MaxHP {
 		p.CurrentHP = p.MaxHP
 	}
 	*log = append(*log, BattleLogEntry{
-		Round: round, PokemonName: p.Name, PokemonImage: p.ImageURL, Message: msg,
+		Round: round, PokemonName: p.Name, PokemonImage: p.ImageURL,
+		Heal: p.CurrentHP - before,
 	})
 }
 
@@ -277,12 +283,17 @@ func restMove(p *BattlePokemon, round int, log *[]BattleLogEntry) {
 		})
 		return
 	}
+	before := p.CurrentHP
 	p.CurrentHP = p.MaxHP
 	p.StatusID = 5 // сон (сменяет любой прежний мажорный статус — «исцеляет проблемы»)
 	p.SleepTurns = restSleepTurns
 	*log = append(*log, BattleLogEntry{
 		Round: round, PokemonName: p.Name, PokemonImage: p.ImageURL,
 		Message: p.Name + " засыпает и полностью восстанавливает HP!",
+	})
+	*log = append(*log, BattleLogEntry{
+		Round: round, PokemonName: p.Name, PokemonImage: p.ImageURL,
+		Heal: p.CurrentHP - before,
 	})
 }
 

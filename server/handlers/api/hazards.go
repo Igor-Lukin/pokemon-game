@@ -95,8 +95,23 @@ func applyEntryHazards(bs *BattleState, p *BattlePokemon, side *SideState, round
 	// входов после старта: смена игрока (SwitchHandler/switch-ход), смена/замена врага,
 	// вход следующего врага после обморока (handleEnemyFaint). Пусто => no-op (регрессия).
 	abilityOnSwitchIn(bs, p, log)
+	// [batch7] метка выхода в текущем раунде (Засада) + сброс щита-маскировки.
+	p.SwitchedInTurn = bs.Turn
+	if abilityKeyIn(p, "disguise", "ice_face") {
+		p.DisguiseBroken = false
+	}
+	// [batch7] Магический щит игнорирует ловушки.
+	if abilityBlocksIndirect(p) {
+		return false
+	}
 	types := getPokemonTypes(p)
-	grounded := !hasTypeID(types, typeFlying)
+	// [batch5] Левитация (способность): парит над землёй, не задевая наземные
+	// ловушки (кроме Каменной), пока не действует Гравитация.
+	grounded := !hasTypeID(types, typeFlying) && !abilityHovering(p, bs)
+	if !grounded && abilityHovering(p, bs) &&
+		(side.SpikesLayers > 0 || side.ToxicSpikesLayers > 0 || side.StickyWeb) {
+		abilityLog(p, round, log, "levitate_hazard", "парит — наземные ловушки не действуют")
+	}
 
 	// Каменная ловушка: 1/8 макс. HP × эффективность Камня по типам входящего.
 	if side.StealthRock {

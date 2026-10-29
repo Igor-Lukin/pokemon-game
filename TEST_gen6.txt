@@ -1,0 +1,210 @@
+====================================================================
+TEST_gen6 — ОТЧЁТ ПО ВНЕСЕНИЮ ШЕСТОГО ПОКОЛЕНИЯ (#650–721, Калос)
+Исполнитель: ИИ-агент. Дата: 2026-10-23.
+Основа: PokeAPI (pokemon / pokemon-species / generation-6 /
+evolution-chain / move), спрайты — Pokémon Showdown (ani/*.gif).
+ТЗ: HANDOFF_gen6.txt. Скилл: adding-pokemon-generations.
+====================================================================
+
+ИТОГ: ГОТОВО (данные). Все 72 вида #650–721 внесены, включая
+3 легендарных и 3 мифических. Лёрнсеты, способности (base+hidden),
+эволюции и спрайты проставлены. Движок не менялся; недостающие
+механики вынесены в MISSING_MOVES_gen6.txt.
+
+--------------------------------------------------------------------
+1. ЧТО ВНЕСЕНО (числа)
+--------------------------------------------------------------------
+                     было      стало     дельта
+  pokemons           649       721       +72
+  attacks            629       646       +17
+  abilities          229       230       +1
+  pokemon_attacks  33518     38146      +4628
+  pokemon_abilities 1564      1727      +163
+
+  • Виды #650–721: 72/72, min/max id = 650/721.
+  • Новые атаки (id 632–648, 17 шт.): 16 ходов gen6 + Quash
+    (gen5-ход, которого не было в БД, но он нужен лёрнсетам gen6).
+    Все — только данные; механики перечислены в
+    MISSING_MOVES_gen6.txt. В диапазоне id 1–631 остались 2 старых
+    пропуска, поэтому count attacks = 646 при max(id) = 648.
+  • Новая способность каталога: 1 — id 239 «Защёчные мешки»
+    (Cheek Pouch, effect_key=NULL). Остальные 70 английских имён
+    смаплены на существующие русские строки.
+  • Спрайты: 72 анимированных .gif из Pokémon Showdown в
+    normal/650.gif … 721.gif и мини-копии в mini/ (по 721 файлу в
+    каждой папке суммарно). PNG-fallback не понадобился.
+  • pokedex.js: запасной maxPokemonId 649 -> 721 (реальный максимум
+    всё равно берётся из /api/pokedex/list).
+
+--------------------------------------------------------------------
+2. ДАННЫЕ ВИДОВ (сверено с PokeAPI, 0 расхождений)
+--------------------------------------------------------------------
+Для всех 72 видов: id = национальный номер; русское имя; описание;
+современные типы (Fairy — id 18); 6 base-статов; height/weight;
+category_power = base_experience; experience_group = 3; rarity = 1;
+пол/бесполость; catch_rate; image_url = normal/NNN.gif.
+Примеры (совпадают с PokeAPI):
+  #650 Чеспин     [Grass]              HP56  Atk61  Def65  SpA48  SpD45  Spe38
+  #658 Грениндзя  [Water/Dark]         HP72  Atk95  Def67  SpA103 SpD71  Spe122
+  #666 Вивийон    [Bug/Flying]         HP80  Atk52  Def50  SpA90  SpD50  Spe89
+  #670 Флоэтт     [Fairy]              HP54  Atk45  Def47  SpA75  SpD98  Spe52
+  #700 Сильвеон   [Fairy]              HP95  Atk65  Def65  SpA110 SpD130 Spe60
+  #706 Гудра      [Dragon]             HP90  Atk100 Def70  SpA110 SpD150 Spe80
+  #716 Зирнис     [Fairy]              HP126 Atk131 Def95  SpA131 SpD98  Spe99
+  #717 Ивелтал    [Dark/Flying]        HP126 Atk131 Def95  SpA131 SpD98  Spe99
+  #718 Зайгард    [Dragon/Ground]      HP108 Atk100 Def121 SpA81  SpD95  Spe95
+  #719 Дианси     [Rock/Fairy]         HP50  Atk100 Def150 SpA100 SpD150 Spe50
+  #720 Хуппа      [Psychic/Ghost]      HP80  Atk110 Def60  SpA150 SpD130 Spe70
+  #721 Вулканион  [Fire/Water]         HP80  Atk110 Def120 SpA130 SpD90  Spe70
+Двутипных: 41. Бесполых: 7 (Карбинк + 6 легендарных/мифических).
+Легендарные (3): Зирнис, Ивелтал, Зайгард.
+Мифические (3): Дианси, Хуппа, Вулканион.
+Описания непустые у всех; формат как у gen2–gen5:
+  «X — покемон/легендарный покемон/мифический покемон шестого
+   поколения (регион Калос). Национальный №N.»
+
+--------------------------------------------------------------------
+3. ЛЁРНСЕТЫ
+--------------------------------------------------------------------
+Источник — PokeAPI, версия Omega Ruby / Alpha Sapphire. Все 72 вида
+имеют данные ORAS; fallback X/Y не потребовался. Методы:
+  level-up 1113, machine 2597, egg 133, tutor 785 => 4628 строк.
+Сопоставление с attacks — по нормализованному eng_name.
+  • Новых ходов не хватало 17 — добавлены в attacks (id 632–648).
+  • Пропусков из-за отсутствующих атак после импорта нет.
+  • У каждого вида есть level-up атаки и хотя бы одна урон-атака.
+    Единственный фолбэк: Spewpa 665 (канон — только статусы),
+    добавлен Bug Bite (id 592) на level 1; отмечено в MISSING.
+  • TM/tutor/egg — как данные (механик TM в бою нет).
+
+--------------------------------------------------------------------
+4. ЭВОЛЮЦИИ
+--------------------------------------------------------------------
+  • 35 видов gen6 имеют evolves_from; 37 — базовые.
+  • Методы: level 27, trade 4, stone 3, friendship 1.
+  • Линии внутри #650–721: стартовики, Баннелби, Флетчлинг,
+    Скаттербаг, Литлео, Флабебе, Скиддо, Панчам, Эспурр, Хонедж,
+    Спритци, Свирликс, Инкей, Байнакл, Скрелп, Клаунчер, Хелиоптайл,
+    Тайрант, Амаура, Гуми, Фантамп, Пампкабу, Бергмайт, Нойбат.
+  • Кросс-ген: Sylveon 700 <- Eevee 133 (method=4 friendship,
+    condition=fairy_move, evolution_priority=10). Условие «знает
+    Fairy-ход» поддержано механизмом evolution_condition
+    (TEST_evolution_conditions.txt).
+  • Спецметоды:
+      trade  — Spritzee 682 -> Aromatisse 683 (Sachet);
+               Swirlix 684 -> Slurpuff 685 (Whipped Dream);
+               Phantump 708 -> Trevenant 709;
+               Pumpkaboo 710 -> Gourgeist 711.
+      stone  — Floette 670 -> Florges 671 (Shiny Stone);
+               Doublade 680 -> Aegislash 681 (Dusk Stone);
+               Helioptile 694 -> Heliolisk 695 (Sun Stone).
+               evolution_item_id=NULL.
+      friendship — Sylveon 700 <- Eevee 133 (condition=fairy_move).
+  • Условия (день/ночь, дождь, Тёмный в команде, перевёрнутая
+    консоль, пол, предметы обмена) не моделируются — см. MISSING.
+  • Эволюции gen6-видов в gen7+ НЕ добавлялись.
+  • Mega-эволюции и формы отдельными видами не заводились.
+  • Ссылок на gen7+ нет; циклов и «висящих» evolves_from нет.
+  • Кросс-ген правок старых видов — 1 (Sylveon <- Eevee).
+
+--------------------------------------------------------------------
+5. СПОСОБНОСТИ
+--------------------------------------------------------------------
+  • 72 вида, 163 строки pokemon_abilities:
+      slot 1 — 72, slot 2 — 31, slot 3 (hidden) — 60.
+      base 103, hidden 60. У каждого вида есть хотя бы одна базовая.
+  • 71 уникальное английское имя; 71 разный ability_id.
+  • 70 имён смаплены на существующие русские строки по смыслу/
+    описанию/effect_key (включая gen6-имена, которые уже были в
+    каталоге: Aroma Veil, Flower Veil, Protean, Fur Coat, Magician,
+    Bulletproof, Strong Jaw, Refrigerate, Sweet Veil, Stance Change,
+    Gale Wings, Mega Launcher, Grass Pelt, Symbiosis, Tough Claws,
+    Pixilate, Gooey, Aura Break, Dark Aura, Fairy Aura и др.).
+  • Добавлена 1 новая строка: id 239 «Защёчные мешки» (Cheek Pouch,
+    effect_key=NULL).
+  • Скрытые: is_hidden=1 <=> slot=3; дублей hidden/base и дублей
+    слота нет. Экземпляры без ability_id в user_pokemons
+    отсутствуют (0), бэкфилл не потребовался.
+  • Механики новых способностей не реализованы — см. MISSING.
+
+--------------------------------------------------------------------
+6. ПРОВЕРКИ
+--------------------------------------------------------------------
+  go build ./... ....................................... OK
+  go vet ./... ......................................... OK
+  go test ./... -count=1 ............................... OK
+  node --check client/static/js/pokedex.js ............. OK
+  node --check client/static/js/game.js ................ OK
+  PRAGMA integrity_check ............................... ok
+  Виды #650–721: 72/72; статы/типы/пол/рост/вес/catch/base_exp/
+    имя/картинка сверены с PokeAPI — 0 расхождений.
+  У всех 72: непустой description, image_url, category_power > 0,
+    catch_rate > 0, способность, урон-атака level-up.
+  Дубли pokemons.name / attacks.name / attacks.eng_name /
+    abilities.name — 0.
+  Сироты pokemon_attacks / pokemon_abilities — 0.
+  Файлы спрайтов normal/ и mini/: 721/721 (включая #650–721),
+    все gen6-файлы — валидные GIF, размеры > 100 байт.
+  Эволюции: 35 evolved / 37 base; 0 ссылок на gen7+, 0 циклов,
+    0 висящих id; спецметоды (trade/stone/friendship) сверены.
+  Новые атаки: 17/17, поля тип/категория/сила/точность/PP/
+    never_misses сверены с PokeAPI.
+  Регрессия по бэкапу before-gen6 (на момент импорта gen6):
+    – pokemons #1–649 — 0 изменений (649/649);
+      примечание: после импорта параллельная задача evolution_conditions
+      изменила #106 Хитмонли и #107 Хитмончан (evolves_from_id=236,
+      method=1, condition Atk/Def). Это НЕ правка gen6;
+      см. TEST_evolution_conditions.txt. Остальные 647 строк равны;
+    – attacks #1–631 — 0 изменений (629/629);
+    – abilities #1–238 — 0 изменений (229/229);
+    – pokemon_attacks старых видов — 0 изменений (33518/33518);
+    – pokemon_abilities старых видов — 0 изменений (1564/1564);
+    – user_pokemons — 0 изменений (525/525).
+  PRAGMA foreign_key_check: 51 pre-existing нарушения
+    (attacks.effect_status_id=4 и осиротевшие
+    user_pokemon_learnable_attacks) — ровно те же 51, что в бэкапе;
+    новых нет, не исправлялись (известный дефект проекта).
+
+  Живой HTTP-смоук (сервер :8080, БД читается на лету):
+    GET /api/pokedex/list                -> 200, 721 вид,
+                                            последний #721 «Вулканион»;
+    GET /api/pokedex/pokemon/650/full    -> 200, 2 способности, 87 атак;
+    GET /api/pokedex/pokemon/651/full    -> 200, 2 способности, 82 атаки;
+    GET /api/pokedex/pokemon/652/full    -> 200, 2 способности, 94 атаки;
+    GET /api/pokedex/pokemon/656/full    -> 200, 2 способности, 66 атак;
+    GET /api/pokedex/pokemon/658/full    -> 200, 2 способности, 72 атаки;
+    GET /api/pokedex/pokemon/666/full    -> 200, 3 способности, 57 атак;
+    GET /api/pokedex/pokemon/669/full    -> 200, 2 способности, 55 атак;
+    GET /api/pokedex/pokemon/670/full    -> 200, 2 способности, 52 атаки;
+    GET /api/pokedex/pokemon/700/full    -> 200, 2 способности, 56 атак;
+    GET /api/pokedex/pokemon/701/full    -> 200, 3 способности, 88 атак;
+    GET /api/pokedex/pokemon/706/full    -> 200, 3 способности, 64 атаки;
+    GET /api/pokedex/pokemon/716/full    -> 200, 1 способность, 64 атаки;
+    GET /api/pokedex/pokemon/717/full    -> 200, 1 способность, 67 атак;
+    GET /api/pokedex/pokemon/718/full    -> 200, 1 способность, 63 атаки;
+    GET /api/pokedex/pokemon/719/full    -> 200, 1 способность, 68 атак;
+    GET /api/pokedex/pokemon/720/full    -> 200, 1 способность, 89 атак;
+    GET /api/pokedex/pokemon/721/full    -> 200, 1 способность, 62 атаки;
+    GET /static/images/pokemons/normal/650.gif -> 200 image/gif;
+    GET /static/images/pokemons/mini/650.gif   -> 200 image/gif;
+    GET /static/images/pokemons/normal/666.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/700.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/716.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/721.gif -> 200 image/gif.
+
+  Полноценный браузерный бой новым gen6-покемоном не проводился:
+  аккаунт владельца не создавался/не менялся. Код создания экземпляра
+  (utils.CreateUserPokemon) не менялся и работает по данным БД.
+
+--------------------------------------------------------------------
+7. ФАЙЛЫ / БЭКАП
+--------------------------------------------------------------------
+  database/pokemon.db
+  client/static/images/pokemons/{normal,mini}/650.gif … 721.gif
+  client/static/js/pokedex.js (maxPokemonId fallback 721)
+  MISSING_MOVES_gen6.txt
+  TEST_gen6.txt
+  HANDOFF_STATUS.txt (обновлён)
+  Бэкап: database/backups/pokemon.db.bak-before-gen6-20261023-132806
+  Скрипты импорта/проверок — вне репозитория (scratchpad).
+====================================================================

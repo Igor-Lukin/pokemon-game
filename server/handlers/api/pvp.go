@@ -28,9 +28,10 @@ const (
 
 // pvpAction — сабмит действия игрока на текущий ход.
 type pvpAction struct {
-	Type          string // move | switch
+	Type          string // move | switch | item
 	AttackID      int
 	UserPokemonID int
+	ItemID        int
 }
 
 // PvpBattle — обвязка вокруг BattleState для боя двух людей.
@@ -201,6 +202,8 @@ func savePvpTeam(team []BattlePokemon) {
 		}
 		db.DB.Exec("UPDATE user_pokemons SET current_hp = ?, status_id = ? WHERE id = ?",
 			p.CurrentHP, statusID, p.ID)
+		db.DB.Exec("UPDATE user_pokemons SET held_item_id = NULLIF(?, 0) WHERE id = ?",
+			p.HeldItemID, p.ID)
 		for _, m := range p.Moves {
 			if m.MaxPP <= 0 {
 				continue
@@ -231,6 +234,7 @@ func pvpSwitchB(bs *BattleState, userPokemonID int, log *[]BattleLogEntry) bool 
 	}
 
 	old := &bs.EnemyTeam[bs.EnemyActiveIdx]
+	abilityOnSwitchOut(old, bs.Turn, log) // [batch6] Регенератор
 	old.ChargingMoveID = 0
 	old.Invulnerable = false
 	old.LockedMoveID = 0
@@ -257,6 +261,9 @@ func pvpSwitchB(bs *BattleState, userPokemonID int, log *[]BattleLogEntry) bool 
 	old.ActiveTurns = 0
 	old.BideTurns, old.BideDamage = 0, 0
 	old.YawnTurns = 0
+	old.Raging = false
+	old.Flinched = false
+	resetAbilityForm(old, bs.Turn, log) // форма по HP откатывается (batch5)
 	restoreTransform(old)
 	restoreBaseStats(old)
 	resetBlockState(old)
@@ -349,7 +356,7 @@ func pvpExecuteMove(bs *BattleState, atk, def *BattlePokemon, move *BattleMove, 
 		}
 	} else {
 		*log = append(*log, makeEntry(bs.Turn, atk, move, 0, false, 1, false))
-		if move.CategoryID == 3 {
+		if move.CategoryID == 3 && !abilityAbsorbsStatusMove(bs, atk, def, move, bs.Turn, log) {
 			if wc := applyEffectByID(bs, atk, def, move, bs.Turn, log, sideFor(bs, def)); wc > 0 {
 				setBattleWeather(bs, wc, log)
 			}
@@ -388,6 +395,18 @@ func pvpResolveTurn(pvp *PvpBattle) {
 	a := &bs.PlayerTeam[bs.ActiveIdx]
 	b := bs.WildPokemon
 
+	// Предметы действуют раньше атак. Тратится ход стороны, атаки она не делает.
+	if aAct.Type == "item" {
+		if it, err := db.GetItemByID(aAct.ItemID); err == nil {
+			logv = append(logv, applyBattleItem(it, a, bs.Turn)...)
+		}
+	}
+	if bAct.Type == "item" {
+		if it, err := db.GetItemByID(bAct.ItemID); err == nil {
+			logv = append(logv, applyBattleItem(it, b, bs.Turn)...)
+		}
+	}
+
 	// Счётчик ходов на поле (у сменившихся сброшен в 0 switch-хелпером).
 	if !aSwitched {
 		a.ActiveTurns++
@@ -397,6 +416,7 @@ func pvpResolveTurn(pvp *PvpBattle) {
 	}
 	a.DamageTakenPhys, a.DamageTakenSpec = 0, 0
 	b.DamageTakenPhys, b.DamageTakenSpec = 0, 0
+	a.MovedSecond, b.MovedSecond = false, false
 
 	releaseStaleSkyHold(a, b)
 
@@ -424,6 +444,14 @@ func pvpResolveTurn(pvp *PvpBattle) {
 	if bActs {
 		bMove = findMoveByID(b, bAct.AttackID)
 		bMove, bWasCharging, bCanAct = pvpForceMove(b, bMove, bCanAct, bs.Turn, &logv)
+	}
+	aCanAct = sacredFireCanAct(a, aMove, aCanAct, bs.Turn, &logv)
+	bCanAct = sacredFireCanAct(b, bMove, bCanAct, bs.Turn, &logv)
+	if aMove != nil && aMove.ID != moveRage {
+		a.Raging = false
+	}
+	if bMove != nil && bMove.ID != moveRage {
+		b.Raging = false
 	}
 
 	// По-ходовые volatile (семена-пиявки/ловушка) — как в processTurn, для обоих.
@@ -455,8 +483,10 @@ func pvpResolveTurn(pvp *PvpBattle) {
 	// (6.3) Порядок: приоритет, при равенстве — скорость (учёт Trick Room).
 	aFirst := true
 	if aCan && bCan {
-		if aMove.Priority != bMove.Priority {
-			aFirst = aMove.Priority > bMove.Priority
+		aPriority := abilityMovePriority(bs, a, aMove)
+		bPriority := abilityMovePriority(bs, b, bMove)
+		if aPriority != bPriority {
+			aFirst = aPriority > bPriority
 		} else {
 			aSpd := tailwindSpeed(bs, a)
 			bSpd := tailwindSpeed(bs, b)
@@ -494,7 +524,23 @@ func pvpResolveTurn(pvp *PvpBattle) {
 	if first != nil && firstMove != nil && !first.IsFainted && !defOf(first).IsFainted {
 		pvpExecuteMove(bs, first, defOf(first), firstMove, &logv)
 	}
+	if second != nil && second.Flinched {
+		second.Flinched = false
+		if second == a {
+			aCan = false
+		} else {
+			bCan = false
+		}
+		logv = append(logv, BattleLogEntry{
+			Round:        bs.Turn,
+			PokemonName:  second.Name,
+			PokemonImage: second.ImageURL,
+			Message:      second.Name + " испуган(а) и пропускает ход!",
+		})
+		second = nil
+	}
 	if second != nil && secondMove != nil && !second.IsFainted && !first.IsFainted {
+		second.MovedSecond = true
 		pvpExecuteMove(bs, second, defOf(second), secondMove, &logv)
 	}
 
@@ -505,6 +551,13 @@ func pvpResolveTurn(pvp *PvpBattle) {
 	if bCan && bMove != nil && !bWasCharging && bMove.PP > 0 {
 		bMove.PP--
 	}
+	// [batch6] Величие: давление цели стоит атакующему ещё 1 PP.
+	if aCan && aMove != nil && abilityPressureDrain(a, b, aMove) {
+		abilityLog(b, bs.Turn, &logv, "pressure", "давит: противник тратит дополнительный PP")
+	}
+	if bCan && bMove != nil && abilityPressureDrain(b, a, bMove) {
+		abilityLog(a, bs.Turn, &logv, "pressure", "давит: противник тратит дополнительный PP")
+	}
 
 	// (6.5) Конец хода — те же хелперы, что MoveHandler после processTurn.
 	applyWeatherChip(bs, a, b, &logv)
@@ -513,6 +566,8 @@ func pvpResolveTurn(pvp *PvpBattle) {
 	tickSideTimers(bs, &logv)
 	abilityOnEndTurn(bs, a, bs.Turn, &logv)
 	abilityOnEndTurn(bs, b, bs.Turn, &logv)
+	heldItemOnEndTurn(bs, a, bs.Turn, &logv)
+	heldItemOnEndTurn(bs, b, bs.Turn, &logv)
 
 	// (6.6) Обмороки/победа/замена.
 	pvp.AAction, pvp.BAction = nil, nil
@@ -544,6 +599,8 @@ func pvpResolveTurn(pvp *PvpBattle) {
 		}
 	}
 
+	a.Flinched = false
+	b.Flinched = false
 	pvp.Log = append(pvp.Log, logv...)
 	pvp.LastActivity = time.Now()
 	savePvpState(bs) // (7) персист по ходу — защита от потери прогресса при обрыве
@@ -681,6 +738,7 @@ func PvpStateHandler(w http.ResponseWriter, r *http.Request) {
 		since = len(pvp.Log)
 	}
 	resp.NewLog = append([]BattleLogEntry{}, pvp.Log[since:]...)
+	fillFaintLogImages(pvp.BS, resp.NewLog)
 	resp.LogSeq = len(pvp.Log)
 	pvpMu.Unlock()
 
@@ -772,9 +830,10 @@ func pvpTeamIndexAlive(team []BattlePokemon, userPokemonID int) int {
 
 type pvpActionRequest struct {
 	BattleID      string `json:"battle_id"`
-	Type          string `json:"type"` // move | switch
+	Type          string `json:"type"` // move | switch | item
 	AttackID      int    `json:"attack_id"`
 	UserPokemonID int    `json:"user_pokemon_id"`
+	ItemID        int    `json:"item_id"`
 }
 
 // POST /api/pvp/action — сабмит действия на текущий ход.
@@ -846,11 +905,35 @@ func PvpActionHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Покемон недоступен", http.StatusBadRequest)
 			return
 		}
+		if mine.NoEscape || mine.Trapped {
+			http.Error(w, "Покемон не может смениться!", http.StatusBadRequest)
+			return
+		}
 		if mine.ID == req.UserPokemonID {
 			http.Error(w, "Этот покемон уже в бою", http.StatusBadRequest)
 			return
 		}
 		act = &pvpAction{Type: "switch", UserPokemonID: req.UserPokemonID}
+	case "item":
+		item, err := db.GetItemByID(req.ItemID)
+		if err != nil {
+			http.Error(w, "Предмет не найден", http.StatusBadRequest)
+			return
+		}
+		if !IsBattleItem(item) {
+			http.Error(w, "Этот предмет нельзя использовать в бою", http.StatusBadRequest)
+			return
+		}
+		if usable, reason := battleItemUsable(item, mine); !usable {
+			http.Error(w, reason, http.StatusBadRequest)
+			return
+		}
+		removed, err := db.RemoveItemFromUser(uid, item.ID, 1)
+		if err != nil || !removed {
+			http.Error(w, "У вас нет этого предмета", http.StatusConflict)
+			return
+		}
+		act = &pvpAction{Type: "item", ItemID: item.ID}
 	default:
 		http.Error(w, "Неизвестное действие", http.StatusBadRequest)
 		return

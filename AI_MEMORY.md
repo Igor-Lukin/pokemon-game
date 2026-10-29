@@ -108,6 +108,38 @@
 
 ---
 
+## [TM] TM/HM-ПРЕДМЕТЫ — ГОТОВО (2026-10-23). Отчёт: TEST_tm.txt
+Механика: используешь TM/HM на покемоне КОМАНДЫ (1..6) → атака добавляется
+в `user_pokemon_learnable_attacks` (source='tm'/'hm'), предмет сразу
+списывается; дальше игрок учит её обычным UI (пустой слот / «Заменить атаку»).
+Питомник (position 0) не предлагается. Несовместимость/уже знает/уже в
+списке — отказ без списания. Совместимость — `pokemon_attacks.learn_method_id=2`
+(метод tm); уровень не учитывается. При замене TM/HM-атака удаляется из списка
+(нужен новый предмет), КРОМЕ случая, когда атака уже доступна виду по уровню —
+тогда строка становится обычной level-атакой.
+- СХЕМА: `items.attack_id`; категория `item_categories.id=10 'TM/HM'`;
+  `user_pokemon_learnable_attacks.source` ('level'|'tm'|'hm') +
+  `source_item_id`. Миграции идемпотентны в database.go.
+- ДАННЫЕ: 204 предмета = 50 канон. TM Gen2 (TM01–50, id 1001–1050) +
+  7 HM Gen2 (HM01–07, id 2001–2007) + 147 доп. TM (TM51–197, id 1051–1197,
+  сортировка по attacks.id; TM190–197 досозданы после параллельного gen3).
+  2 disabled (`Приманка`, `Волшебная комната`) исключены. Иконки tm.png/hm.png
+  85×85 в /static/images/items (из арта владельца). Бэкап:
+  database/backups/pokemon.db.bak-before-tm-20261023-104802.
+- API: `GET /api/tm/{item_id}/targets` (команда + can_learn/reason);
+  `POST /api/user/pokemon/{id}/use-tm {item_id}` (транзакция: вставка
+  learnable + списание). `GET /learnable` отдаёт source/source_item_name;
+  `LearnAttackHandler` при замене удаляет TM/HM-строку (см. выше).
+- ФРОНТ: инвентарь → TM/HM «Использовать» → picker покемонов (совместимые
+  активны, несовместимые приглушены) → тост; в списке изучения бейдж TM/HM.
+- АДМИНКА: item_form — effect_type tm/hm + select «Атака (для TM/HM)»,
+  `items.attack_id` в create/update.
+- ГРАБЛЯ ДАННЫХ: в `pokemon_attacks` TM/HM-лёрнсеты неполные у части gen1
+  (Cut/Flash только у gen2-видов). Механика не хардкодит виды — что в БД,
+  то и совместимо. Магазина нет: выдавать через /admin/give_item.
+
+---
+
 ## [11] NPC + ДИАЛОГИ (поток A) — ГОТОВО и ПРОВЕРЕНО (2026-07-17). ТЗ: HANDOFF_npc_dialogue.txt
 Живой прогон OK (сборка на основном ПК, клик по Ричи работает).
 Схема: dialogue_nodes(npc_id, node_key, speaker_text, is_start; ровно один старт на NPC),
@@ -304,14 +336,16 @@ motor_drive/sap_sipper/storm_drain) и abilityOnHitByMove (ответ при к�
 rough_skin/iron_barbs/static/flame_body/poison_point/gooey/cute_charm). Добор на старых
 хуках: tough_claws, fluffy, flash_fire-буст. Новое поле BattlePokemon.FlashFireBoosted;
 хелперы abilityBumpStat/abilityHeal. Итого effect_key проставлено: 31. Грабля: поглощение
-только урон-атак (статус-атаки типа не поглощаются — батч 3). Левитации в каталоге нет.
+только урон-атак (статус-атаки типа не поглощаются — закрыто в батче 5). Левитация позже
+нашлась в каталоге (id 91) — реализована в батче 5.
 ЭФФЕКТЫ БАТЧ 3 ГОТОВ (2026-07-22, код): +10 абилок. НОВЫЙ хук abilityOnEndTurn (в
 MoveHandler после tickSideTimers, оба активных): speed_boost/rain_dish/ice_body/shed_skin.
 НОВЫЙ хук abilityBlocksStatDrop (в applyStatChanges рядом с Туманом): clear_body (Чистое
 тело/Белый дым). Расширения: filter (Фильтрация/Монолит/Рефрактор, ¾ по эффективным —
 через getTypeEffectiveness в incoming-хуке) и intimidate (Яростный взгляд, −атака врагу в
-onSwitchIn, +хелпер abilityOpponentOf). Итого effect_key: 41 строка / 38 ключей. Грабли:
-onEndTurn только в MoveHandler (не в SwitchHandler); blocksStatDrop = блок всех статов.
+onSwitchIn, +хелпер abilityOpponentOf). Итого effect_key: 41 строка / 38 ключей. Грабли
+на момент батча 3: onEndTurn только в MoveHandler (parity в SwitchHandler закрыт в батче 5);
+blocksStatDrop = блок всех статов.
 Отложено (батч 4): точность/крит, статус-поглощение, Токсифаг (тик яда), погодные мультихук
 (Сухая кожа/Солн.батарея), формы.
 НАЗНАЧЕНИЯ ВИДАМ gen1 ГОТОВЫ (2026-07-22): pokemon_abilities заполнена с вики (инверсия
@@ -337,6 +371,28 @@ blocksStatDrop: keen_eye (точность), big_pecks (защита). Итог�
 поэтому ×0.5 к точности статус-атак не применяется. compound_eyes на УРОН-атаках
 работает. Отложено (батч 5): статус-поглощение, Токсифаг, погодные мультихук (Сухая
 кожа/Солн.батарея), Хрупкая броня, формы, sand_veil, onEndTurn в SwitchHandler.
+ЭФФЕКТЫ БАТЧ 5 ЗАКРЫТЫ (2026-10-22, код + тесты): статус-атаки теперь поглощаются по типу
+(abilityAbsorbType/abilityAbsorbsStatusMove; self-target и погодные ходы исключены); Токсифаг
+перехватывает тик яда (лечение 1/8); Солнечная батарея (спец.×1.5 в солнце + 1/8 урон) и
+Сухая кожа (огонь ×1.25, вода-поглощение 1/4, дождь +1/8, солнце −1/8); Хрупкая броня
+(Def−1/Speed+2 на каждый физ. удар, не только контакт); формы по HP — таблица pokemon_forms
++ db.FormFor (носителей gen1–2 нет, таблица пустая); onEndTurn parity добавлен в SwitchHandler
+и провал ловли; sand_veil/snow_cloak дают +1 уклонения и иммунитет к погодному чипу; Левитация
+(id 91) — иммунитет к Земле и наземным ловушкам, гасится Гравитацией. Общий кламп урона при
+effectiveness==0 исправлен: 0 вместо 1 HP. Единый лог способностей: формат
+`[способность] <Имя>: <эффект>`, пассивные множители/точность/криты — один раз за бой
+(abilityLogSeen), триггерные эффекты — каждый раз. Отчёт: TEST_abilities_batch5.txt.
+
+### Формы, переключаемые ходом (2026-10-27)
+`pokemon_forms` расширена: `trigger_mode` ('hp'|'move'), `trigger_move_id`/`trigger_move_kind`,
+`is_base_form`, `form_label`, `form_order`, `form_description`; старые HP-формы работают как
+раньше (`db.FormFor`). Добавлены `db.FormForMove` + `db.FormsForPokemon` и хук
+`abilityOnMoveUsed` (вызывается из `executeDamagingMove` и `handleCustomStatusMove`).
+`stance_change` (Королевское построение, id 86): damaging-ход → форма blade, Королевский щит
+(id 404) → базовая shield (`is_base_form=1`). Покедекс: `/api/pokedex/pokemon/{id}/full?form=key`,
+в ответе `forms[]`, спрайт/типы/статы/описание подменяются; в `pokedex.js` — `.pokemon-form-btn`.
+Сид `db.SeedPokemonForms()` (681: shield/blade, спрайт `681-blade.gif`). Карточка боя обновляет
+спрайт/имя/типы в `updateBattleCardHp`. Отчёт: TEST_aegislash_forms.txt.
 
 ### [ref] league17 wiki — источник способностей/данных (MediaWiki API)
 https://wiki.league17.ru — curl+python работают с этой машины. extracts НЕ установлен →
@@ -413,6 +469,76 @@ users.avatar_data, profile.go Avatar. ТЕКУЩИЙ ШАГ: владелец г
 
 ---
 
+## [world] ВОСТОЧНЫЙ ДЖОТТО — A (ИСТОРИЧЕСКИЙ, УДАЛЁН 2026-10-23). ТЗ: HANDOFF_region_johto.txt, отчёт: TEST_world_johto.txt
+ВАЖНО: вариант A и тестовый регион удалены. В БД остался только
+регион id=3 «Восточный Джотто» (вариант E, 42 локации, 300–341).
+Раздел ниже — история решения A, не текущее состояние.
+Первый игровой регион. Выбран вариант A «Канон-ядро»: 21 локация,
+id 100–120, регион id=2 (тестовый «Джотто» id=1 и локации 1/2/4/5
+сохранены). Старт — id=100 «Площадь Голденрода»; новые регистрации
+получают её (register.go, fallback на 1).
+- КАРТА: 20 связей, записаны в обе стороны (40 строк), BFS 21/21.
+  Города: 100 Голденрод, 105 Олстон, 112 Оливин, 116 Флауренция,
+  120 Вархолл. Питомник: 100 и 116.
+- ДАННЫЕ: `server/db/johto_region.go` (идемпотентный SeedEastJohto,
+  вызывается из InitDB) + `johto_region_data.go` (21 локация, 20
+  связей, 126 спавнов, seed 20261022). Спавны — временные
+  плейсхолдеры, 6 видов на локацию.
+- СХЕМА: `pokemon_locations` + min_level/max_level (ALTER в
+  createTables). `rarity` теперь числовой вес (больше = чаще),
+  старые значения '98'/'50'/'' парсятся, пусто = 50.
+- ДИКИЕ: `generateWildPokemon` (wild.go) выбирает вид взвешенно по
+  rarity, уровень — min..max; fallback 1–20. `buildGenerateFor` не
+  менялся (общий с NPC).
+- АДМИНКА: CRUD регионов (`/admin/regions`), region_id в форме
+  локации, редактирование min/max/rarity спавна
+  (`/admin/pokemons/location/edit`).
+- ИСКЛЮЧЕНИЯ: легендарные #144–146, #150, #151, #243–251 не
+  спавнятся. Список видов-призов от владельца ещё НЕ получен —
+  сейчас исключены только легендарные.
+- ОСТАТКИ: NPC/квесты/интерьеры (вариант B) не делались; Дорога №9
+  не добавлялась; старые игроки автоматически не переносились.
+- ЖИВОЙ ПРОГОН OK: 300/300 стартов в Голденроде (уровни 2–5,
+  rarity-распределение совпало с весами), Скалы 16–22, ловля
+  успешна, регрессия loc1/2/4 (1–20) подтверждена.
+
+## [world] ВОСТОЧНЫЙ ДЖОТТО — ПЯТЬ ДОРОГ (E) — ЕДИНСТВЕННЫЙ РЕГИОН (2026-10-23). ТЗ: HANDOFF_region_johto_custom3.txt, отчёт: TEST_world_johto_E.txt
+Владелец выбрал E и потребовал оставить ОДИН регион. Регион id=3
+«Восточный Джотто» — единственный; тестовый id=1, A id=2 и локации
+1/2/4/5, 100–120 удалены. Пользователи перенесены на 300, старые
+NPC/диалоги удалены. Старт — id=300 «Площадь Голденрода»;
+новые регистрации получают 300 -> MIN(id) (register.go).
+- СТРУКТУРА: хаб Голденрод + академический городок + четыре дороги
+  (Оливин, Флауренция, Вархолл, Олстон) + 2 опциональных данжа.
+  42 локации, 43 связи (86 строк), BFS 42/42.
+- КЛЮЧЕВОЕ ОТЛИЧИЕ: Покецентры, Покемаркеты, Академия, Школьная
+  арена, Тренировочная зона, Зелёная зона, Питомник, Вокзал — это
+  ОТДЕЛЬНЫЕ локации (id 301–308 и сервисы городов), а не меню.
+- ДАННЫЕ: `server/db/johto_five_roads.go` (идемпотентный
+  SeedEastJohtoFiveRoads, вызывается из InitDB) +
+  `johto_five_roads_data.go` (42 локации, 43 связи, seed 20261023).
+- СПАВНЫ: 114 строк на 22 локациях (13 диких + 9 городских с
+  тематическими видами); 20 safe-локаций без диких (Покецентры,
+  Покемаркеты, Академия, Арена, Питомник, Вокзал, Базар, Рынок,
+  Автовокзал, Стальной стадион, Площадь). Rarity-веса и min/max
+  уровни — через общий `generateWildPokemon` из [world] A.
+- ГОРОДСКИЕ ДИКИЕ: 305 Тренировочная, 306 Зелёная, 309 Порт,
+  312 Причал, 313 Маяк, 317 Музей, 319 Оранжерея, 323 Пасека,
+  327 Кузница. Остальные 13 — 329–341.
+- БЕЗОПАСНЫЕ: 300–304, 307–308, 310–311, 314–316, 318, 320–322,
+  324–326, 328. В них нет wild-спавнов; при жёстком старом DoD
+  можно добавить 1–2 технических вида.
+- АДМИНКА: отдельный CRUD для E не нужен; существующие
+  регионы/region_id/min/max/rarity работают.
+- ЖИВОЙ ПРОГОН OK: регистрация -> 300; loc300 выходы 301/302/303/
+  307/308/329/332/335; loc305 5–8 (4 вида), loc329 5–9 (5 из 6),
+  loc340 26–30 (6 видов); safe 301 -> 404 «No wild»; ловля OK.
+- ОСТАТКИ: NPC/квесты не реализованы (только зацепки в описаниях);
+  список видов-призов от владельца не получен.
+- БЭКАП: database/backups/pokemon.db.bak-before-five-roads.
+
+---
+
 ## [ui_fixes2] ПАКЕТ UI-ДОРАБОТОК (3 шт.) — ПРОВЕРЕНО ЖИВЬЁМ (2026-10-22). ТЗ: HANDOFF_ui_fixes2.txt, отчёт: TEST_ui_fixes2.txt
 Все 3 правки внесены; БД НЕ трогалась. `go build`/`go vet` и `node --check` — зелёные
 (2026-10-22, HEAD 01e27f4). Живой прогон в браузере (headless Chrome) OK:
@@ -443,3 +569,62 @@ users.avatar_data, profile.go Avatar. ТЕКУЩИЙ ШАГ: владелец г
   кламп 1..maxQty + дизейбл +/-. ГРАБЛЯ-РЕШЕНИЕ: поле НЕ перезаписывается на каждый символ
   ввода (иначе «100» не набрать при maxQty=50) — приведение на blur/подтверждении, наружу
   уходит только склампленное. Enter = «Далее», фокус+select при открытии.
+
+---
+
+## [evolution_conditions] ДЕТЕРМИНИРОВАННЫЕ РАЗВИЛКИ ИВИ/ТАЙРОГА (2026-10-23). Отчёт: TEST_evolution_conditions.txt
+- Схема: pokemons.evolution_condition TEXT, pokemons.evolution_priority INTEGER DEFAULT 0
+  (миграция в InitDB -> migrateEvolutionConditions, идемпотентно, не затирает непустые).
+- Коды: time_day/time_night (локальное серверное 06–20), atk_gt_def/atk_lt_def/atk_eq_def,
+  fairy_move (18). Неизвестный код = false.
+- Единая точка выбора: api.checkEvolutionFor(userPokemonID, pokemonID, level). Порядок —
+  evolution_priority DESC, id ASC => нет случайной ветки. checkEvolutionByIDs удалён.
+- friendship (method=4) участвует только при явном condition; строки без него — legacy,
+  чтобы не включать разом Пикачу/Клефэйри и т.п.
+- Atk/Def для Тайрога считаются на целевом уровне (base+IV+EV+nature), а не из колонок.
+- Данные: 196 time_day, 197 time_night, 700 fairy_move prio=10; 106/107/237 from=236,
+  L20, atk_gt/lt/eq_def. 107 больше не висит на 106.
+- Админка: condition select + priority в pokemon_form.html; create/edit в pokemons.go.
+
+---
+
+## [evolution_stones] КАМНИ ЭВОЛЮЦИИ gen1–gen9 (2026-10-26). Отчёт: TEST_evolution_stones.txt
+- 10 камней: Sun 151, Fire 156, Water 157, Thunder 158, Leaf 159, Moon 160,
+  Shiny 161, Dusk 162, Dawn 163, Ice 164. category_id=5, effect_type='evolve',
+  price=0. Trade-предметы gen2 остаются 152–155 (King's Rock / Metal Coat /
+  Dragon Scale / Up-Grade).
+- 48 связей «родитель → вид» в pokemons.evolution_item_id/evolution_method_id=3.
+  Региональные формы (Alolan Sandslash/Ninetales, Galarian Darmanitan, Hisuian
+  Electrode) не включены: в БД нет отдельных видов для них.
+- seedEvolutionItems идемпотентен: item с id 151–164 (INSERT OR IGNORE),
+  привязка только при evolution_item_id IS NULL. Для новых связей method=3
+  ставится ЯВНО: старый COALESCE оставлял строки с method=1/null (Магнезон,
+  Пробопасс, Лифеон, Глейсеон) без item-эволюции.
+- EvolveWithItem ищет цель ТОЛЬКО по evolves_from_id + evolution_item_id;
+  фильтр по evolution_method_id убран (ключ item-эволюции — предмет). Транзакция
+  списывает ровно 1 предмет и меняет вид под гардом старого pokemon_id; no-op при
+  неподходящем предмете/повторе.
+- GET /api/evolution-items/{item_id}/targets — id покемонов команды (position
+  1..6), которые эволюционируют этим предметом. game.js фильтрует список выбора
+  по этому endpoint; пустой список = сообщение, а не все покемоны подряд.
+- Каменные строки не участвуют в level-up: checkEvolutionFor смотрит только
+  method 1/4, поэтому камень обязателен.
+- Проверено: go build/vet/test (48 линий в evolution_item_test.go), node --check,
+  живой прогон Fire/Leaf/Sun на временном пользователе, integrity_check=ok.
+
+---
+
+## [battle_items] БОЕВЫЕ РАСХОДУЕМЫЕ ПРЕДМЕТЫ (2026-10-27). Отчёт: TEST_battle_items.txt
+- items.effect_type: `battle_heal_hp` (effect_value=HP), `battle_full_restore`
+  (полное HP + срез StatStages > +2 до +2), `battle_cure_status`
+  (effect_value=id статуса; 6 = и 6, и 7; 13 = volatile Confused).
+- seedBattleItems идемпотентен: id 169–178, категории 2 potion / 3 status_healer.
+- Применение только к активному покемону. Предмет списывается ДО хода;
+  если эффект неприменим (полное HP / нет статуса) — отказ без списания.
+- Единая точка эффекта — `applyBattleItem` (battle_items.go). Не дублировать.
+- Ход с предметом: `processTurnWithItem` = `processTurnInternal(..., itemUsed=true)`;
+  игрок не атакует, но раунд/статусы/враг/конец хода идут штатно. Финал хода
+  вынесен в `finishBattleTurn` — его используют и MoveHandler, и предметы.
+- PvP: предмет — `pvpAction.Type="item"`; списывается в PvpActionHandler,
+  применяется в pvpResolveTurn ДО атак. В одиночном HTTP — POST /api/battle/use-item.
+- Клиент: кнопка «🎒 Предмет» (#battle-item-btn), общий `applyBattleResult`.

@@ -1,0 +1,143 @@
+====================================================================
+HANDOFF_gen2_moves — 26 недостающих атак 2-го поколения
+Дата: 2026-10-22. Источник: MISSING_MOVES_gen2.txt.
+====================================================================
+
+0. ЦЕЛЬ
+--------------------------------------------------------------------
+Довести таблицу attacks с 550 до 576 атак: завести 26 ходов из
+MISSING_MOVES_gen2.txt и реализовать их механики в общем боевом
+движке (wild / trainer / PvP), не плодя второй движок и не хардкодя
+виды. Лёрнсеты — строго по файлу (level/tm/egg), матчинг по eng_name.
+
+ТЕКУЩИЙ СТАТУС (после ревизии 2026-10-22)
+--------------------------------------------------------------------
+Данные уже заведены в другом рабочем проходе: 26 атак id 552–577,
+лёрнсеты добавлены, часть механик работает. Исторический дубль
+Fire Blast (id 284) схлопнут в id 78, поэтому уникальных атак 575
+(сырых строк до чистки было 576). Этот HANDOFF фиксирует полное ТЗ и
+остаток работ:
+  • доделать Rage (+Atk при получении урона);
+  • доделать Thief (кража held-предмета + персист);
+  • доделать Triple Kick (10/20/30 за 3 удара с отдельной точностью);
+  • Self Destruct должен ронять пользователя и под Защитой цели;
+  • исправить испуг (flinch), чтобы он не переносился на следующий ход
+    и срабатывал только по ещё не ходившей цели;
+  • Sacred Fire: разморозка пользователя/цели;
+  • убрать исторический дубль attacks.eng_name = Fire Blast (id 78/284).
+
+1. СПИСОК 26 АТАК (канон gen2)
+--------------------------------------------------------------------
+#  eng_name       type      cat  pow  acc  pp  ключевая механика
+1  Bind           normal    физ  15   85   20  ловушка 2–5 ходов
+2  Body Slam      normal    физ  85   100  15  паралич 30%
+3  Comet Punch    normal    физ  18   85   15  2–5 ударов
+4  Cut            normal    физ  50   95   30  обычный урон
+5  Drill Peck     flying    физ  80   100  20  обычный урон
+6  Egg Bomb       normal    физ  100  75   10  обычный урон
+7  False Swipe    normal    физ  40   100  40  HP цели не ниже 1
+8  Feint Attack   dark      физ  60   —    20  never miss
+9  Fury Attack    normal    физ  15   85   20  2–5 ударов
+10 Fury Cutter    bug       физ  40   95   20  40/80/160 за ходы подряд
+11 Headbutt       normal    физ  70   100  15  испуг 30%
+12 Horn Attack    normal    физ  65   100  25  обычный урон
+13 Mega Punch     normal    физ  80   85   20  обычный урон
+14 Megahorn       bug       физ  120  85   10  обычный урон
+15 Mirror Coat    psychic   спец  —    100  20  возврат спец. урона ×2
+16 Rage           normal    физ  20   100  20  +1 Atk при получении урона
+17 Sacred Fire    fire      физ  100  95   5   ожог 50% + разморозка
+18 Seismic Toss   fighting  физ  —    100  20  урон = уровень пользователя
+19 Self Destruct  normal    физ  200  100  5   пользователь падает в обморок
+20 Slam           normal    физ  80   75   20  обычный урон
+21 Steel Wing     steel     физ  70   90   25  +1 Def себе, 10%
+22 Stomp          normal    физ  65   100  20  испуг 30%
+23 Thief          dark      физ  60   100  10  кража held-предмета
+24 Thunder Punch  electric  физ  75   100  15  паралич 10%
+25 Triple Kick    fighting  физ  10   90   10  3 удара: 10/20/30, точность 90 у каждого
+26 Wrap           normal    физ  15   90   20  ловушка 2–5 ходов
+
+Примечания:
+  • Bind/Wrap — НЕ multi-hit: это частичная ловушка (как Fire Spin/
+    Clamp): цель не может уйти и теряет 1/16 HP 2–5 ходов.
+  • Comet Punch / Fury Attack — 2–5 ударов за ход (проверка точности
+    один раз, затем распределение числа ударов).
+  • Fury Cutter — сила растёт по ходам подряд, максимум 160.
+  • Triple Kick — отдельная проверка точности на каждый удар.
+
+2. ДАННЫЕ (БД, не Go)
+--------------------------------------------------------------------
+Таблица attacks (id 552–577), поля:
+  name (рус.), eng_name, type_id, category_id, power, accuracy, pp,
+  effect_status_id, effect_chance, never_misses, hits_min/hits_max,
+  contact, tm_number.
+
+Маппинг эффектов:
+  Body Slam / Thunder Punch  -> effect_status_id=2 (паралич), 30/10%
+  Sacred Fire                -> effect_status_id=3 (ожог), 50%
+  Headbutt / Stomp           -> effect_status_id=8 (испуг), 30%
+  Bind / Wrap                -> effect_status_id=11 (ловушка), 100%
+  Comet Punch / Fury Attack  -> hits_min=2, hits_max=5
+  Triple Kick                -> hits_min=hits_max=3
+  Feint Attack               -> never_misses=1
+  Steel Wing                 -> attack_stat_changes: stat_id=2 (Def),
+                                stages=+1, target=1, chance=10
+  Mirror Coat                -> category_id=3, power=0, priority=-5
+  Seismic Toss               -> power=1 (фикс. урон считается в движке)
+
+Лёрнсеты pokemon_attacks: level (method 1), tm (2), egg (3) строго по
+MISSING_MOVES_gen2.txt. TM-механики в игре нет — строки method=2
+остаются данными на будущее. tutor в файле нет.
+
+Дубли: в attacks не должно быть повторов по name и eng_name.
+Исторический дубль Fire Blast (id 78 «Огненный Плевок» и id 284
+«Огненный залп») схлопнут: лёрнсеты 284 -> 78 (20 строк), id 284
+удалён. Итог: 575 уникальных атак, дублей name/eng_name нет.
+
+3. ДВИЖОК (минимальные точечные правки)
+--------------------------------------------------------------------
+Переиспользовать существующие примитивы и файлы:
+  • multi-hit (HitsMin>1) — battle.go, ветка executeDamagingMove;
+    добавить checkHit один раз до серии, распределение 2–5;
+  • Fury Cutter — formula_moves.go escalatingPower по SameStreak;
+  • Triple Kick — отдельная ветка в executeDamagingMove: 3 удара,
+    каждый со своей checkHit и мощностью 10/20/30;
+  • false swipe — special_dmg_moves.go applyFalseSwipe (готово);
+  • fixed damage — formula_moves.go formulaFixedDamage (Seismic Toss);
+  • Mirror Coat — counter_moves.go counterMoves[566]=2 (готово);
+  • Self Destruct — battle.go: обморок пользователя после применения,
+    в том числе если цель под Защитой/способностью поглотила удар;
+  • Thief — новый хелпер: если цель имеет held-предмет, а атакующий
+    нет — перенести предмет в бою и сохранить held_item_id игроков
+    в saveBattleState/savePvpState;
+  • Rage — флаг Raging ставится при использовании Rage, снимается при
+    смене/другом ходе; при получении урона +1 Atk (curseBump);
+  • flinch — испуг срабатывает только по цели, которая ещё не ходила
+    в этом ходу; в конце хода флаг сбрасывается (processTurn и
+    pvpResolveTurn), иначе он ошибочно переносится на следующий ход;
+  • Sacred Fire — при использовании размораживает пользователя,
+    при попадании размораживает цель.
+
+4. ПРОВЕРКА (DoD)
+--------------------------------------------------------------------
+1. go build ./... и go vet ./... — зелёные.
+2. Каждая из 26 атак проверена в бою (wild + trainer), механики —
+   отдельными точечными тестами: multi-hit, ловушка, Fury Cutter,
+   Triple Kick, flinch, false swipe, fixed damage, self-destruct,
+   Thief, Mirror Coat, Rage, статусы Body Slam/Thunder Punch/Sacred
+   Fire, Steel Wing.
+3. Регрессия: multi-hit, Bind/Wrap (ловушка), базовые статусы,
+   PvP-ход (общий движок).
+4. Данные: PRAGMA integrity_check; нет сирот и дублей
+   attacks.name/attacks.eng_name; у новых атак есть лёрнсеты.
+5. Отчёт TEST_gen2_moves.txt, обновить HANDOFF_STATUS.txt.
+
+5. ФАЙЛЫ
+--------------------------------------------------------------------
+server/handlers/api/battle.go            — multi-hit, flinch, Rage, Thief, Self Destruct
+server/handlers/api/formula_moves.go     — Fury Cutter, Triple Kick (при необходимости)
+server/handlers/api/special_dmg_moves.go — False Swipe
+server/handlers/api/counter_moves.go     — Mirror Coat
+server/handlers/api/thief_moves.go       — кража held-предмета (новый)
+server/handlers/api/pvp.go               — flinch/персист held в PvP
+database/pokemon.db                      — данные + схлопывание дубля Fire Blast
+====================================================================

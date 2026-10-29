@@ -198,6 +198,85 @@
   color: var(--pk-ink);
 }
 
+/* ---------- Список покемонов (поиск / тип) ---------- */
+.pokedex-results-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--pk-line-2);
+  padding-bottom: 8px;
+}
+.pokedex-results-title {
+  flex: 1;
+  font-family: var(--pk-serif);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--pk-sepia);
+  text-align: center;
+}
+.pokedex-results-count {
+  min-width: 28px;
+  text-align: right;
+  font-size: 0.78rem;
+  color: var(--pk-ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+.pokedex-results-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pokedex-result-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--pk-paper-2);
+  border: 1px solid var(--pk-line);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+.pokedex-result-card:hover {
+  background: var(--pk-paper-3);
+  border-color: var(--pk-sepia);
+  box-shadow: 0 2px 6px rgba(120, 95, 55, 0.15);
+}
+.pokedex-result-img {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+.pokedex-result-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pokedex-result-name {
+  font-family: var(--pk-serif);
+  font-size: 0.86rem;
+  color: var(--pk-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pokedex-result-id {
+  font-size: 0.7rem;
+  color: var(--pk-ink-faint);
+}
+.pokedex-result-types {
+  display: flex;
+  gap: 4px;
+}
+.pokedex-result-type {
+  width: 18px;
+  height: 18px;
+}
+
 /* ==================================================================== */
 /*  Детальная карточка покемона                                         */
 /* ==================================================================== */
@@ -240,6 +319,38 @@
 .pokedex-nav-btn:disabled {
   opacity: 0.35;
   cursor: default;
+}
+
+/* Переключатель боевых/альтернативных форм */
+.pokemon-forms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: -4px 0 14px 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--pk-line);
+}
+.pokemon-form-btn {
+  background: transparent;
+  border: 1px solid var(--pk-line-2);
+  border-radius: 4px;
+  color: var(--pk-ink-faint);
+  padding: 5px 10px;
+  font-family: var(--pk-serif);
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.pokemon-form-btn:hover {
+  background: var(--pk-paper-2);
+  border-color: var(--pk-sepia);
+  color: var(--pk-ink);
+}
+.pokemon-form-btn.active {
+  background: var(--pk-paper-3);
+  border-color: var(--pk-sepia);
+  color: var(--pk-sepia);
+  font-weight: 700;
 }
 
 /* Верх карточки: сцена картинки + имя/статы */
@@ -455,6 +566,13 @@
 .ability-list li:last-child {
   border-bottom: none;
 }
+.ability-list li.clickable {
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.ability-list li.clickable:hover {
+  background: var(--pk-paper-2);
+}
 .hidden-ability {
   font-size: 0.72rem;
   font-style: italic;
@@ -464,10 +582,25 @@
 /* ---------- Эволюции ---------- */
 .evolution-chain {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   flex-wrap: wrap;
   gap: 12px;
   padding: 6px 0;
+}
+.evolution-node-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.evolution-children {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.evolution-branch-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .evolution-item {
   text-align: center;
@@ -499,6 +632,19 @@
 .evolution-arrow {
   font-size: 1.2rem;
   color: var(--pk-sepia);
+}
+.evolution-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.evolution-method {
+  max-width: 92px;
+  text-align: center;
+  font-size: 0.66rem;
+  line-height: 1.2;
+  color: var(--pk-ink-faint);
 }
 
 /* ==================================================================== */
@@ -628,6 +774,9 @@
     max-width: 260px;
   }
   .attack-grid.two-columns {
+    grid-template-columns: 1fr;
+  }
+  .pokedex-results-grid {
     grid-template-columns: 1fr;
   }
 }

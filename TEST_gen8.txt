@@ -1,0 +1,225 @@
+====================================================================
+TEST_gen8 — ОТЧЁТ ПО ВНЕСЕНИЮ ВОСЬМОГО ПОКОЛЕНИЯ (#810–905, Галар)
+Исполнитель: ИИ-агент. Дата: 2026-10-23.
+Основа: PokeAPI (pokemon / pokemon-species / generation-8 /
+evolution-chain / move), спрайты — Pokémon Showdown (ani/*.gif).
+ТЗ: HANDOFF_gen8.txt. Скилл: adding-pokemon-generations.
+====================================================================
+
+ИТОГ: ГОТОВО (данные). Все 96 видов #810–905 внесены, включая
+12 легендарных/мифических. Лёрнсеты, способности (base+hidden),
+эволюции и спрайты проставлены. Движок не менялся; недостающие
+механики вынесены в MISSING_MOVES_gen8.txt.
+
+--------------------------------------------------------------------
+1. ЧТО ВНЕСЕНО (числа)
+--------------------------------------------------------------------
+                     было      стало     дельта
+  pokemons           809       905       +96
+  attacks            671       729       +58
+  abilities          241       268       +27
+  pokemon_attacks  43325     47909     +4584
+  pokemon_abilities 1898      2124      +226
+
+  • Виды #810–905: 96/96, min/max id = 810/905.
+  • Новые атаки: 58 (id 674–731, подряд). 57 ходов, впервые
+    появившихся в gen8, + Aurora Veil (gen7, отсутствовала в
+    каталоге). Все — только данные; механики перечислены в
+    MISSING_MOVES_gen8.txt.
+  • Новые способности каталога: 27 (id 251–277): 26 способностей
+    gen8, которые есть у базовых видов диапазона, + Light Metal
+    (старая способность, отсутствовавшая в каталоге). effect_key=NULL.
+    Form-only способности gen8 не заводились.
+  • Спрайты: 96 анимированных .gif из Pokémon Showdown в
+    normal/810.gif … 905.gif и мини-копии в mini/ (96+96 файлов).
+    PNG-fallback не понадобился. Для Mr. Rime 866 использован
+    Showdown-slug `mrrime` (slug `mr-rime` даёт 404).
+  • pokedex.js: запасной maxPokemonId 809 -> 905.
+
+--------------------------------------------------------------------
+2. ДАННЫЕ ВИДОВ (сверено с PokeAPI, 0 расхождений)
+--------------------------------------------------------------------
+Для всех 96 видов: id = национальный номер; русское имя; описание;
+современные типы; 6 base-статов; height/weight; category_power =
+base_experience; experience_group = 3; rarity = 1; пол/бесполость;
+catch_rate; image_url = normal/NNN.gif; is_legendary.
+Примеры (совпадают с PokeAPI):
+  #810 Груки       [Grass]            HP50  Atk65  Def50  SpA40  SpD40  Spe65
+  #812 Риллабум    [Grass]            HP100 Atk125 Def90  SpA60  SpD70  Spe85
+  #815 Синдерэйс   [Fire]             HP80  Atk116 Def75  SpA65  SpD75  Spe119
+  #818 Интелеон    [Water]            HP70  Atk85  Def65  SpA125 SpD65  Spe120
+  #823 Корвинайт   [Flying/Steel]     HP98  Atk87  Def105 SpA53  SpD85  Spe67
+  #826 Орбитл      [Bug/Psychic]      HP60  Atk45  Def110 SpA80  SpD120 Spe90
+  #839 Коалоссал   [Rock/Fire]        HP110 Atk80  Def120 SpA80  SpD90  Spe30
+  #849 Токстрисити [Electric/Poison]  HP75  Atk98  Def70  SpA114 SpD70  Spe75
+  #869 Алкреми     [Fairy]            HP65  Atk60  Def75  SpA110 SpD121 Spe64
+  #887 Драгапульт  [Dragon/Ghost]     HP88  Atk120 Def75  SpA100 SpD75  Spe142
+  #888 Зациан      [Fairy]            HP92  Atk120 Def115 SpA80  SpD115 Spe138
+  #890 Этернатус   [Poison/Dragon]    HP140 Atk85  Def95  SpA145 SpD95  Spe130
+  #892 Уршифу      [Fighting/Dark]    HP100 Atk130 Def100 SpA63  SpD60  Spe97
+  #898 Калирекс    [Psychic/Grass]    HP100 Atk80  Def80  SpA80  SpD80  Spe80
+  #899 Вирдир      [Normal/Psychic]   HP103 Atk105 Def72  SpA105 SpD75  Spe65
+  #901 Урсалуна    [Ground/Normal]    HP130 Atk140 Def105 SpA45  SpD80  Spe50
+  #905 Энаморус    [Fairy/Flying]     HP74  Atk115 Def70  SpA135 SpD80  Spe106
+Двутипных: 44. Бесполых: 16. Только самки: 6 (868–869 и др.).
+Легендарные/мифические: 12 — #888–898 и #905 (канонический список
+проекта, `server/db/legendaries.go`; Zarude в описании — мифический).
+Описания непустые у всех; формат:
+  «X — покемон/легендарный покемон/мифический покемон восьмого
+   поколения (регион Галар/Хисуи). Национальный №N.»
+Для #899–905 указан регион Хисуи.
+
+--------------------------------------------------------------------
+3. ЛЁРНСЕТЫ
+--------------------------------------------------------------------
+Источник — PokeAPI:
+- #810–898 (89 видов) — version group `sword-shield` (включая ходы
+  DLC Isle of Armor / Crown Tundra);
+- #899–905 (7 видов) — `legends-arceus` (в sword-shield их нет).
+Методы после свёртки дублей по PK:
+  level-up 1238, machine 3072, egg 136, tutor 138 => 4584 строки.
+Сопоставление с attacks — по нормализованному eng_name.
+  • Не хватало 58 атак — добавлены в attacks (id 674–731).
+  • Пропусков из-за отсутствующих атак после импорта нет.
+  • У каждого вида есть level-up атаки и хотя бы одна урон-атака.
+    Фолбэки не потребовались.
+  • Дубли одной атаки на разных уровнях свёрнуты: в БД остаётся
+    минимальный уровень (требование PK).
+  • TM/tutor/egg — как данные (механик TM в бою нет).
+  • Max-мувы и форменные атаки в лёрнсеты не включались (см.
+    MISSING_MOVES_gen8.txt, §4).
+  • Лёрнсеты #899–905 короткие (8–10 ходов на вид) — это всё, что
+    отдаёт PokeAPI для `legends-arceus`.
+
+--------------------------------------------------------------------
+4. ЭВОЛЮЦИИ
+--------------------------------------------------------------------
+  • 40 связей: 36 видов #810–905 имеют evolves_from, 60 — базовые.
+  • Методы: level 32, item 7, friendship 1.
+  • Линии внутри #810–905: стартовики, Сквовет, Рукиди, Блипбаг,
+    Никит, Госсифлёр, Вулу, Четл, Ямпер, Роликоли, Апплин (2 ветки),
+    Силикобра, Аррокуда, Токсел, Сизлипед, Клоббопус, Синистея,
+    Хаттенна, Импидимп, Милсери, Кафант, Дрипи, Кубфу.
+  • Кросс-ген из старых поколений в gen8: Stantler -> Wyrdeer (899),
+    Scyther -> Kleavor (900), Ursaring -> Ursaluna (901),
+    Basculin -> Basculegion (902).
+  • Сознательно НЕ связывались (нужны региональные формы):
+    Farfetch'd -> Sirfetch'd, Mr. Mime -> Mr. Rime,
+    Corsola -> Cursola, Linoone -> Obstagoon, Meowth -> Perrserker,
+    Yamask -> Runerigus. #862–867 остались базовыми.
+  • Sneasel -> Sneasler (903) и Qwilfish -> Overqwil (904) НЕ
+    связывались: канон требует Hisuian-форму; #903/#904 — базовые.
+  • Приближения: Wyrdeer level 30 (Psyshield Bash/agile style),
+    Kleavor method 5 item=NULL (Black Augurite),
+    Ursaluna method 5 item=NULL (Peat Block/full moon),
+    Basculegion level 40 (recoil-условие),
+    Grapploct level 35 (known move Taunt),
+    Alcremie/Polteageist/Flapple/Appletun/Urshifu — method 5 item=NULL,
+    Frosmoth — friendship + time_night (поддерживается движком).
+  • Эволюции gen8-видов в gen9+ НЕ добавлялись (Dipplin, Archaludon).
+  • Ссылок на gen9+ нет; циклов и «висящих» evolves_from нет.
+  • Подробности — MISSING_MOVES_gen8.txt, §2.
+
+--------------------------------------------------------------------
+5. СПОСОБНОСТИ
+--------------------------------------------------------------------
+  • 96 видов, 226 строк pokemon_abilities:
+      slot 1 — 96, slot 2 — 50, slot 3 (hidden) — 80.
+      base 146, hidden 80. У каждого вида есть базовая способность.
+  • 109 уникальных английских имён; 82 смаплены на существующие
+    русские строки, 27 заведены новыми (id 251–277, effect_key=NULL).
+  • Magic Bounce -> 96, Sharpness -> 237, Defiant -> 51,
+    Sand Rush -> 221 (существующие дубли 249/250 не использовались).
+  • Скрытые: is_hidden=1 <=> slot=3; дублей hidden/base и дублей
+    слота нет. Экземпляров новых видов в user_pokemons нет,
+    бэкфилл не требовался.
+  • Сверка «PokeAPI ability -> русская строка» по всем 96 видам:
+    0 расхождений (включая скрытые и слоты).
+  • Механики новых способностей не реализованы — см. MISSING.
+
+--------------------------------------------------------------------
+6. ПРОВЕРКИ
+--------------------------------------------------------------------
+  go build ./... ....................................... OK
+  go vet ./... ......................................... OK
+  go test ./... -count=1 ............................... OK
+  node --check client/static/js/pokedex.js ............. OK
+  node --check client/static/js/game.js ................ OK
+  PRAGMA integrity_check ............................... ok
+  Виды #810–905: 96/96; статы/типы/пол/рост/вес/catch/base_exp/
+    имена/описания/картинки сверены с PokeAPI — 0 расхождений;
+    is_legendary сверен с каноническим списком проекта (legendaries.go).
+  У всех 96: непустой description, image_url, category_power > 0,
+    catch_rate > 0, хотя бы одна способность, level-up урон-атака.
+  Дубли pokemons.name / attacks.name / attacks.eng_name /
+    abilities.name — 0.
+  Сироты pokemon_attacks / pokemon_abilities — 0.
+  Новые атаки: 58/58; id 674–731; тип/категория/сила/PP/приоритет
+    сверены с PokeAPI — 0 расхождений.
+  Новые способности: 27/27 строк, описания непустые,
+    effect_key=NULL.
+  Файлы спрайтов normal/ и mini/: 905/905 (включая #810–905),
+    все gen8-файлы — валидные GIF (GIF87a/GIF89a), размеры > 100 Б.
+  Эволюции: 36 evolved / 60 base внутри диапазона; 4 кросс-ген
+    связи; 0 ссылок на gen9+, 0 циклов, 0 висящих id; Galar/Hisui-
+    формы не связаны (0 ошибочных связей).
+  Лёрнсеты: 4584 строки; сверка с PokeAPI по (атака, метод, min
+    level) — 0 расхождений.
+  Регрессия по бэкапу before-gen8:
+    – pokemons #1–809 — 0 изменений;
+    – attacks #1–673 — 0 изменений;
+    – abilities #1–250 — 0 изменений;
+    – pokemon_attacks старых видов — 0 изменений (43325/43325);
+    – pokemon_abilities старых видов — 0 изменений (1898/1898);
+    – user_pokemons — 0 изменений.
+  PRAGMA foreign_key_check: 51 pre-existing нарушения — ровно
+    столько же, сколько в бэкапе; новых нет, не исправлялись
+    (известный дефект проекта, в т.ч. attacks.effect_status_id=9).
+
+  Живой HTTP-смоук (сервер :8080, БД читается на лету):
+    GET /api/pokedex/list                -> 200, 905 видов,
+                                            последний #905 «Энаморус»;
+                                            #810 «Груки» присутствует;
+    GET /api/pokedex/pokemon/810/full    -> 200, 2 способности, 52 атаки;
+    GET /api/pokedex/pokemon/812/full    -> 200, 2 способности, 73 атаки;
+    GET /api/pokedex/pokemon/823/full    -> 200, 3 способности, 57 атак;
+    GET /api/pokedex/pokemon/849/full    -> 200, 3 способности, 67 атак;
+    GET /api/pokedex/pokemon/869/full    -> 200, 2 способности, 51 атака;
+    GET /api/pokedex/pokemon/887/full    -> 200, 3 способности, 68 атак;
+    GET /api/pokedex/pokemon/888/full    -> 200, 1 способность, 58 атак;
+    GET /api/pokedex/pokemon/892/full    -> 200, 1 способность, 75 атак;
+    GET /api/pokedex/pokemon/898/full    -> 200, 1 способность, 67 атак;
+    GET /api/pokedex/pokemon/899/full    -> 200, 3 способности, 8 атак;
+    GET /api/pokedex/pokemon/901/full    -> 200, 3 способности, 8 атак;
+    GET /api/pokedex/pokemon/905/full    -> 200, 2 способности, 9 атак;
+    GET /static/images/pokemons/{normal,mini}/810.gif -> 200 image/gif;
+    GET /static/images/pokemons/{normal,mini}/823.gif -> 200 image/gif;
+    GET /static/images/pokemons/{normal,mini}/849.gif -> 200 image/gif;
+    GET /static/images/pokemons/{normal,mini}/866.gif -> 200 image/gif;
+    GET /static/images/pokemons/{normal,mini}/888.gif -> 200 image/gif;
+    GET /static/images/pokemons/{normal,mini}/905.gif -> 200 image/gif.
+
+  Полноценный браузерный бой новым gen8-покемоном не проводился:
+  аккаунт владельца не создавался/не менялся. Код создания экземпляра
+  (utils.CreateUserPokemon) не менялся и работает по данным БД.
+  Порт :8080 во время смоука был занят ранее запущенным временным
+  `pokemon-server.exe` (не этим прогоном); он не останавливался,
+  чтобы не прерывать чужой процесс. Собственный `go run ./server`
+  завершился с `bind: address already in use`.
+
+--------------------------------------------------------------------
+7. ФАЙЛЫ / БЭКАП
+--------------------------------------------------------------------
+  database/pokemon.db
+  client/static/images/pokemons/{normal,mini}/810.gif … 905.gif
+  client/static/js/pokedex.js (maxPokemonId fallback 905)
+  .opencode/skills/db-data-migrations/SKILL.md (срез чисел)
+  MISSING_MOVES_gen8.txt
+  TEST_gen8.txt
+  HANDOFF_STATUS.txt (обновлён)
+  Бэкап перед успешным импортом:
+    database/backups/pokemon.db.bak-before-gen8-20261023-165954
+  (перед первым, отменённым запуском также создан бэкап
+   20261023-165938 — до записи данных.)
+  Скрипты импорта/проверок — вне репозитория (scratchpad).
+====================================================================

@@ -1,0 +1,85 @@
+TEST_evolution_conditions — детерминированные развилки эволюции
+Дата: 2026-10-23
+
+ЗАДАЧА
+Убрать недетерминированные упрощения в развилках:
+- Иви(133) -> Эспеон(196) / Умбреон(197) — вместо двух одинаковых friendship-веток
+  введено условие времени суток.
+- Тайрог(236) -> Хитмонли(106) / Хитмончан(107) / Хитмонтоп(237) — сравнение
+  Atk/Def на момент эволюции.
+
+СХЕМА / МИГРАЦИЯ
+- pokemons.evolution_condition TEXT — код условия (пусто = условие не задано).
+- pokemons.evolution_priority INTEGER DEFAULT 0 — приоритет при нескольких
+  подходящих ветках (больше = раньше).
+- Миграция идемпотентная: server/db/database.go -> migrateEvolutionConditions().
+  Правит строку только пока condition пустой, поэтому правки из админки не затираются.
+
+ПОДДЕРЖАННЫЕ УСЛОВИЯ
+- time_day    — серверное локальное время 06:00–19:59
+- time_night  — серверное локальное время 20:00–05:59
+- atk_gt_def  — Attack > Defense (расчётные статы на целевом уровне)
+- atk_lt_def  — Attack < Defense
+- atk_eq_def  — Attack = Defense
+- fairy_move  — у экземпляра выучена атака типа Fairy (18)
+
+ДАННЫЕ В АКТИВНОЙ БД
+- 196 Эспеон:   from=133, method=4 (friendship), condition=time_day,   priority=0
+- 197 Умбреон:  from=133, method=4 (friendship), condition=time_night, priority=0
+- 700 Сильвеон: from=133, method=4 (friendship), condition=fairy_move, priority=10
+- 106 Хитмонли:  from=236, method=1, level=20, condition=atk_gt_def
+- 107 Хитмончан: from=236, method=1, level=20, condition=atk_lt_def
+- 237 Хитмонтоп: from=236, method=1, level=20, condition=atk_eq_def
+- 107 больше не висит на 106 (раньше был ошибочный evolves_from_id=106).
+- PRAGMA integrity_check = ok.
+
+ОБРАБОТЧИК
+- server/handlers/api/evolution.go:
+  checkEvolutionFor(userPokemonID, pokemonID, level) — единая точка выбора ветки.
+  - method=1 (level): нужен достигнутый evolution_level + condition (пусто = ок).
+  - method=4 (friendship): участвует только при ЯВНО заданном condition, иначе
+    legacy-строки не включаются и поведение прочих friendship-видов не меняется.
+  - несколько подходящих: ORDER BY evolution_priority DESC, id ASC — выбор стабилен.
+  - неизвестный код условия = false (безопасный отказ, без случайной ветки).
+  - Atk/Def считаются на целевом уровне по base+IV+EV+nature (utils.CalculateStats),
+    а не берутся из устаревших сохранённых колонок.
+- checkEvolutionByIDs удалён; applyLevelUp (бой/Леденец) и ручной EvolveHandler
+  используют checkEvolutionFor, т.е. одинаковую логику.
+- Эволюция Иви происходит на level-up (как friendship в играх) при выполненном
+  условии; Тайрог — автоматически на L20.
+- Сильвеон приоритетнее дня/ночи, если Иви знает Fairy-атаку (priority=10).
+
+АДМИНКА
+- server/handlers/admin/pokemons.go: чтение/запись evolution_condition и
+  evolution_priority в create/edit.
+- server/templates/admin/pokemon_form.html: select условий + поле приоритета
+  с пояснениями в форме редактирования вида.
+
+ПРОВЕРКИ
+- go build ./... — OK.
+- go vet ./... — OK.
+- go test ./... — OK, включая:
+  server/handlers/api/evolution_condition_test.go
+  - TestEvolutionConditionMet: день/ночь, Atk>Def/Atk<Def/Atk=Def, fairy_move,
+    неизвестное условие = false.
+  - TestCheckEvolutionBranches: на временной БД Иви днём -> 196, ночью -> 197,
+    с Fairy-атакой -> 700; Тайрог с Atk>Def -> 106, Atk<Def -> 107, Atk=Def -> 237;
+    каждая проверка повторена 20 раз (стабильность выбора).
+- Парсинг admin/pokemon_form.html — OK.
+- PRAGMA integrity_check активной БД — ok.
+
+ЖИВОЙ ПРОГОН
+Не выполнен в этой сессии: порт 8080 занят уже запущенным старым процессом
+pokemon-gen6.exe. Миграция БД при этом применилась. Для живой проверки нужно
+перезапустить сервер (старый процесс держит порт и использует прежний код).
+
+РУЧНОЙ СЦЕНАРИЙ ДЛЯ ВЛАДЕЛЬЦА
+1. Перезапустить сервер.
+2. Дать двух Иви 133 (без выученной Fairy-атаки). Днём поднять уровень одной ->
+   Эспеон 196; ночью поднять уровень второй -> Умбреон 197.
+3. Дать трёх Тайрогов 236 с разными IV/характером (Atk>Def, Atk<Def, Atk=Def) и
+   поднять до L20 -> 106 / 107 / 237 соответственно.
+4. Повторить 2–3 раза — ветка не должна меняться.
+
+БЭКАП ПЕРЕД МИГРАЦИЕЙ
+database/backups/pokemon.db.bak-before-evo-conditions

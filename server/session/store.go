@@ -2,6 +2,7 @@ package session
 
 import (
 	"log"
+	"net/http"
 	"os"
 
 	"github.com/gorilla/sessions"
@@ -19,5 +20,8 @@ func Init() {
 		Path:     "/",
 		MaxAge:   86400 * 7,
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		// Secure включать только после перехода на https: на http
+		// браузер перестанет присылать cookie.
 	}
 }

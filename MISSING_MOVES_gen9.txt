@@ -1,0 +1,241 @@
+====================================================================
+MISSING_MOVES_gen9 — хвосты девятого поколения (#906–1025, Палдея)
+Дата: 2026-10-23. Скилл: adding-pokemon-generations.
+Связанные файлы: HANDOFF_gen9.txt, TEST_gen9.txt.
+====================================================================
+
+Ниже — всё, что сознательно НЕ добавлялось или добавлено
+приблизительно, и механики, которые остались на отдельные задачи.
+Виды, статы, лёрнсеты, способности и спрайты внесены полностью.
+
+--------------------------------------------------------------------
+1. ФОРМЫ, КОТОРЫЕ НЕ ЗАВОДИЛИСЬ ОТДЕЛЬНЫМИ ВИДАМИ
+--------------------------------------------------------------------
+В БД один вид на национальный номер; выбрана дефолтная форма PokeAPI:
+- Oinkologne 916 — male (female-форма не отдельный вид);
+- Maushold 925 — family-of-four (family-of-three не отдельный вид);
+- Squawkabilly 931 — green-plumage (yellow/blue/white не отдельные);
+- Palafin 964 — zero (hero-форма не отдельный вид);
+- Tatsugiri 978 — curly (droopy/stretchy не отдельные);
+- Dudunsparce 982 — two-segment (three-segment не отдельный);
+- Gimmighoul 999 — chest (roaming не отдельный);
+- Poltchageist 1012 — counterfeit (artisan не отдельный);
+- Sinistcha 1013 — unremarkable (masterpiece не отдельный);
+- Ogerpon 1017 — базовая (teal-маска; wellspring/hearthflame/
+  cornerstone не отдельные виды);
+- Terapagos 1024 — normal (terastal/stellar не отдельные виды);
+- Koraidon/Miraidon 1007/1008 — базовые формы (build-формы не
+  моделируются);
+- Paldean Wooper/Tauros и Hisuian/Bloodmoon-формы в диапазон
+  906–1025 не входят и не добавлялись.
+
+`pokemon_forms` не трогался. Форменные атаки (Torque-ходы Starmobile,
+Blood Moon и т.п.) в лёрнсеты базовых видов не включались.
+
+--------------------------------------------------------------------
+2. ЭВОЛЮЦИИ — ПРИБЛИЖЕНИЯ И НЕМОДЕЛИРУЕМЫЕ УСЛОВИЯ
+--------------------------------------------------------------------
+Внутригенная линия (method=1 level, если не указано иное):
+- Sprigatito 906 -> Floragato 907 (16) -> Meowscarada 908 (36);
+- Fuecoco 909 -> Crocalor 910 (16) -> Skeledirge 911 (36);
+- Quaxly 912 -> Quaxwell 913 (16) -> Quaquaval 914 (36);
+- Lechonk 915 -> Oinkologne 916 (18);
+- Tarountula 917 -> Spidops 918 (15);
+- Nymble 919 -> Lokix 920 (24);
+- Pawmi 921 -> Pawmo 922 (18);
+- Tandemaus 924 -> Maushold 925 (25, in-battle level-up);
+- Fidough 926 -> Dachsbun 927 (26);
+- Smoliv 928 -> Dolliv 929 (25) -> Arboliva 930 (35);
+- Nacli 932 -> Naclstack 933 (24) -> Garganacl 934 (38);
+- Charcadet 935 -> Armarouge 936 / Ceruledge 937:
+  method=5 (item), evolution_item_id=NULL (Auspicious/Malicious Armor);
+- Tadbulb 938 -> Bellibolt 939: method=3 (stone), item=NULL
+  (Thunder Stone);
+- Wattrel 940 -> Kilowattrel 941 (25);
+- Maschiff 942 -> Mabosstiff 943 (30);
+- Shroodle 944 -> Grafaiai 945 (28);
+- Toedscool 948 -> Toedscruel 949 (30);
+- Capsakid 951 -> Scovillain 952: method=3 (stone), item=NULL
+  (Fire Stone);
+- Flittle 955 -> Espathra 956 (35);
+- Tinkatink 957 -> Tinkatuff 958 (24) -> Tinkaton 959 (38);
+- Wiglett 960 -> Wugtrio 961 (26);
+- Finizen 963 -> Palafin 964 (38; в каноне нужен Union Circle —
+  совместный режим не моделируется);
+- Varoom 965 -> Revavroom 966 (40);
+- Glimmet 969 -> Glimmora 970 (35);
+- Greavard 971 -> Houndstone 972 (30, condition='time_night';
+  движок поддерживает время суток);
+- Cetoddle 974 -> Cetitan 975: method=3 (stone), item=NULL
+  (Ice Stone);
+- Frigibax 996 -> Arctibax 997 (35) -> Baxcalibur 998 (54);
+- Poltchageist 1012 -> Sinistcha 1013: method=5 (item), item=NULL
+  (Unremarkable/Masterpiece Teacup; формы не моделируются).
+
+Кросс-ген эволюции ИЗ старых поколений в gen9:
+- Primeape 57 -> Annihilape 979: канон — использовать Rage Fist
+  20 раз. Приближение method=1, level=45.
+- Girafarig 203 -> Farigiraf 981: канон — level-up, зная Twin Beam.
+  Приближение method=1, level=32 (Twin Beam изучается на 32).
+- Dunsparce 206 -> Dudunsparce 982: канон — level-up, зная
+  Hyper Drill. Приближение method=1, level=32.
+- Bisharp 625 -> Kingambit 983: канон — победить 3 Bisharp с
+  лидерским статусом. Приближение method=1, level=52.
+- Applin 840 -> Dipplin 1011: method=5 (item), item=NULL
+  (Syrupy Apple).
+- Dipplin 1011 -> Hydrapple 1019: канон — level-up, зная
+  Dragon Cheer. Приближение method=1, level=40.
+- Duraludon 884 -> Archaludon 1018: method=5 (item), item=NULL
+  (Metal Alloy).
+
+ОСОБО: Clodsire 980 НЕ связан с базовым Wooper 194. Канон —
+эволюция Paldean Wooper, которой в БД нет. 980 остался базовым.
+
+Шаговые эволюции (канон — пройти 1000 шагов):
+- Pawmo 922 -> Pawmot 923: приближение level=28;
+- Bramblin 946 -> Brambleghast 947: приближение level=30;
+- Rellor 953 -> Rabsca 954: приближение level=30.
+Точное число шагов не моделируется.
+
+Gimmighoul 999 -> Gholdengo 1000: канон — собрать 999 монет.
+method=5 (item), evolution_item_id=NULL; монеты не заводились.
+
+Эволюции gen9-видов в gen10+ НЕ добавлялись. Циклов и «висящих»
+evolves_from_id нет.
+
+--------------------------------------------------------------------
+3. НОВЫЕ АТАКИ — ТОЛЬКО ДАННЫЕ (62 шт., id 732–793)
+--------------------------------------------------------------------
+Базовые поля (тип/категория/сила/точность/PP/приоритет/цель/
+контакт/звук/hits/crit/drain) заполнены по PokeAPI (`scarlet-violet`).
+Эффекты ниже в движке НЕ реализованы (effect_id/effect_status_id/
+attack_stat_changes не заполнялись):
+
+732 Alluring Voice — конфузия цели с повышенными статами.
+733 Aqua Cutter — повышенный шанс крита (crit_rate=1).
+734 Aqua Step — +1 Скорость пользователя.
+735 Armor Cannon — -1 Защита и -1 Спец.Защита пользователя.
+736 Axe Kick — конфузия; при промахе пользователь получает урон.
+737 Bitter Blade — лечение на половину нанесённого урона.
+738 Burning Bulwark — защита + ожог при контактном ударе.
+739 Chilling Water — -1 Атака цели.
+740 Collision Course — усиление при сверхэффективном попадании.
+741 Comeuppance — возврат большего урона атаковавшему.
+742 Doodle — копирование способностей цели.
+743 Double Shock — смена типа пользователя после атаки.
+744 Dragon Cheer — повышение шанса крита у союзников.
+745 Electro Drift — усиление при сверхэффективном попадании.
+746 Electro Shot — двухходовая зарядка; под дождём сразу.
+747 Fickle Beam — случайное удвоение мощности.
+748 Fillet Away — расход HP ради +Атака/+Спец.Атака/+Скорость.
+749 Flower Trick — never_misses=1, crit_rate=1.
+750 Gigaton Hammer — запрет повторного использования подряд.
+751 Glaive Rush — уязвимость пользователя до следующего хода.
+752 Hard Press — мощность зависит от HP цели.
+753 Hydro Steam — усиление в ярком солнце.
+754 Hyper Drill — пробивает Protect/Detect.
+755 Ice Spinner — уничтожает арену.
+756 Ivy Cudgel — тип зависит от маски; crit_rate=1.
+757 Jet Punch — приоритет +1.
+758 Kowtow Cleave — never_misses=1.
+759 Last Respects — мощность зависит от числа павших союзников.
+760 Lumina Crash — -2 Спец.Защита цели.
+761 Make It Rain — -1 Спец.Атака пользователя; деньги после боя.
+762 Malignant Chain — шанс сильного отравления.
+763 Matcha Gotcha — лечение на половину урона; шанс ожога.
+764 Mighty Cleave — пробивает защиту.
+765 Mortal Spin — снятие связывания/семян; отравление.
+766 Order Up — бафф в зависимости от формы Tatsugiri.
+767 Population Bomb — 1–10 ударов (hits_min/max=10).
+768 Pounce — -1 Скорость цели.
+769 Psyblade — усиление на Электрической арене.
+770 Psychic Noise — запрет лечения на 2 хода.
+771 Rage Fist — мощность растёт от числа полученных ударов.
+772 Raging Fury — фиксация на атаке несколько ходов.
+773 Revival Blessing — возрождение павшего союзника.
+774 Ruination — обрезает HP цели вдвое.
+775 Salt Cure — урон каждый ход; усиление по Стали/Воде.
+776 Shed Tail — замена за счёт HP + смена.
+777 Silk Trap — защита + -1 Скорость контактному атакующему.
+778 Snowscape — снегопад на 5 ходов.
+779 Spicy Extract — +2 Атака и -2 Защита цели.
+780 Spin Out — -2 Скорость пользователя.
+781 Supercell Slam — при промахе пользователь получает урон.
+782 Syrup Bomb — -1 Скорость цели каждый ход 3 хода.
+783 Tachyon Cutter — 2 удара подряд, never_misses=1.
+784 Temper Flare — удвоение после провала предыдущего хода.
+785 Tera Blast — тип/стат зависят от Тера-типа.
+786 Tera Starstorm — в Stellar-форме бьёт всех противников.
+787 Thunderclap — приоритет +1; работает только против готовящейся атаки.
+788 Tidy Up — снятие шипов/камней/паутины/замен; +Атака/+Скорость.
+789 Torch Song — +1 Спец.Атака пользователя.
+790 Trailblaze — +1 Скорость пользователя.
+791 Triple Dive — 3 удара подряд.
+792 Twin Beam — 2 удара подряд.
+793 Upper Hand — приоритет +3; флинч, если цель готовит приоритетную
+    атаку.
+
+Отдельно: Raging Fury 772 отсутствовала в каталоге (ход gen8/PLA),
+но нужна лёрнсетам gen9; добавлена как обычная атака.
+
+--------------------------------------------------------------------
+4. НОВЫЕ СПОСОБНОСТИ — ТОЛЬКО ДАННЫЕ (35 шт., id 278–312)
+--------------------------------------------------------------------
+`effect_key=NULL`; в бою эффекты не реализованы:
+278 lingering-aroma — аромат понижает Скорость контактного атакующего.
+279 seed-sower — создаёт Травяную арену при получении атаки.
+280 thermal-exchange — реакция на Огонь/Лёд.
+281 anger-shell — форма/сброс панциря ниже половины HP.
+282 purifying-salt — иммунитет к статусам, -50% урона Призраков.
+283 well-baked-body — иммунитет к Огню, +2 Защита.
+284 wind-rider — +1 Атака при Попутном ветре; иммунитет к ветру.
+285 guard-dog — -1 Атака врагов; запрет смены/побега.
+286 rocky-payload — +50% мощности Каменных атак.
+287 wind-power — зарядка от ветра/отдачи, x2 Электричество.
+288 zero-to-hero — героическая форма Palafin.
+289 commander — взаимодействие с Дондозо.
+290 electromorphosis — зарядка после урона, x2 Электричество.
+291 protosynthesis — солнце/Бустер, +30% лучшего стата.
+292 quark-drive — Электроарена/Бустер, +30% лучшего стата.
+293 good-as-gold — иммунитет к статусным атакам.
+294 vessel-of-ruin — -25% Спец.Атаки всем.
+295 sword-of-ruin — -25% Защиты всем.
+296 tablets-of-ruin — -25% Атаки всем.
+297 beads-of-ruin — -25% Спец.Защиты всем.
+298 orichalcum-pulse — солнце + усиление Атаки.
+299 hadron-engine — Электроарена + усиление Спец.Атаки.
+300 opportunist — копирование повышений статов противника.
+301 cud-chew — повторное использование ягоды.
+302 supreme-overlord — +10% Атаки/Спец.Атаки за павшего союзника.
+303 costar — копирование изменений статов союзника.
+304 toxic-debris — Токсичные шипы при физической атаке.
+305 armor-tail — Световая завеса при выходе.
+306 earth-eater — иммунитет к Земле + лечение.
+307 mycelium-might — +30% статусных атак.
+308 supersweet-syrup — -1 Скорость врагов при выходе.
+309 hospitality — лечение союзника при выходе.
+310 toxic-chain — шанс сильного отравления атаками.
+311 tera-shift — переключение Тера-формы Terapagos.
+312 poison-puppeteer — отравленная цель также конфузится.
+
+В generation/9 у PokeAPI 47 способностей. Добавлены 35, реально
+используемые видами #906–1025 (включая Supreme Overlord из gen8,
+которой не было в каталоге). Sharpness уже была в каталоге (id 237).
+11 форменных/Тера-способностей не заводились: aura-guard, dragonize,
+eelevate, embody-aspect, fire-mane, mega-sol, minds-eye,
+piercing-drill, spicy-spray, tera-shell, teraform-zero.
+
+--------------------------------------------------------------------
+5. ПРЕДМЕТЫ, ЛОКАЦИИ, ПРОЧЕЕ
+--------------------------------------------------------------------
+- Предметы эволюции (Auspicious Armor, Malicious Armor, Syrupy Apple,
+  Unremarkable/Masterpiece Teacup, Metal Alloy, Gimmighoul Coins)
+  в `items` не заводились.
+- Локации дикой ловли gen9 не трогались (владелец расставит в админке).
+- Тера-механики (Tera Type, Tera Blast, Stellar, Tera Starstorm),
+  формы Koraidon/Miraidon, Palafin Hero, Ogerpon-маски, Terapagos-
+  формы, Gimmighoul-формы — отдельные задачи.
+- Известный pre-existing дефект: `PRAGMA foreign_key_check` даёт
+  51 нарушение (в т.ч. attacks.effect_status_id=9 без строки в
+  statuses). Столько же было до gen9; не исправлялся.
+====================================================================

@@ -1,0 +1,115 @@
+====================================================================
+HANDOFF_gen4 — добавление 4-го поколения (#387–493, Sinnoh)
+Дата: 2026-10-23. Скилл: adding-pokemon-generations.
+Статус: ОЧЕРЕДЬ. Предыдущее: gen3 внесён (TEST_gen3.txt).
+====================================================================
+
+0. ЦЕЛЬ
+--------------------------------------------------------------------
+Добавить все 107 видов #387–493 (включая легендарных/мифических),
+их лёрнсеты, способности (base+hidden), эволюции и спрайты. Механики
+новых атак/способностей не реализовывать — только данные; недостающее
+выписать в MISSING_MOVES_gen4.txt.
+
+Выполнять строго по skill `adding-pokemon-generations` и
+`db-data-migrations`. Ниже — только специфика поколения.
+
+1. ДИАПАЗОН И ИСТОЧНИК
+--------------------------------------------------------------------
+- Регион: Sinnoh (Синно).
+- Виды: 387–493 (107).
+- Версия лёрнсетов PokeAPI: `platinum`;
+  fallback: `diamond-pearl`, `heartgold-soulsilver`.
+- В generation/4 у PokeAPI: 107 видов, 113 новых атак, 47 новых способностей.
+- Спрайты: Showdown `ani/{slug}.gif`; для форм-суффиксов пробовать базовое
+  имя вида.
+
+2. ЭВОЛЮЦИИ — КРОСС-ГЕН В GEN4 (ВАЖНО)
+--------------------------------------------------------------------
+В gen4 много новых эволюций и беби старых видов. Их НУЖНО привязать,
+если родитель уже есть в БД:
+  • Magneton -> Magnezone (магнитное поле);
+  • Lickitung -> Lickilicky (level + Rollout);
+  • Rhydon -> Rhyperior (trade + Protector);
+  • Tangela -> Tangrowth (level + Ancient Power);
+  • Electabuzz -> Electivire (trade + Electirizer);
+  • Magmar -> Magmortar (trade + Magmarizer);
+  • Eevee -> Leafeon (Moss Rock) / Glaceon (Ice Rock);
+  • Porygon2 -> Porygon-Z (trade + Dubious Disc);
+  • Togetic -> Togekiss (Shiny Stone);
+  • Yanma -> Yanmega (level + Ancient Power);
+  • Gligar -> Gliscor (night + Razor Fang);
+  • Sneasel -> Weavile (night + Razor Claw);
+  • Swinub -> Mamoswine (level + Ancient Power);
+  • Kirlia -> Gallade (male + Dawn Stone);
+  • Nosepass -> Probopass (магнитное поле);
+  • Dusclops -> Dusknoir (trade + Reaper Cloth);
+  • Snorunt -> Froslass (female + Dawn Stone);
+  • Aipom -> Ambipom (level + Double Hit);
+  • Bonsly -> Sudowoodo; Mime Jr. -> Mr. Mime; Happiny -> Chansey;
+    Munchlax -> Snorlax; Mantyke -> Mantine; Budew -> Roselia;
+    Chingling -> Chimecho; Buneary -> Lopunny.
+Условия с локацией/временем/полом/известным ходом/предметом в БД
+полностью не моделируются: ставь ближайший метод (level/trade/stone/
+friendship/item) без item_id и фиксируй в MISSING_MOVES_gen4.txt.
+Не добавляй эволюции gen4-видов в gen5+.
+
+3. ФОРМЫ
+--------------------------------------------------------------------
+Rotom (appliance), Giratina (Origin), Shaymin (Sky), Cherrim,
+Shellos/Gastrodon (East/West) и др. — отдельными видами НЕ заводить,
+если владелец не попросил. Базовые виды — в задаче.
+
+4. ЛЁРНСЕТЫ И АТАКИ
+--------------------------------------------------------------------
+- Только виды #387–493.
+- Недостающие атаки: сначала посчитать по лёрнсетам, затем добавить
+  данные (по согласованию, по умолчанию — да) и выписать механики.
+- У каждого вида должна быть хотя бы одна level-up урон-атака.
+- TM/tutor/egg — как данные.
+
+5. СПОСОБНОСТИ
+--------------------------------------------------------------------
+- 47 новых способностей поколения; часть может уже быть в каталоге
+  (таблица содержит способности будущих поколений).
+- Маппинг английских имён на русские строки — вручную по смыслу
+  и effect_key; отсутствующие добавить с effect_key=NULL.
+- Hidden — slot 3, is_hidden=1.
+
+6. СПРАЙТЫ
+--------------------------------------------------------------------
+107 видов: `normal/387.gif` … `493.gif` + копии в `mini/`.
+Проверить 200/Content-Type image/gif; при отсутствии — PNG fallback.
+
+7. ОГРАНИЧЕНИЯ / MISSING_MOVES_gen4.txt
+--------------------------------------------------------------------
+- Предметы эволюции (Protector, Electirizer, Magmarizer, Dubious Disc,
+  Razor Fang/Claw, Dawn/Shiny Stone и др.) в items не заводить.
+- Локационные условия (магнитное поле, Moss/Ice Rock), время суток,
+  пол, known move, party species — не моделируются.
+- Формы не добавляются.
+- Локации дикой ловли — не трогать.
+- Механики новых атак/способностей — отдельно.
+
+8. ПРОВЕРКА (DoD)
+--------------------------------------------------------------------
+1. go build/vet/test + node --check.
+2. PRAGMA integrity_check = ok.
+3. #387–493 = 107 видов; статы/типы/пол/рост/вес/catch/base_exp сверены
+   с PokeAPI; description непустой; image_url и файл есть.
+4. У каждого вида есть способность и урон-атака.
+5. Эволюции: нет ссылок на gen5+; кросс-ген связи старых видов корректны;
+   нет циклов/висящих id.
+6. Нет дублей name/eng_name; нет сирот.
+7. Регрессия по бэкапу: старые поколения не изменились, кроме
+   согласованных кросс-ген эволюций/способностей.
+8. HTTP-смоук покедекса + спрайта.
+9. TEST_gen4.txt + MISSING_MOVES_gen4.txt + HANDOFF_STATUS.
+10. pokedex.js fallback maxPokemonId = 493.
+
+9. ФАЙЛЫ
+--------------------------------------------------------------------
+database/pokemon.db; client/static/images/pokemons/{normal,mini}/387..493;
+client/static/js/pokedex.js; MISSING_MOVES_gen4.txt; TEST_gen4.txt;
+HANDOFF_STATUS.txt. Скрипты — вне репозитория (scratchpad).
+====================================================================

@@ -1,0 +1,131 @@
+====================================================================
+MISSING_MOVES_gen4 — ХВОСТЫ 4-го ПОКОЛЕНИЯ (Синно, #387–493)
+Дата: 2026-10-23. Источник данных: PokeAPI (generation/4, pokemon,
+pokemon-species, evolution-chain, move), спрайты — Pokémon Showdown.
+Все пункты ниже — НЕ дефекты импорта: это механики/условия, которых
+нет в движке, либо данные, которые по ТЗ не заводятся.
+====================================================================
+
+1. ДОБАВЛЕННЫЕ АТАКИ (данные, id 590–611)
+--------------------------------------------------------------------
+В БД не хватало 22 атак, нужных лёрнсетам gen4 (20 новых gen4 +
+2 старые). Добавлены как данные (тип/категория/сила/точность/PP/
+приоритет/контакт/цель):
+
+  Assurance (Гарантия)            — если цель уже получала урон в этом
+                                    ходу, мощность ×2;
+  Brave Bird (Храбрая птица)      — отдача 33% (drain=-33);
+  Bug Bite (Жучий укус)           — крадёт/съедает ягоду цели, урон ×2;
+  Bullet Punch (Пуля-кулак)       — приоритет +1 (в данных);
+  Crush Grip (Сокрушительный
+    захват)                       — мощность зависит от HP цели;
+  Double Hit (Двойной хит)        — 2 удара (в данных);
+  Feint (Обманный удар)           — приоритет +2, пробивает Защиту/
+                                    Засечку;
+  Fling (Метание)                 — сила/эффект зависят от предмета;
+  Follow Me (Следуй за мной)      — перенаправление атак (в одиночном
+                                    бою почти no-op);
+  Gastro Acid (Желудочный сок)    — отключает способность цели;
+  Gyro Ball (Гиро-шар)            — мощность от разницы Скоростей;
+  Heart Swap (Обмен сердцами)     — обмен изменениями статов;
+  Jump Kick (Прыжок-удар)         — урон при промахе (crash damage);
+  Natural Gift (Естественный
+    дар)                          — тип/мощность от ягоды;
+  Pluck (Щипок)                   — крадёт/съедает ягоду цели, урон ×2;
+  Poison Jab (Ядовитый клин)      — 30% отравление (в данных);
+  Psycho Cut (Психо-резка)        — повышенный крит (crit_rate=1);
+  Rock Climb (Скалолаз)           — 20% замешательство (status 13);
+  Rock Wrecker (Разрушитель скал) — отдых на следующем ходу;
+  Shadow Force (Теневая сила)     — исчезновение на ход + удар сквозь
+                                    Защиту;
+  Switcheroo (Переключение)       — обмен предметами;
+  Thunder Fang (Электро-клык)     — 10% паралич (status 2); испуг 10%
+                                    не реализован.
+
+НЕ реализованы движком (механики — отдельная задача):
+  Assurance, Bug Bite, Crush Grip, Feint, Fling, Follow Me, Gastro Acid,
+  Gyro Ball, Heart Swap, Jump Kick, Natural Gift, Pluck, Rock Wrecker,
+  Shadow Force, Switcheroo, полный эффект Thunder Fang (flinch).
+  Частично покрыты данными: Brave Bird (отдача), Bullet Punch (приоритет),
+  Double Hit (2 удара), Poison Jab (яд), Psycho Cut (крит), Rock Climb
+  (замешательство), Rock Wrecker/Shadow Force — только параметры атаки.
+
+2. ПРЕДМЕТЫ ЭВОЛЮЦИИ — НЕ ЗАВОДИЛИСЬ (items)
+--------------------------------------------------------------------
+  Protector (Rhydon 112 -> Rhyperior 464, trade);
+  Electirizer (Electabuzz 125 -> Electivire 466, trade);
+  Magmarizer (Magmar 126 -> Magmortar 467, trade);
+  Dubious Disc (Porygon2 233 -> Porygon-Z 474, trade);
+  Reaper Cloth (Dusclops 356 -> Dusknoir 477, trade);
+  Razor Fang (Gligar 207 -> Gliscor 472, ночь);
+  Razor Claw (Sneasel 215 -> Weavile 461, ночь);
+  Shiny Stone (Togetic 176 -> Togekiss 468; Roselia 315 -> Roserade 407);
+  Dusk Stone (Misdreavus 200 -> Mismagius 429; Murkrow 198 -> Honchkrow 430);
+  Dawn Stone (Kirlia 281 -> Gallade 475, только самец; Snorunt 361 ->
+    Froslass 478, только самка);
+  Oval Stone (Happiny 440 -> Chansey 113, днём).
+Методы (trade/stone/item) проставлены БЕЗ evolution_item_id, поэтому
+эволюции по предмету в игре не срабатывают (как у gen2/gen3).
+
+3. УСЛОВИЯ ЭВОЛЮЦИИ, КОТОРЫЕ НЕ МОДЕЛИРУЮТСЯ
+--------------------------------------------------------------------
+Поставлен ближайший метод; уровень/предмет не заданы:
+  • Магнитное поле: Magneton 82 -> Magnezone 462, Nosepass 299 ->
+    Probopass 476 (method=level, level=NULL);
+  • Moss Rock: Eevee 133 -> Leafeon 470; Ice Rock: Eevee 133 ->
+    Glaceon 471 (method=level, level=NULL);
+  • Известный ход: Lickitung 108 -> Lickilicky 463 (Rollout);
+    Tangela 114 -> Tangrowth 465, Yanma 193 -> Yanmega 469, Piloswine 221
+    -> Mamoswine 473 (Ancient Power); Aipom 190 -> Ambipom 424 (Double
+    Hit); Bonsly 438 -> Sudowoodo 185 и Mime Jr. 439 -> Mr. Mime 122
+    (Mimic) (method=level, level=NULL);
+  • Ночь + предмет: Gligar 207 -> Gliscor 472, Sneasel 215 -> Weavile 461
+    (method=level, level=NULL);
+  • День + предмет: Happiny 440 -> Chansey 113 (Oval Stone) —
+    method=level, level=NULL;
+  • Партия: Mantyke 458 -> Mantine 226 (Remoraid в команде) —
+    method=level, level=NULL;
+  • Дружба: Buneary 427 -> Lopunny 428, Riolu 447 -> Lucario 448,
+    Budew 406 -> Roselia 315 (день), Chingling 433 -> Chimecho 358 (ночь),
+    Munchlax 446 -> Snorlax 143 — method=friendship, level=NULL.
+    Автоэволюции по дружбе в движке нет.
+
+Гендерные ограничения не проверяются:
+  • Burmy 412: самец -> Mothim 414, самка -> Wormadam 413 (обе ветки
+    заданы level 20; движок выберет ветку по id);
+  • Combee 415 -> Vespiquen 416 только самка (level 21; самец тоже
+    сможет эволюционировать по данным);
+  • Kirlia -> Gallade (только самец), Snorunt -> Froslass (только самка)
+    — метод stone, без предмета.
+Phione 489 -> Manaphy 490 в evolution-chain PokeAPI имеет пустые
+evolution_details (это размножение, не эволюция) — связь НЕ заведена.
+
+4. ФОРМЫ — НЕ ЗАВОДИЛИСЬ ОТДЕЛЬНЫМИ ВИДАМИ
+--------------------------------------------------------------------
+Rotom (5 бытовых форм), Giratina (Origin), Shaymin (Sky), Cherrim
+(Sunshine), Shellos/Gastrodon (East/West), Burmy/Wormadam (Sandy/Trash),
+Arceus (18 плит) — отдельные виды/формы не добавлялись, как в ТЗ.
+У Rotom пропущена form-change строка Thunder Shock (Platinum/HGSS):
+это ход одной из форм, базовому Ротому он не нужен.
+
+5. СПОСОБНОСТИ
+--------------------------------------------------------------------
+Добавлены 2 отсутствовавшие строки каталога (effect_key=NULL, механики
+отдельной задачей):
+  • 236 Пламенный порыв (Flare Boost) — +50% Спец.Атаки при ожоге;
+  • 237 Острота (Sharpness) — +50% мощности режущих атак.
+Остальные 105 английских имён смаплены на существующие русские строки
+по смыслу/описанию/effect_key (включая скрытые, slot 3). Механики
+способностей, у которых effect_key пуст, по-прежнему не реализованы —
+это общий хвост проекта, не только gen4.
+
+6. ПРОЧЕЕ
+--------------------------------------------------------------------
+  • TM/tutor/egg-строки заведены как данные; механик TM в бою нет
+    (TM-предметы — отдельная система).
+  • Локации дикой ловли для #387–493 не трогались (владелец в админке).
+  • Shiny-спрайты не качались (как в gen2/gen3).
+  • Известный pre-existing дефект: PRAGMA foreign_key_check показывает
+    18 нарушений attacks.effect_status_id (9/12/20/21) — было ДО gen4,
+    к этой задаче не относится, не исправлялось.
+====================================================================

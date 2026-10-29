@@ -1,0 +1,69 @@
+TEST_oval_stone — Овальный камень: Хаппини (#440) → Ченси (#113)
+=================================================================
+Дата: 2026-10-26
+Часть задачи «Исправления ошибок в разных механиках».
+
+ЗАДАЧА
+------
+Баг: в покедексе #440 (Хаппини) показывал эволюцию в #113 (Ченси) «по уровню»
+без числа уровня. Причина — битые данные: у #113 стоял evolution_method_id=1
+(level) при пустом evolution_level. По канону эволюция идёт через Овальный
+камень (Oval Stone). Механика предметной эволюции в игре уже есть
+(EvolveWithItem, TEST_evolution_stones.txt) — требовалось добавить предмет
+и привязку.
+
+СДЕЛАНО
+-------
+1) server/db/database.go — seedEvolutionItems():
+   - предмет id=165 «Овальный камень», category_id=5 (evolution_stone),
+     effect_type='evolve', price=0,
+     image_url=/static/images/items/oval_stone.png;
+   - связь {113, 165, 3}: evolution_item_id=165 + evolution_method_id=3;
+   - привязка идемпотентна (только при evolution_item_id IS NULL), повторный
+     запуск сервера не дублирует и не затирает правки.
+
+2) Активная БД обновлена теми же SQL (без ожидания перезапуска):
+   INSERT OR IGNORE items 165; UPDATE #113 → method=3, item=165
+   (вместо битого method=1/level NULL).
+
+3) client/static/images/items/oval_stone.png — спрайт PokeAPI item sprites
+   (oval-stone.png, 30×30 → апскейл LANCZOS 85×85 RGBA, как у камней).
+
+4) server/handlers/api/evolution_item_test.go — линия {440, 113, 165, 3}
+   добавлена в TestEvolveWithItemAllLines (теперь 49 линий).
+
+Код не менялся кроме сида/теста: UI инвентаря сам подхватывает effect_type
+='evolve' (фильтр целей через /api/evolution-items/{id}/targets), EvolveWithItem
+ключуется по evolution_item_id — Oval Stone работает как обычный камень.
+
+ПРОВЕРКИ
+--------
+[x] go build ./... — OK
+[x] go vet ./... — OK
+[x] go test ./server/handlers/api/ -run TestEvolveWithItemAllLines — PASS (49 линий)
+[x] PRAGMA integrity_check — ok (до и после)
+[x] Спрайт 85×85 RGBA на месте
+
+Живой прогон (2026-10-26, временный пользователь oval_test_u1, затем удалён):
+[x] /api/pokedex/pokemon/440/full: children[0] = {id:113, method_name:"stone",
+    item_id:165, item_name:"Овальный камень"}; дальше 113→242 (дружба) — канон;
+[x] GET /api/evolution-items/165/targets → [576] (только Хаппини);
+[x] POST /api/inventory/use {item_id:165, user_pokemon_id:576} → success:true;
+    в БД: pokemon_id 440→113, learnable +7 атак, предмет списан (0 шт.);
+[x] повторного использования не проверялось вживую (no-op покрыт юнит-тестом);
+[x] лог сервера без ошибок/паник;
+[x] после прогона пользователь23, его покемоны/предметы удалены;
+[x] сервер остановлен, порт 8080 свободен, journal отсутствует.
+
+БД / ДАННЫЕ
+-----------
+items.id=165 «Овальный камень» в каталоге (категория evolution_stone);
+pokemons #113: evolution_method_id=3, evolution_item_id=165, level пуст.
+Бэкап до изменений: database/backups/pokemon_pre_oval_stone_20261026_153441.db
+
+ПРИМЕЧАНИЯ
+----------
+- Получение камня — как у прочих камней: только через админку (магазина нет).
+- Канон (держать камень + уровень днём) упрощён до «применить предмет» —
+  единообразно со всеми камнями по решению владельца задачи.
+- Метод в покедексе отображается как «stone» → подпись = имя предмета.

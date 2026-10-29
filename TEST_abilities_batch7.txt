@@ -1,0 +1,174 @@
+====================================================================
+TEST_abilities_batch7 — расширенный набор способностей (батч 7+)
+Исполнитель: агент. Дата: 2026-10-27.
+Основание: продолжение TEST_abilities_batch6.txt; задача — закрыть максимум
+оставшихся способностей без effect_key.
+====================================================================
+
+Итог
+--------------------------------------------------------------------
+  Было effect_key: 78 (после батча 6)
+  Стало effect_key: 274
+  Осталось без ключа: 29 (причины — ниже)
+  Всего способностей: 303
+
+  Добавлено 196 ключей + логика в abilities_extra.go. Старые 58+20 ключей
+  не перетирались (миграции идемпотентны, только пустые значения).
+
+Что реализовано (по группам)
+--------------------------------------------------------------------
+1) Иммунитеты и поглощение типов
+   lightning_rod, water_defense, earth_eater, well_baked_body, wind_rider,
+   bulletproof, soundproof, wonder_guard, water_bubble (огонь ×0.5 + иммунитет
+   к ожогу), purifying_salt, flash_fire/volt_absorb/water_absorb/dry_skin/
+   motor_drive/sap_sipper/storm_drain (уже были).
+
+2) Урон: исходящий
+   tinted_lens, neuroforce, adaptability (STAB ×2), technician, iron_fist,
+   strong_jaw, sharpness, mega_launcher, steelworker, dragon_maw, transistor,
+   rocky_payload, punk_rock, flare_boost, toxic_boost, normalize, pixilate,
+   aerilate, refrigerate, galvanize, liquid_voice (звук → Вода),
+   rivalry, analytic, ambush, slow_start, defeatist, soul_heart/compassion,
+   supreme_overlord, power_spot, steely_spirit, ion_crown, fairy_aura,
+   dark_aura, aura_break, orichalcum_pulse, hadron_engine, protosynthesis,
+   quark_drive, vessel_of_ruin, sword_of_ruin, tablets_of_ruin, beads_of_ruin.
+
+3) Урон: входящий
+   multiscale, primordial_armor, ice_scales, heatproof, marvel_scale,
+   grass_pelt, friend_guard, fluffy/thick_fat/fur_coat/filter (уже были),
+   punk_rock (звук ×0.5), water_bubble (огонь ×0.5), purifying_salt (призрак ×0.5).
+
+4) Статусы/воли
+   synchronize, corrosion (яд бьёт Сталь/Яд), poison_puppeteer, water_veil,
+   magma_armor, water_bubble, purifying_salt, meteor_armor (пока HP ≥ ½),
+   sweet_veil, aroma_veil (Насмешка/Овации/Запрет/Запрет регенерации/Соблазн),
+   good_as_gold, magic_bounce, shield_dust, serene_grace, mycelium_might,
+   own_tempo/oblivious/leaf_guard/hydration/immunity/limber/insomnia/
+   vital_spirit (уже были).
+
+5) Статы
+   simple, contrary, defiant, competitive, mirror_armor, opportunist,
+   full_metal_body, hyper_cutter, flower_veil, stamina, berserk, anger_point,
+   justified, rattled, thermal_exchange, intrepid_sword, dauntless_shield,
+   download, plus/positive_charge, beast_boost, moxie, chilling_neigh,
+   grim_neigh, battle_bond, rage_shell, zen_mode, weak_armor (уже был).
+
+6) Скорость/приоритет/точность/криты/удары
+   sand_rush, slush_rush, surge_surfer, quick_feet, unburden (упрощённо),
+   slow_start, stall, prankster (не работает по Тёмным), gale_wings, triage,
+   queenly_majesty, no_guard, wonder_skin, victory_star, super_luck, mercy,
+   skill_link, hustle (уже был), sand_veil/snow_cloak/compound_eyes (уже были).
+
+7) Смена/поле/погода
+   sand_stream, sand_spit, orichalcum_pulse, hadron_engine, grassy_surge,
+   misty_surge, electric_surge, psychic_surge, seed_sower, cloud_nine/air_lock
+   (погодный урон отменяется), screen_cleaner, armor_tail, guard_dog,
+   magnet_pull, arena_trap, shadow_tag, suction_cups/anchor (не выгнать;
+   PvP-смена тоже проверяет NoEscape/Trapped), natural_cure, regenerator
+   (уже был), trace, imposter, illusion (облик + разрушение от урона),
+   type_item/multitype (тип по предмету), protean/libero/color_change (смена
+   типа), normalize/pixilate/aerilate/refrigerate/galvanize (тип атаки),
+   long_reach, unseen_fist.
+
+8) Контакт/нокдаун/конец хода
+   effect_spore, poison_touch, toxic_chain, stench, cursed_body, mummy,
+   wandering_spirit, pickpocket, magician, sticky_aroma, cotton_down,
+   tangled_hair, perish_body, aftermath, aftermath_quarter (Отмщение),
+   liquid_ooze, toxic_debris, sand_spit, seed_sower, stamina, berserk,
+   ice_face (щит восстанавливается в град), disguise, bad_dreams, moody,
+   healer, early_bird, coma, rock_head (без отдачи), sticky_hold,
+   klutz (предмет не работает), unburden (упрощённо).
+
+9) Прочее
+   download, forewarn, anticipation, frisk, telepathy, trace, imposter,
+   magic_guard (косвенный урон), magic_bounce, good_as_gold, shield_dust,
+   corrosion, synchronize, poison_puppeteer, poison_touch, toxic_chain,
+   toxic_debris, sticky_hold, klutz, unburden (упрощённо).
+
+Изменённые файлы
+--------------------------------------------------------------------
+  server/handlers/api/abilities_extra.go       — новый файл, основная логика
+  server/handlers/api/abilities_battle.go      — fallback-вызовы новых хуков
+  server/handlers/api/battle.go                — хуки в расчёт урона/статов/
+                                                 смены типа/критов/нокдауна
+  server/handlers/api/screens.go               — новые side-таймеры
+  server/handlers/api/weather_effects.go       — cloud_nine/magic_guard
+  server/handlers/api/hazards.go               — magic_guard, SwitchedInTurn
+  server/handlers/api/status_registry.go       — early_bird, coma
+  server/handlers/api/volatiles.go             — own_tempo/tangled_feet/magic_guard
+  server/handlers/api/gender_moves.go          — aroma_veil
+  server/handlers/api/heal_moves.go            — aroma_veil
+  server/handlers/api/block_moves.go           — oblivious (уже был)
+  server/handlers/api/gen2_moves.go            — sticky_hold, selfdestruct helper
+  server/handlers/api/held_item_effects.go     — klutz
+  server/handlers/api/switch_moves.go          — suction_cups/anchor
+  server/handlers/api/pvp.go                   — приоритеты, regenerator, pressure
+  server/handlers/api/wild.go, ai_team.go,
+  ai_team_store.go, npc_smart_team.go,
+  call_moves.go                                — поле Sound у атак
+  server/db/abilities.go                       — migrateAbilityBatch7Keys()
+  server/db/database.go                        — вызов миграции
+  server/handlers/api/abilities_batch7_test.go — групповые тесты
+
+Проверки
+--------------------------------------------------------------------
+[x] go build ./... — успешно.
+[x] go vet ./... — успешно.
+[x] go test ./... -count=1 — успешно (api: ok).
+[x] Бэкап БД: database/backups/pokemon.db.bak-before-batch7.
+[x] effect_key: 274; без ключа: 29.
+[x] PRAGMA integrity_check — ok.
+[x] Тесты батча 7:
+    TestBatch7TypeAbsorbs, TestBatch7IncomingDamage, TestBatch7StatReactions,
+    TestBatch7PrioritySpeed, TestBatch7AccuracyCritHits, TestBatch7SwitchIn,
+    TestBatch7ContactAndKO, TestBatch7Misc.
+
+Осталось 29 способностей (осознанно, нет нужной механики)
+--------------------------------------------------------------------
+  18  Бегство — нет механики побега (капитуляция и так всегда успешна).
+  34  Внушение — нет расхода предметов инвентаря в бою.
+  81  Ищейка — нет пост-боевого дропа предметов.
+  86  Королевское построение — нужны боевые формы (pokemon_forms пуст).
+  104 Металлическая кожа — описание "?" (неизвестно).
+  106 Метеочувствительность — нужны формы/типы по погоде.
+  121 Нытик — авто-смена при HP < ½ (нет хука принудительной смены).
+  122 Обжорство — нет боевых предметов/ягод.
+  147 Преемник — копирование способности павшего союзника (нет союзников).
+  150 Приманивающий свет — описание "?".
+  176 Симбиоз — описание "?".
+  179 Сладкоежка — нет ягод/пост-боевого дропа.
+  193 Танцор — копирование танцев противника (не подключено).
+  195 Теневой покров — описание "?".
+  223 Экстренное отступление — авто-смена при HP < ½.
+  231 Сбор урожая — нет ягод.
+  233 Нервозность — нет ягод.
+  239 Защёчные мешки — нет ягод.
+  243 Сборка силы — нужны боевые формы.
+  245 Алхимия — копирование способности павшего союзника.
+  251 Подбор мяча — нет механики брошенных Покеболов в бою.
+  257 Глотательная ракета — уникальная механика Сёрфа/Дайва.
+  258 Переключение голода — нужны боевые формы.
+  269 Созревание — нет ягод.
+  289 Командир — только для двойных боёв (нет Дондозо рядом).
+  301 Жвачка — нет ягод.
+  303 Дуэт — копирование статов союзника (нет союзников).
+  309 Гостеприимство — лечение союзника (нет союзников).
+  311 Тера-сдвиг — нужны Тера-формы.
+
+Живой прогон
+--------------------------------------------------------------------
+НЕ выполнен: на :8080 запущен server.exe старой сборки (PID 10424).
+Нужен перезапуск с прежним SESSION_KEY. Миграция БД уже применена и
+идемпотентна.
+
+Рекомендуемый чек-лист после перезапуска:
+  1. Способность-поглощение (lightning_rod / earth_eater / well_baked_body)
+     — урон не проходит, стат/HP меняется.
+  2. multiscale/ice_scales/heatproof — урон снижается.
+  3. simple/contrary/defiant/mirror_armor — статы меняются по описанию.
+  4. sand_stream/grassy_surge/misty_surge — погода/арена ставятся на входе.
+  5. prankster/gale_wings/triage — порядок хода меняется.
+  6. disguise/ice_face — первый удар не наносит урон.
+  7. effect_spore/poison_touch/mummy/pickpocket — контактные реакции.
+  8. bad_dreams/moody/healer — эффекты конца хода.
+====================================================================

@@ -8,19 +8,42 @@
     <h1>{{if .ID}}Edit{{else}}Create{{end}} Location</h1>
     <form method="POST">
       <label>Name:</label><br />
-      <input type="text" name="name" value="{{printf "%s" .Name}}" required><br /><br />
+      <input type="text" name="name" value="{{.Name}}" required /><br /><br />
+
       <label>Description:</label><br />
-      <input type="text" name="description" value="{{printf "%s" .Description}}"
-      size="50" required><br /><br />
-      <label><input type="checkbox" name="has_nursery" {{if .HasNursery}}checked{{end}}> Есть питомник</label><br />
-      <label><input type="checkbox" name="has_healing" {{if .HasHealing}}checked{{end}}> Есть лечение</label><br /><br />
+      <input
+        type="text"
+        name="description"
+        value="{{.Description}}"
+        size="70"
+        required
+      /><br /><br />
+
+      <label>Region:</label><br />
+      <select name="region_id" required>
+        {{range .Regions}}
+        <option value="{{.ID}}" {{if eq .ID $.RegionID}}selected{{end}}>
+          {{.Name}} (ID {{.ID}})
+        </option>
+        {{end}}
+      </select><br /><br />
+
+      <label>
+        <input type="checkbox" name="has_nursery" {{if .HasNursery}}checked{{end}} />
+        Питомник
+      </label><br />
+      <label>
+        <input type="checkbox" name="has_healing" {{if .HasHealing}}checked{{end}} />
+        Лечение
+      </label><br /><br />
+
       <button type="submit">Save</button>
       <a href="/admin/locations">Cancel</a>
     </form>
 
     {{if .ID}}
     <hr />
-    <h2>Manage Exits (Переходы)</h2>
+    <h2>Manage Exits (переходы)</h2>
     <h3>Existing Exits</h3>
     {{if .Exits}}
     <table border="1">
@@ -30,7 +53,7 @@
       </tr>
       {{range .Exits}}
       <tr>
-        <td>{{.Name}} (ID {{.ID}})</td>
+        <td>{{.Name}}</td>
         <td>
           <form action="/admin/locations/exit/remove" method="POST">
             <input type="hidden" name="from_location" value="{{$.ID}}" />
@@ -58,6 +81,7 @@
       </select>
       <button type="submit">Add Exit</button>
     </form>
+    <p><small>Помните: выходы должны быть двусторонними.</small></p>
     {{end}}
   </body>
 </html>

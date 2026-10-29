@@ -1,0 +1,182 @@
+====================================================================
+TEST_tm — МЕХАНИКА TM/HM-ПРЕДМЕТОВ
+Дата: 2026-10-23. Проект: pokemon-game (Go + SQLite).
+====================================================================
+
+1. КРАТКО
+--------------------------------------------------------------------
+Добавлены TM/HM-предметы. Использование предмета на покемоне команды
+добавляет соответствующую атаку в его список «Доступно к изучению».
+Дальше игрок учит её обычным способом: пустой слот / «Заменить атаку».
+TM/HM расходуется при успешном использовании. Если TM/HM-атаку выучили
+и потом заменили, она удаляется из списка (нужен новый предмет), кроме
+случая, когда эта атака уже доступна виду по уровню.
+
+2. РЕШЕНИЯ ВЛАДЕЛЬЦА (из грилинга)
+--------------------------------------------------------------------
+- Отдельный предмет на каждую атаку.
+- Канон Gen2: TM01–TM50 + HM01–HM07.
+- Плюс 147 остальных TM-атак из БД (метод tm), нумерация TM51–TM197.
+  Итого 204 предмета: 197 TM + 7 HM. (На момент первого сида в БД было
+  198 TM-атак; затем параллельно добавили gen3, досозданы ещё 8 TM:
+  TM190–TM197. Итог — все не-disabled TM-атаки покрыты.)
+- 2 атаки с disabled=1 исключены: Приманка (Substitute),
+  Волшебная комната (Magic Room).
+- TM и HM одноразовые; тратятся при успешном добавлении атаки в список.
+- Несовместимость / уже знает / уже есть в списке / не в команде —
+  отказ, предмет НЕ тратится.
+- Учить можно только покемонов боевой команды (position 1..6),
+  питомник (position 0) не предлагается.
+- Совместимость — только pokemon_attacks.learn_method_id = 2 (tm),
+  уровень не учитывается.
+- В инвентаре одна общая вкладка «TM/HM».
+- Иконки: tm.png для TM, hm.png для HM (из Downloads владельца,
+  обрезаны/вписаны в 85×85 с прозрачностью).
+
+3. СХЕМА БД (миграции идемпотентны в server/db/database.go)
+--------------------------------------------------------------------
+- items.attack_id INTEGER — атака, которую открывает TM/HM.
+- item_categories.id=10, name='TM/HM'.
+- user_pokemon_learnable_attacks.source TEXT DEFAULT 'level'
+  ('level' | 'tm' | 'hm').
+- user_pokemon_learnable_attacks.source_item_id INTEGER — каким
+  предметом открыта атака (для бейджа и удаления при замене).
+
+4. ДАННЫЕ
+--------------------------------------------------------------------
+Бэкап перед правкой:
+  database/backups/pokemon.db.bak-before-tm-20261023-104802
+
+Предметы (id):
+- TM01–TM50: 1001–1050, effect_type='tm', category_id=10,
+  image_url=/static/images/items/tm.png.
+- TM51–TM197 (147 доп.): 1051–1197, effect_type='tm'.
+- HM01–HM07: 2001–2007, effect_type='hm',
+  image_url=/static/images/items/hm.png.
+У всех 204 предметов attack_id заполнен, price=0, is_award=0.
+Дубли имён — 0. PRAGMA integrity_check = ok.
+
+Канон Gen2 (TM01–TM50):
+Dynamic Punch, Headbutt, Curse, Rollout, Roar, Toxic, Zap Cannon,
+Rock Smash, Psych Up, Hidden Power, Sunny Day, Sweet Scent, Snore,
+Blizzard, Hyper Beam, Icy Wind, Protect, Rain Dance, Giga Drain,
+Endure, Frustration, Solar Beam, Iron Tail, Dragon Breath, Thunder,
+Earthquake, Return, Dig, Psychic, Shadow Ball, Mud-Slap, Double Team,
+Ice Punch, Swagger, Sleep Talk, Sludge Bomb, Sandstorm, Fire Blast,
+Swift, Defense Curl, Thunder Punch, Dream Eater, Detect, Rest,
+Attract, Thief, Steel Wing, Fire Punch, Fury Cutter, Nightmare.
+
+HM Gen2 (HM01–HM07):
+Cut, Fly, Surf, Strength, Flash, Whirlpool, Waterfall.
+
+Доп. TM (TM51–TM197) — все остальные не-disabled атаки с method='tm',
+отсортированы по attacks.id. Номера не канонические, служебные.
+
+5. БЭКЕНД
+--------------------------------------------------------------------
+server/handlers/api/tm.go (новый):
+- GET /api/tm/{item_id}/targets — покемоны команды + can_learn/reason.
+  Питомник не отдаётся. Уже выученная/уже в списке атака — can_learn=false.
+- POST /api/user/pokemon/{id}/use-tm {item_id} — валидирует владельца,
+  команду (1..6), наличие предмета, совместимость по method=2,
+  что атака не disabled и её ещё нет в списке; в транзакции вставляет
+  строку в user_pokemon_learnable_attacks (source='tm'/'hm',
+  source_item_id=item_id, level_available=0, is_learned=0) и списывает
+  предмет (−1). Повторный вызов с тем же предметом — 409.
+- Ответ: {success, message, attack_id, attack_name}.
+
+server/db/items.go:
+- Item.AttackID, attack_id в SELECT'ах GetUserInventory / GetItemByID /
+  GetAllItems, параметр в CreateItem/UpdateItem.
+
+server/db/learnable.go:
+- InitLearnableAttacks при повышении уровня/эволюции переводит TM/HM-строку
+  в source='level', если атака стала доступна по уровню.
+
+server/handlers/api/user_pokemon_learnable.go:
+- GET learnable отдаёт source, source_item_id, source_item_name.
+- LearnAttackHandler: при замене атаки на позиции 1..4, если старая атака
+  была source='tm'/'hm' и НЕ доступна по уровню — строка удаляется.
+  Если доступна по уровню — остаётся как обычная level-атака.
+- Если replace_position не задан: ищется первый свободный слот 1..4,
+  иначе 409 «Все 4 слота заняты».
+
+server/routes/routes.go:
+- +GET /api/tm/{item_id}/targets
+- +POST /api/user/pokemon/{id}/use-tm
+
+6. ФРОНТ
+--------------------------------------------------------------------
+client/static/js/game.js:
+- Инвентарь: у TM/HM есть кнопка «Использовать».
+- showPokemonForTMUse: GET targets, список покемонов команды,
+  совместимые активны, несовместимые приглушены с причиной.
+- executeUseTM: POST use-tm, тост/alert, перезагрузка инвентаря и команды.
+- Список «Доступно к изучению»: TM/HM-атаки показываются с бейджем
+  TM или HM вместо «ур.0».
+client/static/css/game.css:
+- .learnable-item-level.tm-source-badge,
+  .inv-pokemon-option.disabled.
+
+7. АДМИНКА
+--------------------------------------------------------------------
+- item_form.html: эффекты tm/hm, выбор «Атака (для TM/HM)» из всех 575 атак,
+  категория TM/HM появляется из БД.
+- items_admin.go: подгрузка списка атак, attack_id в create/update.
+- Админ может вручную создать/поправить TM/HM-предмет; механика работает
+  по effect_type tm/hm + attack_id.
+
+8. ПРОВЕРКИ
+--------------------------------------------------------------------
+go build ./... ........................................ OK
+go vet ./... .......................................... OK
+go test ./... -count=1 ................................ OK
+node --check client/static/js/game.js ................. OK
+node --check client/static/js/pokedex.js .............. OK
+PRAGMA integrity_check ................................ ok
+
+Живой HTTP-прогон (сервер :8080, временный тест-игрок, после теста удалён):
+- TM44 «Отдых» на Бульбазавра: can_learn=true → 200, предмет −1,
+  атака появилась в learnable с source='tm'.
+- Повторный TM44: 409, предмет не списан.
+- TM06 «Отравление» на Бульбазавра: 409 «не может выучить», не списан.
+- TM44 на покемона в питомнике: 409 «только в команде», не списан.
+- Обучение TM-атаки через /learn: 200, атака в команде.
+- Замена TM-атаки другой: старая TM-строка исчезла из learnable.
+- HM01 «Порез» на Чикориту: 200, HM −1, source='hm'; обучение через /learn.
+- Замена HM-атаки: HM-строка исчезла из learnable.
+- /api/inventory: TM/HM в category_name «TM/HM», attack_id заполнен.
+- Админка /admin/items/edit?id=1001: 200, выбран TM01 и attack_id=178.
+
+9. ОГРАНИЧЕНИЯ / НА БУДУЩЕЕ
+--------------------------------------------------------------------
+- В pokemon_attacks данные TM/HM неполные у части gen1 (например, Cut/Flash
+  есть только у gen2-видов). Это данные, не код: совместимость работает
+  ровно по тому, что лежит в pokemon_attacks.
+- Магазина/выдачи нет: предметы надо выдавать через /admin/give_item
+  или python (user_items). В стартовые наборы не добавлялись.
+- Номера TM51–TM197 служебные (сортировка по attacks.id), не канон.
+  При добавлении новых поколений/атак с method='tm' доп. номера продолжать
+  с TM198 (скрипт-сид можно переиспользовать идемпотентно).
+- Доп. TM-атаки, у которых нет ни одного носителя method='tm', не создавались
+  (их и так нет в списке).
+- Стоимость price=0 — экономика отменена, магазина нет.
+- Временный тест-игрок tmtest_1023 и его данные удалены.
+
+10. ФАЙЛЫ
+--------------------------------------------------------------------
+server/db/database.go
+server/db/items.go
+server/db/learnable.go
+server/handlers/admin/items_admin.go
+server/handlers/api/tm.go (новый)
+server/handlers/api/user_pokemon_learnable.go
+server/routes/routes.go
+server/templates/admin/item_form.html
+client/static/js/game.js
+client/static/css/game.css
+client/static/images/items/tm.png (новый)
+client/static/images/items/hm.png (новый)
+database/pokemon.db (данные; в git не входит)
+database/backups/pokemon.db.bak-before-tm-20261023-104802 (бэкап)
+====================================================================

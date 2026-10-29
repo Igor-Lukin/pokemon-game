@@ -1,0 +1,70 @@
+====================================================================
+TEST_lighter — предмет «Зажигалка» (held, поджигает носителя)
+Дата: 2026-10-27
+====================================================================
+
+1. Что сделано
+--------------
+Новый надеваемый предмет:
+  id=168, name='Зажигалка', category_id=9 (held),
+  effect_type='burn_holder', effect_value=0,
+  image_url='/static/images/items/lighter.svg'.
+
+Механика: в конце хода покемон, на котором надет предмет, получает основной
+статус «Ожог» (id 3), если у него ещё нет основного статуса. Ожог даёт
+1/16 макс. HP урона за ход и ×0.5 физической атаки. Повторно статус не
+перебивается. Павшие покемоны пропускаются. Способности-иммунитеты к статусам
+проверяются через общий abilityBlocksStatus (сейчас ожог ими не блокируется —
+в движке нет иммунитета к ожогу).
+
+Точка входа — heldItemOnEndTurn() (server/handlers/api/held_item_effects.go),
+вызывается рядом с abilityOnEndTurn для обоих активных:
+  - MoveHandler (wild/trainer);
+  - SwitchHandler (смена);
+  - CatchHandler (провал ловли);
+  - pvpResolveTurn (PvP);
+  - ai_sim (симуляция ИИ).
+
+2. Изменённые файлы
+-------------------
+- server/db/database.go — seedHeldItems(): идемпотентная вставка id=168.
+- server/handlers/api/held_item_effects.go — новый эффект burn_holder.
+- server/handlers/api/battle.go — поле HeldItemEffect, загрузка effect_type,
+  вызовы в MoveHandler/SwitchHandler.
+- server/handlers/api/catch.go — вызов при провале ловли.
+- server/handlers/api/pvp.go — вызов в PvP.
+- server/handlers/api/ai_sim.go — вызов в симуляции.
+- server/handlers/api/ai_team_store.go, ai_battle.go, gen2_moves.go — перенос
+  effect_type при загрузке NPC-команд / краже предмета (Thief).
+- server/handlers/api/held_item_effects_test.go — юнит-тесты.
+- server/templates/admin/item_form.html — опция burn_holder в админке.
+- client/static/images/items/lighter.svg — иконка.
+- database/pokemon.db — предмет добавлен (бэкап:
+  database/backups/pokemon_pre_lighter_20261027_112817.db).
+
+3. Проверки
+-----------
+[OK] go build ./...
+[OK] go vet ./...
+[OK] go test ./server/handlers/api/... ./server/db/...
+[OK] Живой E2E через HTTP: регистрация тестового игрока, выдача Зажигалки,
+     POST /api/user/pokemon/{id}/hold, старт wild-боя (location 305),
+     ход. В ответе: held_item_name='Зажигалка', в логе
+     «Зажигалка поджигает Мью!», player.status_id=3.
+     Тестовые пользователь/покемон/атаки/предмет удалены.
+[OK] PRAGMA integrity_check = ok.
+[OK] Иконка /static/images/items/lighter.svg отдаётся (200).
+[OK] ADMIN (id=2): в user_items добавлено 10 Зажигалок (quantity=10).
+
+4. Не проверено живьём
+----------------------
+- PvP-бой с Зажигалкой у обоих игроков (код зеркальный, вызов добавлен).
+- Тренерский бой/NPC с Зажигалкой (загрузка effect_type в ai_team_store).
+- Огонь-типы и способности-иммунитеты: в текущем движке ожог не имеет
+  типового иммунитета, поэтому Зажигалка поджигает и Огонь.
+
+5. Замечание по запуску
+-----------------------
+Локальный сервер был перезапущен на новом коде:
+  SESSION_KEY=local-test-key, http://localhost:8080 (PID 6796).
+Старые cookie-сессии могли сброситься — при необходимости войти заново.

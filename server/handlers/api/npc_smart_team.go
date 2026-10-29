@@ -21,14 +21,14 @@ import (
 // Скоринг «за очки»: у каждого кандидата на слот считается score (сумма слагаемых),
 // сортируем по убыванию, берём топ-K и тянем одного взвешенно-случайно.
 const (
-	wCoverage = 3.0 // новые типы, которые команда начинает бить супер-эффективно (STAB)
-	wTypeDiv  = 2.0 // разнообразие типов: + за новый тип, − за дубль
-	wRole     = 1.5 // закрытие пустующей роли (physical/special/fast/bulky)
-	wStrength = 1.0 // нормированная сила (сумма base-статов); слабый вес
-	wDefense  = 2.5 // ЗАЩИТА: нормированный бульк + число резистов (чтобы брал стенки)
-	wWall     = 8.0 // БОНУС кандидату, закрывающему НЕДОБРАННУЮ обяз. стенку (Д или СД)
+	wCoverage  = 3.0  // новые типы, которые команда начинает бить супер-эффективно (STAB)
+	wTypeDiv   = 2.0  // разнообразие типов: + за новый тип, − за дубль
+	wRole      = 1.5  // закрытие пустующей роли (physical/special/fast/bulky)
+	wStrength  = 1.0  // нормированная сила (сумма base-статов); слабый вес
+	wDefense   = 2.5  // ЗАЩИТА: нормированный бульк + число резистов (чтобы брал стенки)
+	wWall      = 8.0  // БОНУС кандидату, закрывающему НЕДОБРАННУЮ обяз. стенку (Д или СД)
 	wallThrMul = 1.15 // порог «стенки»: стат защиты >= среднего по пулу * этот множитель
-	topK      = 5   // из скольких лучших кандидатов тянем слот взвешенно-случайно
+	topK       = 5    // из скольких лучших кандидатов тянем слот взвешенно-случайно
 )
 
 // smartCandidate — вид-кандидат в умный драфт (одна строка на вид, дедуп в SQL).
@@ -42,6 +42,10 @@ type smartCandidate struct {
 	baseHP      int    // для бульк-оценки (защитный член скоринга)
 	baseDef     int    // физ. защита — порог «Д-стенки»
 	baseSpDef   int    // спец. защита — порог «СД-стенки»
+	baseAtk     int    // для выбора роли/характера AI-билдера
+	baseSpd     int
+	baseSpAtk   int
+	isLegendary bool
 }
 
 // bulk — суммарная «толщина» (HP + обе защиты) для нормированного защитного члена.
@@ -103,7 +107,8 @@ func loadSmartCandidates(level int) ([]smartCandidate, error) {
 	rows, err := db.DB.Query(`
 		SELECT p.id, p.name, p.primary_type_id, p.secondary_type_id,
 		       p.base_hp, p.base_attack, p.base_defense, p.base_speed,
-		       p.base_special_attack, p.base_special_defense
+		       p.base_special_attack, p.base_special_defense,
+		       COALESCE(p.is_legendary, 0)
 		FROM pokemons p
 		WHERE p.id NOT IN (
 			-- «сильнейшая форма»: исключаем базовые/промежуточные виды, из которых
@@ -128,11 +133,12 @@ func loadSmartCandidates(level int) ([]smartCandidate, error) {
 	for rows.Next() {
 		var c smartCandidate
 		var sec sql.NullInt64
-		var hp, atk, def, spd, spAtk, spDef int
+		var hp, atk, def, spd, spAtk, spDef, legendary int
 		if rows.Scan(&c.id, &c.name, &c.primaryType, &sec,
-			&hp, &atk, &def, &spd, &spAtk, &spDef) != nil {
+			&hp, &atk, &def, &spd, &spAtk, &spDef, &legendary) != nil {
 			continue
 		}
+		c.isLegendary = legendary != 0
 		if sec.Valid {
 			s := int(sec.Int64)
 			c.secondType = &s
@@ -140,6 +146,7 @@ func loadSmartCandidates(level int) ([]smartCandidate, error) {
 		c.statSum = hp + atk + def + spd + spAtk + spDef
 		c.role = classifyRole(hp, atk, def, spd, spAtk, spDef)
 		c.baseHP, c.baseDef, c.baseSpDef = hp, def, spDef
+		c.baseAtk, c.baseSpd, c.baseSpAtk = atk, spd, spAtk
 		out = append(out, c)
 	}
 	return out, nil
@@ -262,8 +269,16 @@ func pickWeighted(scores []float64) int {
 	return len(scores) - 1
 }
 
-// buildSmartNPCTeam — собрать умную команду из size видов уровня level.
+// buildSmartNPCTeam — собрать умную команду без ограничения на легендарок
+// (штатный ai_level 0). Для бенчмарка AI-уровней есть версия с лимитом.
 func buildSmartNPCTeam(size, level int) ([]BattlePokemon, error) {
+	return buildSmartNPCTeamWithLimit(size, level, -1)
+}
+
+// buildSmartNPCTeamWithLimit — тот же legacy-драфт, но с лимитом легендарок
+// (maxLegendaries < 0 = без лимита). Нужен для честного сравнения с ботом,
+// у которого лимит задан уровнем сложности.
+func buildSmartNPCTeamWithLimit(size, level, maxLegendaries int) ([]BattlePokemon, error) {
 	if size < 1 {
 		size = 1
 	} else if size > 6 {
@@ -306,6 +321,7 @@ func buildSmartNPCTeam(size, level int) ([]BattlePokemon, error) {
 
 	st := teamState{types: map[int]bool{}, coverage: map[int]bool{}, roles: map[string]int{}}
 	used := map[int]bool{}
+	legendaries := 0
 	var team []BattlePokemon
 
 	for slot := 0; slot < size && len(used) < len(pool); slot++ {
@@ -333,6 +349,9 @@ func buildSmartNPCTeam(size, level int) ([]BattlePokemon, error) {
 		var cands []scored
 		for _, c := range pool {
 			if used[c.id] {
+				continue
+			}
+			if c.isLegendary && maxLegendaries >= 0 && legendaries >= maxLegendaries {
 				continue
 			}
 			var sc float64
@@ -417,6 +436,9 @@ func buildSmartNPCTeam(size, level int) ([]BattlePokemon, error) {
 
 		// Обновляем состояние команды.
 		used[chosen.id] = true
+		if chosen.isLegendary {
+			legendaries++
+		}
 		st.roles[chosen.role]++
 		if isPhysWall(chosen) {
 			st.hasPhysWall = true
@@ -491,7 +513,8 @@ func generateSmartMoves(pokemonID, level int, stab []int) []GeneratedMove {
 		       COALESCE(a.effect_status_id, 0), COALESCE(a.effect_chance, 0),
 		       COALESCE(a.never_misses, 0), COALESCE(a.drain, 0),
 		       COALESCE(a.crit_rate, 0), COALESCE(a.hits_min, 1), COALESCE(a.hits_max, 1),
-		       COALESCE(a.disabled, 0), COALESCE(a.heal_percent, 0), COALESCE(a.contact, 0)
+		       COALESCE(a.disabled, 0), COALESCE(a.heal_percent, 0), COALESCE(a.contact, 0),
+		       COALESCE(a.sound, 0)
 		FROM pokemon_attacks pa
 		JOIN attacks a ON pa.attack_id = a.id
 		WHERE pa.pokemon_id = ?
@@ -510,13 +533,14 @@ func generateSmartMoves(pokemonID, level int, stab []int) []GeneratedMove {
 	var all []GeneratedMove
 	for rows.Next() {
 		var m GeneratedMove
-		var neverMisses, disabled, contact int
-		if err := rows.Scan(&m.ID, &m.Name, &m.EngName, &m.TypeID, &m.CategoryID, &m.Power, &m.Accuracy, &m.PP, &m.Priority, &m.TargetID, &m.Description, &m.EffectID, &m.EffectChance, &neverMisses, &m.Drain, &m.CritRate, &m.HitsMin, &m.HitsMax, &disabled, &m.HealPercent, &contact); err != nil {
+		var neverMisses, disabled, contact, sound int
+		if err := rows.Scan(&m.ID, &m.Name, &m.EngName, &m.TypeID, &m.CategoryID, &m.Power, &m.Accuracy, &m.PP, &m.Priority, &m.TargetID, &m.Description, &m.EffectID, &m.EffectChance, &neverMisses, &m.Drain, &m.CritRate, &m.HitsMin, &m.HitsMax, &disabled, &m.HealPercent, &contact, &sound); err != nil {
 			continue
 		}
 		m.NeverMisses = neverMisses != 0
 		m.Disabled = disabled != 0
 		m.Contact = contact != 0
+		m.Sound = sound != 0
 		all = append(all, m)
 	}
 	if len(all) == 0 {
@@ -671,6 +695,9 @@ func chooseSmartEnemyMove(wild, player *BattlePokemon) *BattleMove {
 // (chooseSmartEnemyMoveOrCharge), иначе старое поведение (chooseWildMoveOrCharge).
 // opp — покемон игрока (цель оценки урона).
 func chooseEnemyMove(bs *BattleState, wild, opp *BattlePokemon) *BattleMove {
+	if bs != nil && bs.AILevel >= 1 {
+		return chooseAIMove(bs, wild, opp)
+	}
 	if bs != nil && bs.EnemySmart {
 		return chooseSmartEnemyMoveOrCharge(wild, opp)
 	}
@@ -692,6 +719,9 @@ func chooseSmartEnemyMoveOrCharge(wild, player *BattlePokemon) *BattleMove {
 // боеспособный с ВЫИГРЫШНЫМ раскладом (>0) — берём лучший. Циклов нет: вошедший
 // (расклад>0) в следующий ход не в проигрыше и не меняется.
 func chooseEnemySwitch(bs *BattleState, player, wild *BattlePokemon) int {
+	if bs != nil && bs.AILevel >= 1 {
+		return chooseAISwitch(bs, wild, player)
+	}
 	// Не вмешиваемся в двухходовые/лок/выжидание/овации — пусть отработают.
 	if wild.ChargingMoveID != 0 || wild.LockedMoveID != 0 || wild.BideTurns > 0 || wild.EncoreTurns > 0 {
 		return -1

@@ -23,30 +23,31 @@ import (
 var callerMoveIDs = map[int]bool{
 	497: true, 485: true, 511: true, 532: true, 516: true, 550: true, 457: true, 504: true,
 	209: true, 311: true, // Подставной ход/Ток — смена, не годятся для вызова
-	529: true,            // Сила природы — вызыватель (room_moves.go)
+	529: true, // Сила природы — вызыватель (room_moves.go)
 }
 
 // loadBattleMoveByID — собрать BattleMove из таблицы attacks по id (для вызванных
 // ходов и Подражания/Эскиза). PP берётся из БД (для Подражания/Эскиза — конечный).
 func loadBattleMoveByID(id int) *BattleMove {
 	var m BattleMove
-	var neverMisses, contact int
+	var neverMisses, contact, sound int
 	err := db.DB.QueryRow(`
 		SELECT id, name, COALESCE(eng_name,''), type_id, category_id, power, accuracy,
 		       COALESCE(pp,0), priority, COALESCE(target_id,1), COALESCE(description,''),
 		       COALESCE(effect_status_id,0), COALESCE(effect_chance,0), COALESCE(never_misses,0),
 		       COALESCE(drain,0), COALESCE(crit_rate,0), COALESCE(hits_min,1), COALESCE(hits_max,1),
-		       COALESCE(heal_percent,0), COALESCE(contact,0)
+		       COALESCE(heal_percent,0), COALESCE(contact,0), COALESCE(sound,0)
 		FROM attacks WHERE id=?`, id).Scan(
 		&m.ID, &m.Name, &m.EngName, &m.TypeID, &m.CategoryID, &m.Power, &m.Accuracy,
 		&m.PP, &m.Priority, &m.TargetID, &m.Description, &m.EffectID, &m.EffectChance,
-		&neverMisses, &m.Drain, &m.CritRate, &m.HitsMin, &m.HitsMax, &m.HealPercent, &contact)
+		&neverMisses, &m.Drain, &m.CritRate, &m.HitsMin, &m.HitsMax, &m.HealPercent, &contact, &sound)
 	if err != nil {
 		return nil
 	}
 	m.MaxPP = m.PP
 	m.NeverMisses = neverMisses != 0
 	m.Contact = contact != 0
+	m.Sound = sound != 0
 	m.StatChanges = loadStatChanges(m.ID)
 	return &m
 }
@@ -68,7 +69,7 @@ func executeCalledMove(bs *BattleState, attacker, defender *BattlePokemon, m *Ba
 		return
 	}
 	*log = append(*log, makeEntry(round, attacker, m, 0, false, 1, false))
-	if m.CategoryID == 3 {
+	if m.CategoryID == 3 && !abilityAbsorbsStatusMove(bs, attacker, defender, m, round, log) {
 		if wc := applyEffectByID(bs, attacker, defender, m, round, log, sideFor(bs, defender)); wc > 0 {
 			setBattleWeather(bs, wc, log)
 		}

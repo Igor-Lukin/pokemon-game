@@ -27,52 +27,63 @@ type TeamPokemonMove struct {
 }
 
 type TeamPokemon struct {
-	ID               int               `json:"id"`
-	PokemonID        int               `json:"pokemon_id"`
-	Name             string            `json:"name"`
-	Nickname         *string           `json:"nickname,omitempty"`
-	Level            int               `json:"level"`
-	Experience       int               `json:"experience"`
-	CurrentHP        int               `json:"current_hp"`
-	MaxHP            int               `json:"max_hp"`
-	Attack           int               `json:"attack"`
-	Defense          int               `json:"defense"`
-	Speed            int               `json:"speed"`
-	SpecialAttack    int               `json:"special_attack"`
-	SpecialDefense   int               `json:"special_defense"`
-	IVHP             int               `json:"iv_hp"`
-	IVAttack         int               `json:"iv_attack"`
-	IVDefense        int               `json:"iv_defense"`
-	IVSpeed          int               `json:"iv_speed"`
-	IVSpecialAttack  int               `json:"iv_special_attack"`
-	IVSpecialDefense int               `json:"iv_special_defense"`
-	EVHP             int               `json:"ev_hp"`
-	EVAttack         int               `json:"ev_attack"`
-	EVDefense        int               `json:"ev_defense"`
-	EVSpeed          int               `json:"ev_speed"`
-	EVSpecialAttack  int               `json:"ev_special_attack"`
-	EVSpecialDefense int               `json:"ev_special_defense"`
-	AvailableEV      int               `json:"available_ev"`
-	Position         int               `json:"position"`
-	StatusID         int               `json:"status_id"`
-	Gender           string            `json:"gender"`         // 'M'/'F'/'N' (значок ♂/♀ на фронте)
-	Attractiveness   string            `json:"attractiveness"` // 'A'/'B'/'C' (для будущего питомника)
-	NatureID         int               `json:"nature_id"`
-	NatureName       string            `json:"nature_name"`
-	IncreasedStat    string            `json:"increased_stat"`
-	DecreasedStat    string            `json:"decreased_stat"`
-	ImageURL         *string           `json:"image_url,omitempty"`
-	PrimaryTypeID    int               `json:"primary_type_id"`
-	SecondaryTypeID  *int              `json:"secondary_type_id,omitempty"`
-	AbilityName      string            `json:"ability_name"`
-	AbilityDescription string          `json:"ability_description"`
-	ExperienceGroup  int               `json:"experience_group"`
-	HeldItemID          *int           `json:"held_item_id,omitempty"`
-	HeldItemName        string         `json:"held_item_name,omitempty"`
-	HeldItemImage       string         `json:"held_item_image,omitempty"`
-	HeldItemTypeID      int            `json:"held_item_type_id,omitempty"`
-	HeldItemDescription string         `json:"held_item_description,omitempty"`
-	Moves            []TeamPokemonMove `json:"moves"`
+	ID                  int               `json:"id"`
+	PokemonID           int               `json:"pokemon_id"`
+	Name                string            `json:"name"`
+	Nickname            *string           `json:"nickname,omitempty"`
+	Level               int               `json:"level"`
+	Experience          int               `json:"experience"`
+	CurrentHP           int               `json:"current_hp"`
+	MaxHP               int               `json:"max_hp"`
+	Attack              int               `json:"attack"`
+	Defense             int               `json:"defense"`
+	Speed               int               `json:"speed"`
+	SpecialAttack       int               `json:"special_attack"`
+	SpecialDefense      int               `json:"special_defense"`
+	BaseHP              int               `json:"base_hp"`
+	BaseAttack          int               `json:"base_attack"`
+	BaseDefense         int               `json:"base_defense"`
+	BaseSpeed           int               `json:"base_speed"`
+	BaseSpecialAttack   int               `json:"base_special_attack"`
+	BaseSpecialDefense  int               `json:"base_special_defense"`
+	IVHP                int               `json:"iv_hp"`
+	IVAttack            int               `json:"iv_attack"`
+	IVDefense           int               `json:"iv_defense"`
+	IVSpeed             int               `json:"iv_speed"`
+	IVSpecialAttack     int               `json:"iv_special_attack"`
+	IVSpecialDefense    int               `json:"iv_special_defense"`
+	EVHP                int               `json:"ev_hp"`
+	EVAttack            int               `json:"ev_attack"`
+	EVDefense           int               `json:"ev_defense"`
+	EVSpeed             int               `json:"ev_speed"`
+	EVSpecialAttack     int               `json:"ev_special_attack"`
+	EVSpecialDefense    int               `json:"ev_special_defense"`
+	AvailableEV         int               `json:"available_ev"`
+	Position            int               `json:"position"`
+	IsStarter           bool              `json:"is_starter"`
+	StatusID            int               `json:"status_id"`
+	Happiness           int               `json:"happiness"`
+	Gender              string            `json:"gender"`         // 'M'/'F'/'N' (значок ♂/♀ на фронте)
+	Attractiveness      string            `json:"attractiveness"` // 'A'/'B'/'C' (для будущего питомника)
+	NatureID            int               `json:"nature_id"`
+	NatureName          string            `json:"nature_name"`
+	IncreasedStat       string            `json:"increased_stat"`
+	DecreasedStat       string            `json:"decreased_stat"`
+	ImageURL            *string           `json:"image_url,omitempty"`
+	PrimaryTypeID       int               `json:"primary_type_id"`
+	SecondaryTypeID     *int              `json:"secondary_type_id,omitempty"`
+	AbilityName         string            `json:"ability_name"`
+	AbilityDescription  string            `json:"ability_description"`
+	ExperienceGroup     int               `json:"experience_group"`
+	HeldItemID          *int              `json:"held_item_id,omitempty"`
+	HeldItemName        string            `json:"held_item_name,omitempty"`
+	HeldItemImage       string            `json:"held_item_image,omitempty"`
+	HeldItemTypeID      int               `json:"held_item_type_id,omitempty"`
+	HeldItemDescription string            `json:"held_item_description,omitempty"`
+	CanEvolve           bool              `json:"can_evolve"`
+	EvolvesToID         int               `json:"evolves_to_id,omitempty"`
+	EvolvesToName       string            `json:"evolves_to_name,omitempty"`
+	Moves               []TeamPokemonMove `json:"moves"`
 }
 
 func GetUserTeam(w http.ResponseWriter, r *http.Request) {
@@ -90,8 +101,9 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
                up.iv_hp, up.iv_attack, up.iv_defense, up.iv_speed,
                up.iv_special_attack, up.iv_special_defense,
                up.ev_hp, up.ev_attack, up.ev_defense, up.ev_speed,
-               up.ev_special_attack, up.ev_special_defense, up.available_ev,
-               up.position, up.status_id,
+               up.ev_special_attack, up.ev_special_defense,                up.available_ev,
+               up.position, COALESCE(up.is_starter, 0), up.status_id,
+               COALESCE(up.happiness, 0),
                COALESCE(up.gender, ''), COALESCE(up.attractiveness, ''),
                up.nature_id, n.name,
                COALESCE(n.increased_stat, ''),
@@ -100,6 +112,9 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
                 p.primary_type_id,
                 p.secondary_type_id,
                 p.experience_group,
+                COALESCE(p.base_hp, 0), COALESCE(p.base_attack, 0),
+                COALESCE(p.base_defense, 0), COALESCE(p.base_speed, 0),
+                COALESCE(p.base_special_attack, 0), COALESCE(p.base_special_defense, 0),
                 COALESCE((SELECT a.name FROM abilities a
                  WHERE a.id = up.ability_id), '') as ability_name,
                 COALESCE((SELECT a.description FROM abilities a
@@ -125,6 +140,7 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
 		var imageURL sql.NullString
 		var secondaryTypeID sql.NullInt64
 		var heldItemID sql.NullInt64
+		var isStarter int
 		if err := rows.Scan(
 			&t.ID, &t.PokemonID, &t.Name, &nickname, &t.Level, &t.Experience,
 			&t.CurrentHP, &t.MaxHP, &t.Attack, &t.Defense, &t.Speed,
@@ -133,18 +149,22 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
 			&t.IVSpecialAttack, &t.IVSpecialDefense,
 			&t.EVHP, &t.EVAttack, &t.EVDefense, &t.EVSpeed,
 			&t.EVSpecialAttack, &t.EVSpecialDefense, &t.AvailableEV,
-			&t.Position, &t.StatusID,
+			&t.Position, &isStarter, &t.StatusID,
+			&t.Happiness,
 			&t.Gender, &t.Attractiveness,
 			&t.NatureID, &t.NatureName,
 			&t.IncreasedStat, &t.DecreasedStat,
 			&imageURL,
-			&t.PrimaryTypeID, &secondaryTypeID, &t.ExperienceGroup, &t.AbilityName,
+			&t.PrimaryTypeID, &secondaryTypeID, &t.ExperienceGroup,
+			&t.BaseHP, &t.BaseAttack, &t.BaseDefense, &t.BaseSpeed,
+			&t.BaseSpecialAttack, &t.BaseSpecialDefense, &t.AbilityName,
 			&t.AbilityDescription,
 			&heldItemID, &t.HeldItemName, &t.HeldItemImage, &t.HeldItemTypeID,
 			&t.HeldItemDescription); err != nil {
 			log.Printf("Scan error: %v", err)
 			continue
 		}
+		t.IsStarter = isStarter != 0
 		if heldItemID.Valid {
 			hid := int(heldItemID.Int64)
 			t.HeldItemID = &hid
@@ -160,6 +180,13 @@ func GetUserTeam(w http.ResponseWriter, r *http.Request) {
 			t.SecondaryTypeID = &st
 		}
 		t.Moves = loadLearnedMoves(t.ID)
+		// Кнопка «Эволюционировать» на карточке: условия level/friendship уже
+		// выполнены. Item-эволюции сюда не входят (нужен предмет из инвентаря).
+		if evoInfo, err := checkEvolutionFor(t.ID, t.PokemonID, t.Level); err == nil && evoInfo.CanEvolve {
+			t.CanEvolve = true
+			t.EvolvesToID = evoInfo.EvolvesToID
+			t.EvolvesToName = evoInfo.EvolvesToName
+		}
 		team = append(team, t)
 	}
 
@@ -202,4 +229,3 @@ func loadLearnedMoves(userPokemonID int) []TeamPokemonMove {
 	}
 	return moves
 }
-

@@ -16,13 +16,13 @@ package api
 // пока не подключён — недоступный ход просто отклоняется сервером).
 
 const (
-	moveEncore   = 383
-	moveTorment  = 386
-	moveDisable  = 471
-	moveInstruct = 515
-	moveSpite    = 501
-	moveTaunt    = 381 // Насмешка: цель не может использовать статусные ходы 3 хода
-	moveImprison = 518 // Потеря памяти: цель не может использовать ходы, что знает юзер
+	moveEncore    = 383
+	moveTorment   = 386
+	moveDisable   = 471
+	moveInstruct  = 515
+	moveSpite     = 501
+	moveTaunt     = 381 // Насмешка: цель не может использовать статусные ходы 3 хода
+	moveImprison  = 518 // Потеря памяти: цель не может использовать ходы, что знает юзер
 	tauntDuration = 3
 )
 
@@ -74,6 +74,10 @@ func handleBlockMove(attacker, defender *BattlePokemon, move *BattleMove, round 
 			blockFailLog(defender, "Обезоруживание не сработало!", round, log)
 		}
 	case moveTaunt:
+		if defender.AbilityKey == "oblivious" { // [batch6] Забывчивость
+			abilityLog(defender, round, log, "", "моментально забывает Насмешку")
+			return true
+		}
 		if defender.TauntTurns > 0 {
 			blockFailLog(defender, "Насмешка уже действует!", round, log)
 			return true

@@ -16,6 +16,9 @@ import "strconv"
 // Глоток). Возвращает true, если ход обработан здесь (у этих ходов нет данных
 // эффекта/статов/лечения, поэтому стандартная обработка всё равно пуста).
 func handleCustomStatusMove(bs *BattleState, p, defender *BattlePokemon, move *BattleMove, round int, log *[]BattleLogEntry) bool {
+	// [ability hook] Формы, переключаемые ходом (Королевское построение:
+	// Королевский щит возвращает защитную форму).
+	abilityOnMoveUsed(bs, p, move, round, log)
 	switch move.ID {
 	case 500:
 		stockpileUp(p, round, log)

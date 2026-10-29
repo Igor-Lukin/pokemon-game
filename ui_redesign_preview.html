@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="gta-light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pokémon Y — концепт UI v5</title>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Unbounded:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   КОНЦЕПТ v5 — Pokémon Y
+   ДВЕ ТЕМЫ (GTA6): «Закат» (светлая, по умолчанию) и «Вайс» (тёмная).
+   Центральный фрейм: локация / команда / рюкзак.
+   Бой: [колонка игрока | ЖУРНАЛ | колонка врага].
+   ============================================================ */
+/* GTA6 СВЕТЛАЯ — «Закат»: фон страницы = фиолетово-кремовый градиент */
+:root, [data-theme="gta-light"] {
+  --bg: #f0e4d3;
+  --bg-grad: radial-gradient(1000px 420px at 85% -10%, rgba(139,92,246,.16), transparent 60%), radial-gradient(900px 520px at 0% 115%, rgba(245,185,66,.2), transparent 55%), linear-gradient(165deg, #efe3f7, #f3e5cf);
+  --surface: #fdf8ee; --surface-2: #f3ead7;
+  --line: #e3d5ba; --line-strong: #cbb894;
+  --text: #3a2f43; --text-dim: #74667f; --text-faint: #a192ad;
+  --accent: #7b52d9; --accent-soft: rgba(123,82,217,.1);
+  --accent-2: #d9940a; --accent-2-soft: rgba(217,148,10,.12);
+  --gold: #d9940a; --gold-soft: rgba(217,148,10,.12);
+  --violet: #7b52d9; --violet-soft: rgba(123,82,217,.1);
+  --ok: #1e9e5a; --danger: #d64560;
+  --grad-main: linear-gradient(100deg, #f5b942, #8b5cf6);
+  --btn-text: #2d1b4d;
+  --hp: linear-gradient(90deg, #2faf62, #7bc74d);
+  --hp-mid: linear-gradient(90deg, #d9a41b, #e07b39);
+  --hp-low: linear-gradient(90deg, #d64560, #b03a8c);
+  --exp: linear-gradient(90deg, #8b5cf6, #f5b942);
+  --shadow: 0 2px 8px rgba(90,60,140,.10), 0 10px 28px rgba(90,60,140,.09);
+  --shadow-sm: 0 1px 4px rgba(90,60,140,.10);
+  --log-bg: #f8f1e2;
+  --arena-bg: linear-gradient(165deg, #efe3f7, #f3e5cf);
+}
+/* GTA6 ТЁМНАЯ — «Вайс»: глубокий фиолет + золото */
+[data-theme="gta-dark"] {
+  --bg: #181126;
+  --bg-grad: radial-gradient(1100px 480px at 85% -10%, rgba(245,185,66,.12), transparent 60%), radial-gradient(900px 560px at -5% 115%, rgba(139,92,246,.16), transparent 60%), radial-gradient(700px 400px at 50% 50%, rgba(255,111,156,.05), transparent 60%), #181126;
+  --surface: #241a3c; --surface-2: #2e2249;
+  --line: #3d2f5e; --line-strong: #54407c;
+  --text: #f0e9fb; --text-dim: #b3a5d4; --text-faint: #8375ab;
+  --accent: #f2c14e; --accent-soft: rgba(242,193,78,.13);
+  --accent-2: #a78bfa; --accent-2-soft: rgba(167,139,250,.14);
+  --gold: #f2c14e; --gold-soft: rgba(242,193,78,.13);
+  --violet: #a78bfa; --violet-soft: rgba(167,139,250,.14);
+  --ok: #4ecb85; --danger: #ff6f9c;
+  --grad-main: linear-gradient(100deg, #f2c14e, #a78bfa);
+  --btn-text: #241538;
+  --hp: linear-gradient(90deg, #3cbf74, #8fd45f);
+  --hp-mid: linear-gradient(90deg, #f2c14e, #e08a4e);
+  --hp-low: linear-gradient(90deg, #ff6f9c, #c44f9c);
+  --exp: linear-gradient(90deg, #a78bfa, #f2c14e);
+  --shadow: 0 2px 8px rgba(0,0,0,.35), 0 12px 32px rgba(0,0,0,.4);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,.35);
+  --log-bg: #1e1533;
+  --arena-bg: linear-gradient(165deg, #332659, #1e1533);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  font-family: "Manrope", system-ui, sans-serif;
+  color: var(--text); background: var(--bg-grad);
+  overflow: hidden; transition: background .25s, color .25s;
+}
+button { font-family: inherit; cursor: pointer; }
+
+/* ---------- Панель превью ---------- */
+.pv-toolbar { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 300; display: flex; gap: 6px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 6px 8px; box-shadow: var(--shadow); }
+.pv-toolbar .pv-logo { font-family: Unbounded; font-size: 10px; letter-spacing: 1px; padding: 0 10px; color: var(--text-faint); }
+.pv-toolbar button { border: 1px solid transparent; border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; color: var(--text-dim); background: transparent; transition: all .15s; }
+.pv-toolbar button:hover { background: var(--surface-2); color: var(--text); }
+#theme-toggle { background: var(--grad-main); color: var(--btn-text); }
+
+/* ============================================================
+   ОБЩИЕ КОМПОНЕНТЫ
+   ============================================================ */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow-sm); transition: background .25s, border-color .25s; }
+.panel-title { font-size: 11px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; color: var(--text-faint); display: flex; align-items: center; gap: 8px; }
+.panel-title::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700; background: var(--surface-2); border: 1px solid var(--line); color: var(--text-dim); }
+.chip.pink { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+.chip.teal { color: var(--accent-2); background: var(--accent-2-soft); border-color: transparent; }
+.chip.gold { color: var(--gold); background: var(--gold-soft); border-color: transparent; }
+.btn { border: 1px solid var(--line); border-radius: 10px; padding: 9px 16px; font-size: 13.5px; font-weight: 700; color: var(--text); background: var(--surface-2); transition: all .14s ease; }
+.btn:hover { border-color: var(--line-strong); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.btn-primary { background: var(--grad-main); border: none; color: var(--btn-text); }
+.btn-primary:hover { filter: brightness(1.06); }
+.btn-danger { color: var(--danger); }
+.btn-danger:hover { background: rgba(207,63,78,.08); border-color: var(--danger); }
+.hpbar, .expbar { position: relative; border-radius: 99px; background: rgba(127,120,100,.18); overflow: hidden; }
+[data-theme="gta-dark"] .hpbar, [data-theme="gta-dark"] .expbar { background: rgba(255,255,255,.1); }
+.hpbar > i, .expbar > i { position: absolute; inset: 0; border-radius: 99px; transition: width .45s cubic-bezier(.2,.8,.3,1); }
+.hpbar > i { background: var(--hp); }
+.hpbar.mid > i { background: var(--hp-mid); }
+.hpbar.low > i { background: var(--hp-low); }
+.expbar > i { background: var(--exp); }
+.hp-text { font-size: 11.5px; font-weight: 700; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   КАРКАС
+   ============================================================ */
+.game { height: 100vh; padding: 58px 14px 12px; display: flex; flex-direction: column; }
+.appbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; margin-bottom: 10px; position: relative; }
+.appbar .logo { font-family: Unbounded; font-size: 14px; font-weight: 700; background: var(--grad-main); -webkit-background-clip: text; background-clip: text; color: transparent; letter-spacing: 1px; }
+/* Навигация — строго по центру шапки */
+.appbar nav { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 2px; }
+.navbtn { display: flex; align-items: center; gap: 6px; padding: 7px 13px; border-radius: 9px; border: none; background: transparent; color: var(--text-dim); font-size: 13px; font-weight: 700; transition: all .14s; }
+.navbtn:hover { background: var(--surface-2); color: var(--text); }
+.navbtn.active { color: var(--accent); background: var(--accent-soft); }
+.appbar .spacer { flex: 1; }
+.player-chip { display: flex; align-items: center; gap: 9px; padding: 4px 12px 4px 5px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--line); cursor: pointer; }
+.player-chip .avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--grad-main); display: grid; place-items: center; font-weight: 800; color: var(--btn-text); font-size: 13px; }
+.player-chip .pname { font-size: 13px; font-weight: 800; }
+.player-chip .pmeta { font-size: 10.5px; color: var(--ok); display: flex; align-items: center; gap: 4px; font-weight: 700; }
+.pmeta::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.icon-btn { position: relative; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text-dim); font-size: 14px; transition: all .14s; }
+.icon-btn:hover { color: var(--text); border-color: var(--line-strong); }
+
+.loc-grid { flex: 1; display: grid; grid-template-columns: 240px 1fr 240px; gap: 10px; min-height: 0; }
+.side-col .card { height: 100%; padding: 12px; overflow-y: auto; }
+
+/* Переходы */
+.exit-item { display: flex; align-items: center; gap: 9px; padding: 8px 9px; margin-top: 6px; border-radius: 9px; cursor: pointer; transition: all .13s; border: 1px solid transparent; }
+.exit-item:hover { background: var(--surface-2); border-color: var(--line); }
+.exit-item .arrow { width: 24px; height: 24px; border-radius: 7px; display: grid; place-items: center; background: var(--accent-soft); color: var(--accent); font-size: 12px; flex-shrink: 0; }
+.exit-item .ename { font-size: 13px; font-weight: 700; flex: 1; }
+.exit-item .etag { font-size: 13px; }
+
+/* Персонажи */
+.npc-item { display: flex; align-items: center; gap: 9px; padding: 7px 8px; margin-top: 4px; border-radius: 9px; cursor: pointer; transition: background .13s; }
+.npc-item:hover { background: var(--surface-2); }
+.npc-item .ava { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 15px; background: var(--violet-soft); flex-shrink: 0; }
+.npc-item .nname { font-size: 13px; font-weight: 700; }
+.npc-item .nsub { font-size: 11px; color: var(--text-faint); }
+
+/* ============================================================
+   ЦЕНТРАЛЬНЫЙ ФРЕЙМ — ЛОКАЦИЯ
+   ============================================================ */
+.frame { min-height: 0; display: flex; }
+.frame > .view { display: none; flex: 1; min-height: 0; }
+.frame > .view.on { display: flex; }
+.view-location { flex-direction: column; padding: 0; overflow-y: auto; }
+.loc-art { flex: 1; min-height: 160px; background: var(--arena-bg); border-bottom: 1px solid var(--line); position: relative; display: grid; place-items: center; color: var(--text-faint); font-size: 12px; font-weight: 700; cursor: default; flex-shrink: 0; }
+.loc-art .weather-pos { position: absolute; top: 12px; right: 12px; }
+.loc-name-overlay { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; padding: 26px 12px 12px; font-family: Unbounded; font-size: 20px; font-weight: 700; color: #fff; background: linear-gradient(transparent, rgba(30,20,40,.55)); text-shadow: 0 2px 8px rgba(0,0,0,.4); pointer-events: none; }
+.loc-desc-overlay { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(30,20,40,.62); color: #fff; opacity: 0; transition: opacity .22s ease; text-align: center; font-size: 14px; line-height: 1.55; font-weight: 500; }
+.loc-art:hover .loc-desc-overlay { opacity: 1; }
+.loc-body { padding: 13px 18px; display: flex; flex-direction: column; flex-shrink: 0; }
+.loc-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+.loc-wilds { margin-top: 10px; }
+.wild-row { display: flex; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
+.wild-mon { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 9px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); min-width: 70px; transition: all .13s; cursor: pointer; }
+.wild-mon:hover { border-color: var(--accent); transform: translateY(-2px); }
+.wild-mon img { width: 38px; height: 38px; object-fit: contain; }
+.wild-mon .wname { font-size: 11px; font-weight: 800; }
+.wild-mon .wlvl { font-size: 10px; color: var(--text-faint); font-weight: 700; }
+.loc-actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+
+/* ФРЕЙМ — команда */
+.view-team { flex-direction: column; padding: 14px; overflow-y: auto; }
+.team-slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+.tslot { border: 1px solid var(--line); border-radius: 12px; padding: 11px; background: var(--surface-2); display: flex; gap: 10px; align-items: center; cursor: pointer; transition: all .13s; }
+.tslot:hover { border-color: var(--accent); }
+.tslot img { width: 52px; height: 52px; object-fit: contain; }
+.tslot .tname { font-size: 13.5px; font-weight: 800; }
+.tslot .tlvl { font-size: 11px; color: var(--text-faint); font-weight: 700; margin: 2px 0; }
+.tslot .hpbar { height: 5px; width: 110px; }
+.tslot .ptypes { margin-left: auto; display: flex; flex-direction: column; gap: 3px; }
+.tslot .ptypes img { width: 18px; height: 18px; border-radius: 4px; }
+.tslot.empty { border-style: dashed; justify-content: center; color: var(--text-faint); font-size: 15px; min-height: 74px; }
+.team-note { margin-top: 14px; font-size: 12px; color: var(--text-faint); }
+
+/* ФРЕЙМ — команда, ДЕТАЛЬНАЯ карточка покемона */
+.pd-head { display: flex; align-items: center; gap: 10px; }
+.pd-back { border: 1px solid var(--line); background: var(--surface-2); border-radius: 9px; padding: 6px 12px; font-size: 12.5px; font-weight: 800; color: var(--text-dim); transition: all .13s; }
+.pd-back:hover { color: var(--accent); border-color: var(--accent); }
+.pd-title { font-family: Unbounded; font-size: 15px; font-weight: 700; }
+.pd-hero { display: flex; gap: 16px; align-items: center; margin-top: 14px; padding: 14px; border-radius: 12px; background: var(--arena-bg); border: 1px solid var(--line); }
+.pd-hero img.pd-spr { height: 110px; filter: drop-shadow(0 8px 12px rgba(60,40,20,.25)); }
+.pd-hero .pd-id { flex: 1; min-width: 0; }
+.pd-hero .pd-name { font-family: Unbounded; font-size: 20px; font-weight: 700; }
+.pd-hero .pd-chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.pd-hero .pd-exp { width: 100%; margin-top: 10px; }
+.pd-hero .pd-exp .expbar { height: 6px; }
+.pd-hero .pd-exp-t { font-size: 10.5px; color: var(--text-faint); font-weight: 700; margin-top: 3px; }
+.pd-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; align-items: start; }
+.pd-block { border: 1px solid var(--line); border-radius: 12px; padding: 12px 13px; background: var(--surface-2); }
+.pd-ability { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: var(--violet-soft); font-size: 12.5px; line-height: 1.5; color: var(--text-dim); cursor: pointer; }
+.pd-ability b { color: var(--violet); }
+.stat-row { display: grid; grid-template-columns: 76px 1fr 30px; align-items: center; gap: 9px; font-size: 12px; margin-top: 7px; }
+.stat-row .slabel { color: var(--text-dim); font-weight: 700; }
+.stat-row .sval { text-align: right; font-weight: 800; font-variant-numeric: tabular-nums; }
+.stat-row .sbar { height: 6px; border-radius: 99px; background: rgba(127,120,100,.18); overflow: hidden; }
+[data-theme="gta-dark"] .stat-row .sbar { background: rgba(255,255,255,.1); }
+.stat-row .sbar > i { display: block; height: 100%; border-radius: 99px; background: var(--exp); }
+.stat-row .iv { font-size: 9.5px; color: var(--text-faint); font-weight: 700; }
+.pd-moves { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+.pd-move { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 9px; background: var(--surface); border: 1px solid var(--line); font-size: 13px; font-weight: 700; cursor: pointer; transition: all .13s; }
+.pd-move:hover { border-color: var(--accent); transform: translateX(2px); }
+.pd-move img { width: 17px; height: 17px; border-radius: 4px; }
+.pd-move .dm-cat { font-size: 9.5px; font-weight: 800; text-transform: uppercase; letter-spacing: .8px; color: var(--text-faint); }
+.pd-move .dmpp { margin-left: auto; font-size: 11px; color: var(--text-faint); font-weight: 700; }
+.pd-held { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding: 9px 12px; border-radius: 10px; border: 1px dashed var(--line-strong); font-size: 12.5px; font-weight: 700; color: var(--text-dim); cursor: pointer; transition: all .13s; }
+.pd-held:hover { border-color: var(--accent); color: var(--text); }
+.pd-held img { width: 24px; height: 24px; }
+.pd-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 12px; }
+.pd-actions .btn { padding: 8px 13px; font-size: 12.5px; }
+
+/* ФРЕЙМ — рюкзак */
+.view-bag { flex-direction: column; padding: 14px; overflow: hidden; }
+.bag-tabs { display: flex; gap: 4px; margin-top: 10px; }
+.bag-tab { border: 1px solid var(--line); background: var(--surface-2); border-radius: 8px; padding: 5px 12px; font-size: 12px; font-weight: 800; color: var(--text-dim); }
+.bag-tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.bag-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 9px; margin-top: 12px; overflow-y: auto; align-content: start; }
+.bag-item { border: 1px solid var(--line); border-radius: 11px; padding: 10px; background: var(--surface-2); display: flex; flex-direction: column; align-items: center; gap: 5px; cursor: pointer; transition: all .13s; text-align: center; }
+.bag-item:hover { border-color: var(--accent); transform: translateY(-2px); }
+.bag-item img { width: 40px; height: 40px; object-fit: contain; }
+.bag-item .bname { font-size: 11.5px; font-weight: 800; }
+.bag-item .bqty { font-size: 10.5px; color: var(--text-faint); font-weight: 700; }
+
+/* ============================================================
+   БОЙ — [колонка игрока | ЖУРНАЛ | колонка врага]
+   Колонка игрока: [смена вертикально | карточка с 🎒] +
+   атаки вертикальным списком под ней.
+   Колонка врага: карточка + отряд + «Сдаться» под ним.
+   ============================================================ */
+.battle-frame { flex: 1; display: none; grid-template-columns: 300px minmax(300px, 1fr) 250px; gap: 10px; min-height: 0; }
+.battle-frame.on { display: grid; }
+.bside { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+
+/* Верх колонки игрока: смена слева, карточка справа */
+.player-top { display: grid; grid-template-columns: 52px 1fr; gap: 10px; }
+
+/* Смена — ВЕРТИКАЛЬНЫЙ ряд иконок с HP-полосками */
+.bteam { padding: 8px 6px; display: flex; flex-direction: column; }
+.bteam-col { display: flex; flex-direction: column; gap: 6px; margin-top: 7px; align-items: center; }
+.bteam-slot { width: 40px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 5px 3px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); cursor: pointer; transition: all .13s; }
+.bteam-slot:hover { border-color: var(--accent-2); }
+.bteam-slot.cur { border-color: var(--accent); background: var(--accent-soft); cursor: default; }
+.bteam-slot.faint { opacity: .38; }
+.bteam-slot img { width: 26px; height: 26px; object-fit: contain; }
+.bteam-slot .hpbar { height: 3.5px; width: 100%; }
+.bteam-slot .hpbar > i { transition: width .45s; }
+
+/* Карточка бойца */
+.fighter-card { padding: 12px; display: flex; flex-direction: column; align-items: center; position: relative; }
+.fighter-card .fsprite { height: 96px; display: grid; place-items: center; filter: drop-shadow(0 8px 10px rgba(60,50,30,.25)); }
+.fighter-card .fsprite img { max-height: 96px; max-width: 110px; }
+.fighter-card .frow1 { display: flex; align-items: baseline; gap: 7px; width: 100%; }
+.fighter-card .fname { font-weight: 800; font-size: 15px; }
+.fighter-card .flvl { font-size: 11.5px; color: var(--text-dim); font-weight: 800; }
+.fighter-card .ftypes { margin-left: auto; display: flex; gap: 4px; }
+.fighter-card .ftypes img { width: 18px; height: 18px; border-radius: 5px; }
+.fighter-card .hpbar { height: 9px; margin-top: 8px; width: 100%; }
+.fighter-card .fmeta { display: flex; justify-content: space-between; margin-top: 4px; width: 100%; }
+.fighter-card .expbar { height: 5px; margin-top: 5px; width: 100%; }
+.fighter-card .fstatus { display: flex; gap: 5px; margin-top: 7px; }
+/* 🎒 Инвентарь — иконка на карточке игрока (бол = ловля) */
+.bag-fab { position: absolute; top: 8px; right: 8px; width: 34px; height: 34px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-size: 16px; transition: all .14s; }
+.bag-fab:hover { border-color: var(--accent); transform: translateY(-1px); box-shadow: var(--shadow-sm); }
+.st-chip { font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 6px; letter-spacing: .5px; }
+.st-psn { background: rgba(160,90,220,.14); color: #9659cf; border: 1px solid rgba(160,90,220,.35); }
+[data-theme="gta-dark"] .st-psn { color: #c69df0; }
+.st-buff { background: var(--accent-2-soft); color: var(--accent-2); border: 1px solid transparent; }
+
+/* Отряд врага */
+.esquad { padding: 10px 11px; }
+.esquad-row { display: flex; gap: 6px; margin-top: 8px; }
+.esq-dot { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--accent-2); background: var(--surface-2); }
+.esq-dot.fainted { border-color: var(--line-strong); opacity: .35; }
+.esq-dot.cur { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 2px var(--accent-soft); }
+
+/* Атаки — ВЕРТИКАЛЬНЫЙ список под карточкой игрока */
+.bmoves { padding: 10px 11px; display: flex; flex-direction: column; }
+.bmoves-list { display: flex; flex-direction: column; gap: 7px; margin-top: 8px; }
+.move-btn { display: flex; align-items: center; gap: 9px; padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--surface-2); color: var(--text); text-align: left; transition: all .13s ease; }
+.move-btn:hover { border-color: var(--mv, var(--accent)); transform: translateX(2px); box-shadow: var(--shadow-sm); }
+.move-btn .micon { width: 26px; height: 26px; border-radius: 7px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); flex-shrink: 0; }
+.move-btn .micon img { width: 16px; height: 16px; }
+.move-btn .mname { font-size: 12.5px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.move-btn .mpp { font-size: 10px; color: var(--text-dim); font-weight: 700; margin-left: auto; flex-shrink: 0; }
+
+/* Журнал боя — центр */
+.battle-log { display: flex; flex-direction: column; padding: 0; overflow: hidden; min-height: 0; }
+.battle-log .log-head { padding: 11px 14px 9px; border-bottom: 1px solid var(--line); display: flex; align-items: center; }
+.battle-log .log-head .round-now { margin-left: auto; }
+.log-feed { flex: 1; overflow-y: auto; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; font-size: 14px; background: var(--log-bg); }
+.round-header { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: var(--text-faint); margin-top: 6px; }
+.round-header::before, .round-header::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.log-entry { padding: 9px 13px; border-radius: 10px; background: var(--surface); border-left: 3px solid var(--violet); line-height: 1.5; color: var(--text-dim); animation: login .25s ease; box-shadow: var(--shadow-sm); }
+.log-entry b { color: var(--text); }
+.log-entry.dmg { border-left-color: var(--accent); }
+.log-entry.dmg b.r { color: var(--accent); }
+.log-entry.eff { border-left-color: var(--gold); }
+.log-entry.sys { border-left-color: var(--accent-2); }
+.log-entry .turn-line { display: flex; align-items: center; gap: 7px; }
+.log-entry .turn-mini { width: 22px; height: 22px; object-fit: contain; }
+.log-entry .turn-move { font-weight: 800; color: var(--text); }
+.log-entry .sub { margin-top: 3px; font-size: 13px; }
+.log-entry .sub.crit { color: var(--gold); font-weight: 800; }
+.log-entry .sub.supereff { color: var(--ok); font-weight: 700; }
+.log-entry .sub.notvery { color: var(--text-faint); font-style: italic; }
+.log-entry .sub.abil { color: var(--violet); }
+@keyframes login { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; } }
+
+/* ============================================================
+   НИЗ: чат + «В сети рядом» справа
+   ============================================================ */
+.bottom-row { display: grid; grid-template-columns: 1fr 250px; gap: 10px; height: 30vh; min-height: 180px; margin-top: 10px; flex-shrink: 0; }
+.chat-card { display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.chat-tabs { display: flex; gap: 2px; padding: 8px 10px 0; border-bottom: 1px solid var(--line); }
+.chat-tab { border: none; background: transparent; color: var(--text-faint); font-size: 12.5px; font-weight: 800; padding: 7px 14px; border-radius: 8px 8px 0 0; }
+.chat-tab.active { color: var(--accent); background: var(--accent-soft); }
+.chat-tab .cnt { font-size: 10px; background: var(--surface-2); border-radius: 99px; padding: 1px 6px; margin-left: 4px; }
+.chat-feed { flex: 1; overflow-y: auto; padding: 10px 14px; display: flex; flex-direction: column; gap: 5px; font-size: 13px; background: var(--log-bg); }
+.chat-msg { line-height: 1.45; color: var(--text-dim); }
+.chat-msg b { color: var(--accent-2); font-weight: 800; }
+.chat-msg .time { color: var(--text-faint); font-size: 10.5px; margin-right: 6px; font-variant-numeric: tabular-nums; }
+.chat-msg.sys { color: var(--text-faint); font-style: italic; }
+.chat-input-row { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.chat-input-row input { flex: 1; background: var(--surface-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 13px; color: var(--text); font-size: 13.5px; outline: none; font-family: inherit; }
+.chat-input-row input:focus { border-color: var(--accent); }
+.chat-send { width: 44px; border-radius: 10px; border: none; background: var(--grad-main); color: var(--btn-text); font-size: 16px; font-weight: 800; }
+
+.online-card { display: flex; flex-direction: column; padding: 12px; overflow-y: auto; }
+.online-item { display: flex; align-items: center; gap: 9px; padding: 7px 8px; margin-top: 4px; border-radius: 9px; cursor: pointer; transition: background .13s; }
+.online-item:hover { background: var(--surface-2); }
+.online-item .ava { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: var(--accent-2-soft); color: var(--accent-2); flex-shrink: 0; }
+.online-item .nname { font-size: 13px; font-weight: 700; }
+.online-item .nsub { font-size: 11px; color: var(--text-faint); }
+.online-item .lvl { margin-left: auto; font-size: 10.5px; color: var(--text-faint); font-weight: 800; }
+
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 99px; border: 2px solid var(--bg); }
+::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+
+<div class="pv-toolbar">
+  <span class="pv-logo">UI v5 · Pokémon Y</span>
+  <button onclick="startBattle()">⚔️ Бой (демо)</button>
+  <button onclick="endBattle()">🏙 Вернуть локацию</button>
+  <button id="theme-toggle">🌅 Закат</button>
+</div>
+
+<div class="game">
+  <!-- ШАПКА: навигация по центру -->
+  <div class="appbar card">
+    <div class="logo">POKÉMON&nbsp;Y</div>
+    <nav>
+      <button class="navbtn" id="nav-team" onclick="setView('team')">🐾 Команда</button>
+      <button class="navbtn" id="nav-bag" onclick="setView('bag')">🎒 Рюкзак</button>
+      <button class="navbtn">📘 Покедекс</button>
+      <button class="navbtn">📔 Дневник</button>
+    </nav>
+    <div class="spacer"></div>
+    <div class="player-chip">
+      <div class="avatar">U</div>
+      <div><div class="pname">uiaudit</div><div class="pmeta">в сети</div></div>
+    </div>
+    <button class="icon-btn" title="Почта">✉️</button>
+    <button class="icon-btn" title="Настройки">⚙️</button>
+    <button class="icon-btn" title="Выход">⏻</button>
+  </div>
+
+  <!-- ЦЕНТРАЛЬНАЯ ЗОНА: обычный режим -->
+  <div class="loc-grid" id="loc-grid">
+    <div class="side-col">
+      <div class="card">
+        <div class="panel-title">Переходы</div>
+        <div class="exit-item"><div class="arrow">➜</div><div class="ename">Площадь Голденрода</div><span class="etag">🏙</span></div>
+        <div class="exit-item"><div class="arrow">➜</div><div class="ename">Затонувший храм</div><span class="etag">🌿</span></div>
+        <div class="exit-item"><div class="arrow">➜</div><div class="ename">Цветущий тракт</div><span class="etag">🌿</span></div>
+      </div>
+    </div>
+
+    <div class="frame card">
+      <!-- ВИД: локация -->
+      <div class="view view-location on" id="view-location">
+        <div class="loc-art">
+          🖼 Арт локации
+          <span class="chip gold weather-pos">🏜 Песчаная буря</span>
+          <div class="loc-name-overlay">Солёная дорога</div>
+          <div class="loc-desc-overlay">Караваны, соляные столбы и жар. Ветер несёт песок из далёких дюн — дикие покемоны прячутся у самых столбов, а вечером сюда выходят стаи Зубатов.</div>
+        </div>
+        <div class="loc-body">
+          <div class="loc-meta">
+            <span class="chip teal">🌿 Дикая зона</span>
+            <span class="chip">🧭 Восточный Джотто</span>
+            <span class="chip">6 видов · ур. 16–22</span>
+          </div>
+          <div class="loc-wilds">
+            <div class="panel-title">Здесь водятся</div>
+            <div class="wild-row">
+              <div class="wild-mon"><img src="client/static/images/pokemons/mini/041.gif" /><span class="wname">Зубат</span><span class="wlvl">16–20</span></div>
+              <div class="wild-mon"><img src="client/static/images/pokemons/mini/042.gif" /><span class="wname">Голбат</span><span class="wlvl">18–22</span></div>
+              <div class="wild-mon"><img src="client/static/images/pokemons/mini/027.gif" /><span class="wname">Сэндшрю</span><span class="wlvl">16–19</span></div>
+              <div class="wild-mon"><img src="client/static/images/pokemons/mini/050.gif" /><span class="wname">Диглетт</span><span class="wlvl">17–21</span></div>
+              <div class="wild-mon"><img src="client/static/images/pokemons/mini/104.gif" /><span class="wname">Кубон</span><span class="wlvl">18–22</span></div>
+              <div class="wild-mon"><img src="client/static/images/pokemons/mini/128.gif" /><span class="wname">Торос</span><span class="wlvl">20–22</span></div>
+            </div>
+          </div>
+          <div class="loc-actions">
+            <button class="btn btn-primary" onclick="startBattle()">🌿 Искать покемона</button>
+            <button class="btn">🧭 Карта региона</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ВИД: команда -->
+      <div class="view view-team" id="view-team">
+        <!-- Сетка слотов -->
+        <div id="team-grid-view">
+          <div class="panel-title">Команда · 3 / 6</div>
+          <div class="team-slots">
+            <div class="tslot" onclick="openPkmn()"><img src="client/static/images/pokemons/normal/002.gif" /><div><div class="tname">Ивизавр ♀ ★</div><div class="tlvl">Ур. 18 · 35/49 HP</div><div class="hpbar"><i style="width:72%"></i></div></div><div class="ptypes"><img src="client/static/images/types/12.png"><img src="client/static/images/types/4.png"></div></div>
+            <div class="tslot" onclick="openPkmn()"><img src="client/static/images/pokemons/normal/004.gif" /><div><div class="tname">Чармандер ♂</div><div class="tlvl">Ур. 1 · 12/12 HP</div><div class="hpbar"><i style="width:100%"></i></div></div><div class="ptypes"><img src="client/static/images/types/10.png"></div></div>
+            <div class="tslot" onclick="openPkmn()"><img src="client/static/images/pokemons/normal/003.gif" /><div><div class="tname">Венозавр ♂</div><div class="tlvl">Ур. 100 · 130/270 HP</div><div class="hpbar mid"><i style="width:48%"></i></div></div><div class="ptypes"><img src="client/static/images/types/12.png"><img src="client/static/images/types/4.png"></div></div>
+            <div class="tslot empty">＋</div>
+            <div class="tslot empty">＋</div>
+            <div class="tslot empty">＋</div>
+          </div>
+          <div class="team-note">Клик по покемону — подробная карточка (статы, атаки, предмет, EV).</div>
+        </div>
+
+        <!-- Детальная карточка покемона -->
+        <div id="team-detail-view" style="display:none">
+          <div class="pd-head">
+            <button class="pd-back" onclick="closePkmn()">← Команда</button>
+            <span class="pd-title">Карточка покемона</span>
+          </div>
+          <div class="pd-hero">
+            <img class="pd-spr" src="client/static/images/pokemons/normal/002.gif" />
+            <div class="pd-id">
+              <div class="pd-name">Ивизавр</div>
+              <div class="pd-chips">
+                <span class="chip pink">♀ · Привл. B</span>
+                <span class="chip gold">Стартовый ★</span>
+                <span class="chip">Ур. 18</span>
+                <span class="chip">Натура: Смелая</span>
+                <span class="chip teal">Дружба 120</span>
+              </div>
+              <div class="pd-exp">
+                <div class="expbar"><i style="width:40%"></i></div>
+                <div class="pd-exp-t">EXP 2 090 / 5 220 до ур. 19</div>
+              </div>
+            </div>
+            <div class="ptypes" style="display:flex; gap:5px;"><img src="client/static/images/types/12.png" style="width:24px;height:24px;border-radius:6px"><img src="client/static/images/types/4.png" style="width:24px;height:24px;border-radius:6px"></div>
+          </div>
+
+          <div class="pd-grid">
+            <div class="pd-block">
+              <div class="panel-title">Статы · IV / EV</div>
+              <div class="stat-row"><span class="slabel">HP</span><div class="sbar"><i style="width:46%"></i></div><span class="sval">49</span><span class="iv"></span></div>
+              <div class="stat-row"><span class="slabel">Атака</span><div class="sbar"><i style="width:38%"></i></div><span class="sval">27</span><span class="iv"></span></div>
+              <div class="stat-row"><span class="slabel">Защита</span><div class="sbar"><i style="width:38%"></i></div><span class="sval">27</span><span class="iv"></span></div>
+              <div class="stat-row"><span class="slabel">Сп. атака</span><div class="sbar"><i style="width:41%"></i></div><span class="sval">29</span><span class="iv"></span></div>
+              <div class="stat-row"><span class="slabel">Сп. защита</span><div class="sbar"><i style="width:47%"></i></div><span class="sval">33</span><span class="iv"></span></div>
+              <div class="stat-row"><span class="slabel">Скорость</span><div class="sbar"><i style="width:40%"></i></div><span class="sval">28</span><span class="iv"></span></div>
+              <div class="pd-ability"><b>Разрастание</b> — усиливает травяные атаки ×1.5, когда HP ниже трети.</div>
+              <div class="pd-held">🎒 <span>Предмет не надет — нажмите, чтобы надеть</span></div>
+            </div>
+            <div class="pd-block">
+              <div class="panel-title">Атаки · 4 / 4</div>
+              <div class="pd-moves">
+                <div class="pd-move"><img src="client/static/images/types/4.png" />Отравление <span class="dm-cat">статус</span><span class="dmpp">10/10</span></div>
+                <div class="pd-move"><img src="client/static/images/types/1.png" />Лобовая атака <span class="dm-cat">физ · 35</span><span class="dmpp">50/50</span></div>
+                <div class="pd-move"><img src="client/static/images/types/12.png" />Виноградная лоза <span class="dm-cat">физ · 45</span><span class="dmpp">15/15</span></div>
+                <div class="pd-move"><img src="client/static/images/types/12.png" />Режущий лист <span class="dm-cat">физ · 55</span><span class="dmpp">25/25</span></div>
+              </div>
+              <div class="pd-actions">
+                <button class="btn btn-primary">📖 Изучить атаку</button>
+                <button class="btn">📘 Покедекс</button>
+                <button class="btn">⚡ EV</button>
+                <button class="btn">🥚 В питомник</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ВИД: рюкзак -->
+      <div class="view view-bag" id="view-bag">
+        <div class="panel-title">Рюкзак</div>
+        <div class="bag-tabs">
+          <button class="bag-tab active">Все</button>
+          <button class="bag-tab">Болы</button>
+          <button class="bag-tab">Зелья</button>
+          <button class="bag-tab">TM/HM</button>
+          <button class="bag-tab">Боевые</button>
+        </div>
+        <div class="bag-grid">
+          <div class="bag-item"><img src="client/static/images/pokeball.png" /><span class="bname">Покебол</span><span class="bqty">×12</span></div>
+          <div class="bag-item"><img src="client/static/images/items/great_ball.png" /><span class="bname">Грейтбол</span><span class="bqty">×5</span></div>
+          <div class="bag-item"><img src="client/static/images/items/ultra_ball.png" /><span class="bname">Ультрабол</span><span class="bqty">×2</span></div>
+          <div class="bag-item"><img src="client/static/images/items/tm.png" /><span class="bname">TM01</span><span class="bqty">×1</span></div>
+          <div class="bag-item"><img src="client/static/images/pokeball.png" /><span class="bname">Зелье</span><span class="bqty">×7</span></div>
+          <div class="bag-item"><img src="client/static/images/items/great_ball.png" /><span class="bname">Амурит</span><span class="bqty">×1</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="side-col">
+      <div class="card">
+        <div class="panel-title">Персонажи</div>
+        <div class="npc-item"><div class="ava">🧙</div><div><div class="nname">Караванщик Зейд</div><div class="nsub">💬 Диалог</div></div></div>
+        <div class="npc-item"><div class="ava">🥷</div><div><div class="nname">Странник</div><div class="nsub">⚔️ Тренер</div></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ЦЕНТРАЛЬНАЯ ЗОНА: БОЙ [игрок | журнал | враг] -->
+  <div class="battle-frame" id="battle-frame">
+    <!-- Колонка игрока -->
+    <div class="bside">
+      <div class="player-top">
+        <!-- Смена: вертикальный столбец слева от карточки -->
+        <div class="card bteam">
+          <div class="bteam-col">
+            <div class="bteam-slot cur"><img src="client/static/images/pokemons/mini/002.gif" /><div class="hpbar"><i style="width:72%"></i></div></div>
+            <div class="bteam-slot"><img src="client/static/images/pokemons/mini/004.gif" /><div class="hpbar"><i style="width:100%"></i></div></div>
+            <div class="bteam-slot faint"><img src="client/static/images/pokemons/mini/003.gif" /><div class="hpbar low"><i style="width:0%"></i></div></div>
+          </div>
+        </div>
+        <!-- Карточка игрока + 🎒 инвентарь на ней -->
+        <div class="card fighter-card">
+          <button class="bag-fab" title="Инвентарь (бол = ловля)">🎒</button>
+          <div class="fsprite"><img src="client/static/images/pokemons/normal/002.gif" alt="Ивизавр" /></div>
+          <div class="frow1">
+            <span class="fname">Ивизавр</span><span class="flvl">Ур. 18</span>
+            <div class="ftypes"><img src="client/static/images/types/12.png" /><img src="client/static/images/types/4.png" /></div>
+          </div>
+          <div class="hpbar" id="player-hpbar"><i id="player-hp" style="width:72%"></i></div>
+          <div class="fmeta"><span class="hp-text" id="player-hp-text">35 / 49 HP</span><span class="hp-text" style="color:var(--accent-2)">EXP</span></div>
+          <div class="expbar"><i style="width:40%"></i></div>
+          <div class="fstatus"><span class="st-chip st-buff">АТК ↑1</span></div>
+        </div>
+      </div>
+      <!-- Атаки — вертикальный список под карточкой -->
+      <div class="card bmoves" style="flex:1;">
+        <div class="panel-title">Атаки</div>
+        <div class="bmoves-list">
+          <button class="move-btn" style="--mv:#9659cf" onclick="doMove('Отравление', 0)">
+            <div class="micon"><img src="client/static/images/types/4.png" /></div>
+            <div class="mname">Отравление</div><div class="mpp">PP 10/10</div>
+          </button>
+          <button class="move-btn" style="--mv:#a8996e" onclick="doMove('Лобовая атака', 35)">
+            <div class="micon"><img src="client/static/images/types/1.png" /></div>
+            <div class="mname">Лобовая атака</div><div class="mpp">PP 50/50</div>
+          </button>
+          <button class="move-btn" style="--mv:#2faf62" onclick="doMove('Виноградная лоза', 45)">
+            <div class="micon"><img src="client/static/images/types/12.png" /></div>
+            <div class="mname">Виноградная лоза</div><div class="mpp">PP 15/15</div>
+          </button>
+          <button class="move-btn" style="--mv:#2faf62" onclick="doMove('Режущий лист', 55)">
+            <div class="micon"><img src="client/static/images/types/12.png" /></div>
+            <div class="mname">Режущий лист</div><div class="mpp">PP 25/25</div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ЖУРНАЛ БОЯ — центр -->
+    <div class="card battle-log">
+      <div class="log-head">
+        <div class="panel-title">Журнал боя</div>
+        <span class="chip gold round-now">Раунд <b id="round-n">1</b> · 🏜 Песчаная буря</span>
+      </div>
+      <div class="log-feed" id="log-feed"></div>
+    </div>
+
+    <!-- Колонка врага: карточка + отряд + «Сдаться» под ним -->
+    <div class="bside">
+      <div class="card fighter-card">
+        <div class="fsprite"><img src="client/static/images/pokemons/normal/042.gif" alt="Голбат" /></div>
+        <div class="frow1">
+          <span class="fname">Голбат</span><span class="flvl">Ур. 13</span>
+          <div class="ftypes"><img src="client/static/images/types/4.png" /><img src="client/static/images/types/3.png" /></div>
+        </div>
+        <div class="hpbar" id="enemy-hpbar"><i id="enemy-hp" style="width:64%"></i></div>
+        <div class="fmeta"><span class="hp-text" id="enemy-hp-text">32 / 50 HP</span></div>
+        <div class="fstatus"><span class="st-chip st-psn">ЯД</span></div>
+      </div>
+      <div class="card esquad">
+        <div class="panel-title">Отряд врага</div>
+        <div class="esquad-row">
+          <div class="esq-dot cur"></div>
+          <div class="esq-dot"></div>
+          <div class="esq-dot"></div>
+          <div class="esq-dot fainted"></div>
+        </div>
+      </div>
+      <button class="btn btn-danger" style="margin-top:auto" onclick="endBattle()">🏳 Сдаться</button>
+    </div>
+  </div>
+
+  <!-- НИЗ: чат + «в сети» справа (в бою не меняются) -->
+  <div class="bottom-row">
+    <div class="card chat-card">
+      <div class="chat-tabs">
+        <button class="chat-tab active">📍 Локация</button>
+        <button class="chat-tab">🌍 Общий<span class="cnt">3</span></button>
+        <button class="chat-tab">✉️ Личное<span class="cnt">1</span></button>
+      </div>
+      <div class="chat-feed" id="chat-feed">
+        <div class="chat-msg sys">Вы пришли на локацию «Солёная дорога».</div>
+        <div class="chat-msg"><span class="time">13:02</span><b>ADMIN:</b> кто-нибудь видел Кайроса у соляных столбов?</div>
+        <div class="chat-msg"><span class="time">13:05</span><b>johtotest2:</b> да, только что поймал там!</div>
+        <div class="chat-msg sys">Игрок johtotest2 поймал Кайроса (ур. 19).</div>
+      </div>
+      <div class="chat-input-row">
+        <input placeholder="Сообщение в локацию…" id="chat-input" />
+        <button class="chat-send" onclick="sendDemo()">➤</button>
+      </div>
+    </div>
+    <div class="card online-card">
+      <div class="panel-title">В сети рядом · 2</div>
+      <div class="online-item"><div class="ava">A</div><div><div class="nname">ADMIN</div><div class="nsub">Гим-лидер</div></div><span class="lvl">СР 42</span></div>
+      <div class="online-item"><div class="ava">J</div><div><div class="nname">johtotest2</div><div class="nsub">Тренер</div></div><span class="lvl">СР 18</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const MINI = id => 'client/static/images/pokemons/mini/' + String(id).padStart(3, '0') + '.gif';
+
+/* ---------- Центральный фрейм ---------- */
+function setView(name) {
+  endBattle();
+  closePkmn();
+  document.querySelectorAll('.frame > .view').forEach(v => v.classList.remove('on'));
+  document.getElementById('view-' + name).classList.add('on');
+  document.getElementById('nav-team').classList.toggle('active', name === 'team');
+  document.getElementById('nav-bag').classList.toggle('active', name === 'bag');
+}
+function openPkmn() {
+  document.getElementById('team-grid-view').style.display = 'none';
+  document.getElementById('team-detail-view').style.display = '';
+}
+function closePkmn() {
+  const g = document.getElementById('team-grid-view');
+  const d = document.getElementById('team-detail-view');
+  if (g) g.style.display = '';
+  if (d) d.style.display = 'none';
+}
+
+/* ---------- Бой ---------- */
+function startBattle() {
+  document.getElementById('loc-grid').style.display = 'none';
+  document.getElementById('battle-frame').classList.add('on');
+}
+function endBattle() {
+  document.getElementById('battle-frame').classList.remove('on');
+  document.getElementById('loc-grid').style.display = '';
+}
+
+/* ---------- Темы: Закат (светлая) / Вайс (тёмная) ---------- */
+const themeBtn = document.getElementById('theme-toggle');
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  themeBtn.textContent = t === 'gta-dark' ? '🌃 Вайс' : '🌅 Закат';
+}
+themeBtn.addEventListener('click', () =>
+  applyTheme(document.documentElement.dataset.theme === 'gta-dark' ? 'gta-light' : 'gta-dark'));
+
+/* ============================================================
+   Демо-журнал боя — формат реального движка
+   ============================================================ */
+let enemyHP = 32, enemyMax = 50, playerHP = 35, playerMax = 49, round = 1;
+const PLAYER = { id: 2, name: 'Ивизавр' };
+const ENEMY  = { id: 42, name: 'Голбат' };
+
+function bar(el, txt, cur, max) {
+  const pct = Math.max(0, Math.round(cur / max * 100));
+  el.style.width = pct + '%';
+  txt.textContent = Math.max(0, cur) + ' / ' + max + ' HP';
+  const b = el.parentElement;
+  b.classList.toggle('low', pct <= 25); b.classList.toggle('mid', pct > 25 && pct <= 55);
+}
+function log(html, cls) {
+  const f = document.getElementById('log-feed');
+  const d = document.createElement('div');
+  d.className = 'log-entry' + (cls ? ' ' + cls : '');
+  d.innerHTML = html; f.appendChild(d); f.scrollTop = f.scrollHeight;
+}
+function logRound(n) {
+  const f = document.getElementById('log-feed');
+  const d = document.createElement('div');
+  d.className = 'round-header'; d.textContent = 'Раунд ' + n;
+  f.appendChild(d);
+}
+function turnLine(who, move) {
+  return '<div class="turn-line"><img class="turn-mini" src="' + MINI(who.id) + '" alt=""/><b>' + who.name + '</b> → <span class="turn-move">' + move + '</span></div>';
+}
+
+(function seedLog() {
+  log('<b>' + ENEMY.name + '</b> (ур. 13) преградил путь!', 'sys');
+  logRound(1);
+  log(turnLine(PLAYER, 'Виноградная лоза') +
+      '<div class="sub supereff">Суперэффективно!</div>' +
+      '<div class="sub"><b class="r">УРОН: −11 HP</b></div>', 'dmg');
+  log(turnLine(ENEMY, 'Поглощение') +
+      '<div class="sub notvery">Атака почти не эффективна…</div>' +
+      '<div class="sub"><b class="r">УРОН: −3 HP</b> · Восстановление: +1 HP</div>', 'dmg');
+  log('<div class="sub abil">[способность] Разрастание: травяные атаки усилены (HP ниже трети)</div>', 'eff');
+  log('Оба покемона страдают от песчаной бури: −3 / −2 HP', 'sys');
+})();
+
+function doMove(name, power) {
+  round++;
+  document.getElementById('round-n').textContent = round;
+  logRound(round);
+  if (power === 0) {
+    log(turnLine(PLAYER, name) + '<div class="sub">Голбат <b>отравлен</b>!</div>');
+  } else {
+    const dmg = Math.max(2, Math.round(power / 4 + Math.random() * 4));
+    const crit = Math.random() < 0.15;
+    enemyHP -= dmg;
+    let html = turnLine(PLAYER, name);
+    if (crit) html += '<div class="sub crit">Критический удар!</div>';
+    if (Math.random() < 0.3) html += '<div class="sub supereff">Суперэффективно!</div>';
+    html += '<div class="sub"><b class="r">УРОН: −' + dmg + ' HP</b></div>';
+    log(html, 'dmg');
+    bar(document.getElementById('enemy-hp'), document.getElementById('enemy-hp-text'), enemyHP, enemyMax);
+  }
+  if (enemyHP <= 0) {
+    log('<img class="turn-mini" src="' + MINI(ENEMY.id) + '"/> <b>' + ENEMY.name + '</b> пал! <b>Победа!</b> +87 EXP', 'sys');
+    setTimeout(() => {
+      enemyHP = enemyMax;
+      bar(document.getElementById('enemy-hp'), document.getElementById('enemy-hp-text'), enemyHP, enemyMax);
+      log('Новый противник: дикий <b>' + ENEMY.name + '</b> (ур. 13)!', 'sys');
+    }, 1200);
+    return;
+  }
+  setTimeout(() => {
+    const edmg = 1 + Math.round(Math.random() * 5);
+    playerHP -= edmg;
+    log(turnLine(ENEMY, 'Поглощение') +
+        '<div class="sub notvery">Атака почти не эффективна…</div>' +
+        '<div class="sub"><b class="r">УРОН: −' + edmg + ' HP</b></div>', 'dmg');
+    bar(document.getElementById('player-hp'), document.getElementById('player-hp-text'), playerHP, playerMax);
+    log('Песчаная буря: −3 / −2 HP', 'sys');
+    if (playerHP <= 0) {
+      playerHP = playerMax;
+      log('<b>' + PLAYER.name + '</b> пал… (демо: HP восстановлено)', 'sys');
+      bar(document.getElementById('player-hp'), document.getElementById('player-hp-text'), playerHP, playerMax);
+    }
+  }, 450);
+}
+
+/* ---------- Демо-чат ---------- */
+function sendDemo() {
+  const i = document.getElementById('chat-input');
+  if (!i.value.trim()) return;
+  const f = document.getElementById('chat-feed');
+  const d = document.createElement('div');
+  d.className = 'chat-msg';
+  const t = document.createElement('span'); t.className = 'time';
+  t.textContent = new Date().toTimeString().slice(0, 5);
+  const b = document.createElement('b'); b.textContent = 'uiaudit: ';
+  d.appendChild(t); d.appendChild(b); d.appendChild(document.createTextNode(i.value));
+  f.appendChild(d); f.scrollTop = f.scrollHeight; i.value = '';
+}
+document.getElementById('chat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendDemo(); });
+</script>
+</body>
+</html>

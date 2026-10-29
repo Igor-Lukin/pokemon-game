@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>AI-команда NPC</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+    <style>
+      table.ai-team { border-collapse: collapse; width: 100%; margin: 12px 0; }
+      table.ai-team th, table.ai-team td { border: 1px solid #ccc; padding: 5px 7px; font-size: 13px; vertical-align: top; }
+      table.ai-team th { background: #f0f0f0; text-align: left; }
+      .muted { color: #777; font-size: 12px; }
+      .actions form { display: inline-block; margin-right: 8px; }
+      .legend { color: #b06a00; font-weight: bold; }
+    </style>
+  </head>
+  <body>
+    <h1>AI-команда: {{.NPCName}}</h1>
+    <p class="muted">
+      AI-уровень {{.AILevel}}, уровень покемонов {{.Level}}.
+      Виды и порядок — из проверенного legacy-драфта; статы/ходы/способность/характер/предмет — от бота.
+    </p>
+
+    <table class="ai-team">
+      <tr>
+        <th>#</th><th>Покемон</th><th>Ур.</th><th>HP</th><th>Atk</th><th>Def</th>
+        <th>Spd</th><th>SpA</th><th>SpD</th><th>Способность</th><th>Характер</th>
+        <th>Предмет</th><th>Ходы</th>
+      </tr>
+      {{range .Members}}
+      <tr>
+        <td>{{.PokemonID}}{{if .Legendary}} <span class="legend">[L]</span>{{end}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.Level}}</td>
+        <td>{{.HP}}</td><td>{{.Atk}}</td><td>{{.Def}}</td>
+        <td>{{.Spd}}</td><td>{{.SpAtk}}</td><td>{{.SpDef}}</td>
+        <td>{{.Ability}}</td>
+        <td>{{.Nature}}</td>
+        <td>{{.Item}}</td>
+        <td>{{range .Moves}}{{.}}; {{end}}</td>
+      </tr>
+      {{end}}
+    </table>
+
+    <div class="actions">
+      <form method="POST" action="/admin/npc/ai-team/save">
+        <input type="hidden" name="npc_id" value="{{.NPCID}}" />
+        <input type="hidden" name="team_json" value="{{.TeamJSON}}" />
+        <button type="submit">Сохранить в пул</button>
+      </form>
+      <form method="POST" action="/admin/npc/ai-team/generate">
+        <input type="hidden" name="npc_id" value="{{.NPCID}}" />
+        <button type="submit">Сгенерировать заново</button>
+      </form>
+      <a href="/admin/npc/edit?id={{.NPCID}}">Назад к NPC</a>
+    </div>
+  </body>
+</html>

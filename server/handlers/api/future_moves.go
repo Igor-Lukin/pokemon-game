@@ -27,7 +27,7 @@ func scheduleFutureAttack(attacker, defender *BattlePokemon, move *BattleMove, r
 		})
 		return
 	}
-	dmg, _, _ := calculateDamage(nil, attacker, defender, move, nil) // снимок урона; поле не учитываем
+	dmg, _, _ := calculateDamage(nil, attacker, defender, move, nil, round, log) // снимок урона; поле не учитываем
 	if dmg < 1 {
 		dmg = 1
 	}

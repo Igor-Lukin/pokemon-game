@@ -48,11 +48,58 @@
         &nbsp; <label>Уровень команды:</label>
         <input type="number" name="min_level" min="1" value="{{.MinLevel}}" style="width:60px" />
         <span class="muted">(единый уровень всех покемонов бота)</span>
+        <br /><br />
+        <label>AI-уровень:</label>
+        <select name="ai_level">
+          <option value="0" {{if eq .AILevel 0}}selected{{end}}>0 — текущий AI</option>
+          <option value="1" {{if eq .AILevel 1}}selected{{end}}>1 — бот: база</option>
+          <option value="2" {{if eq .AILevel 2}}selected{{end}}>2 — бот: продвинутый</option>
+          <option value="3" {{if eq .AILevel 3}}selected{{end}}>3 — задел (4 легенды)</option>
+          <option value="4" {{if eq .AILevel 4}}selected{{end}}>4 — задел (6 легенд)</option>
+        </select>
+        <span class="muted">(0 = старый smart-AI; 1/2 = новый бот)</span>
       </div>
 
       <button type="submit">Сохранить</button>
       <a href="/admin/npc">Отмена</a>
     </form>
+
+    {{if .ID}}
+    <div class="npc-section">
+      <h2>AI-команда</h2>
+      <p class="muted">
+        Сгенерировать состав по текущему AI-уровню/уровню и сохранить в пул вручную.
+        Пул используется в бою; автоподбор (CLI) складывает туда лучшие варианты.
+      </p>
+      <form method="POST" action="/admin/npc/ai-team/generate">
+        <input type="hidden" name="npc_id" value="{{.ID}}" />
+        <button type="submit">Сгенерировать AI-команду</button>
+      </form>
+      {{if .AITeams}}
+      <table style="margin-top:10px; border-collapse:collapse; width:100%">
+        <tr>
+          <th>ID</th><th>AI</th><th>Ур.</th><th>Score</th><th>Source</th><th>Размер</th><th>Состав</th><th></th>
+        </tr>
+        {{range .AITeams}}
+        <tr>
+          <td>{{.ID}}</td><td>{{.AILevel}}</td><td>{{.Level}}</td>
+          <td>{{printf "%.2f" .Score}}</td><td>{{.Source}}</td><td>{{.Size}}</td>
+          <td class="muted">{{.Names}}</td>
+          <td>
+            <form method="POST" action="/admin/npc/ai-team/delete" onsubmit="return confirm('Удалить команду?');">
+              <input type="hidden" name="npc_id" value="{{$.ID}}" />
+              <input type="hidden" name="id" value="{{.ID}}" />
+              <button type="submit">✖</button>
+            </form>
+          </td>
+        </tr>
+        {{end}}
+      </table>
+      {{else}}
+      <p class="muted">Сохранённых AI-команд пока нет.</p>
+      {{end}}
+    </div>
+    {{end}}
 
     {{if .ID}}
     <!-- ===== РОСТЕР КОМАНДЫ (fixed, поток B) ===== -->

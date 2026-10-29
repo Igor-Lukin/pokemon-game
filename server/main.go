@@ -7,6 +7,7 @@ import (
 	"pokemon-game/server/handlers/api"
 	"pokemon-game/server/routes"
 	"pokemon-game/server/session"
+	"time"
 )
 
 func main() {
@@ -24,6 +25,14 @@ func main() {
 	r := routes.SetupRoutes()
 
 	// Запуск сервера
+	srv := &http.Server{
+		Addr:              ":8080",
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	log.Println("Сервер запущен на http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", r))
+	log.Fatal(srv.ListenAndServe())
 }

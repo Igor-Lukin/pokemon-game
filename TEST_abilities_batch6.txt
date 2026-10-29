@@ -1,0 +1,138 @@
+====================================================================
+TEST_abilities_batch6 — способности (батч 6, топ-20 по носителям)
+Исполнитель: агент. Дата: 2026-10-27.
+Основание: продолжение TEST_abilities_batch5.txt + список 245 способностей
+без effect_key (топ по числу носителей).
+====================================================================
+
+Состав батча
+--------------------------------------------------------------------
+Реализовано 20 способностей (id — effect_key):
+   3  — chlorophyll     (Хлорофилл)
+  24  — inner_focus     (Бесстрашие)
+  29  — guts            (Болевой порог)
+  31  — pressure        (Величие)
+  33  — own_tempo       (Внутренний ритм)
+  36  — swift_swim      (Водоплавающий)
+  40  — hydration       (Впитывание)
+  49  — sheer_force     (Грубая сила)
+  63  — oblivious       (Забывчивость)
+  73  — sturdy          (Здоровяк)
+  95  — leaf_guard      (Лиственный щит)
+ 101  — technician      (Мастерство)
+ 119  — hustle          (Нетерпеливость)
+ 141  — mold_breaker    (Подавление способностей)
+ 148  — infiltrator     (Преодоление барьеров)
+ 166  — regenerator     (Регенератор)
+ 191  — damp            (Сырость)
+ 194  — telepathy       (Телепатия)
+ 206  — overcoat        (Укрытие)
+ 230  — frisk           (Проницательность)
+
+Отложено:
+ 122 — Обжорство (gluttony): в движке пока нет расхода лечащих предметов
+       в бою; effect_key намеренно НЕ проставлен, способность остаётся
+       в общем списке нереализованных до появления механики боевых предметов.
+
+Что сделано
+--------------------------------------------------------------------
+1) Погодная Скорость
+   - swift_swim: ×2 Скорости в дождь.
+   - chlorophyll: ×2 Скорости в солнце.
+   - Учитывается в tailwindSpeed (порядок хода, в т.ч. PvP).
+
+2) Защита от обморока
+   - sturdy: удар по ПОЛНОМУ HP не может отправить в обморок — остаётся 1 HP.
+   - sturdy: иммунитет к OHKO-атакам (Гильотина/Абсолютный холод/Разлом/
+     Роговое сверло).
+   - mold_breaker обходит sturdy.
+
+3) Иммунитеты/статусы
+   - inner_focus: испуг (flinch) не накладывается.
+   - own_tempo: замешательство не накладывается.
+   - oblivious: не действуют Насмешка (Taunt), Соблазн (Attract) и
+     Привлекательность (cute_charm).
+   - leaf_guard: в солнце иммунитет к основным статусам (2–7).
+   - hydration: в дождь снимает основной статус в конце хода.
+   - overcoat: иммунитет к урону града/песчаной бури и к порошковым ходам
+     (Sleep/Psion Powder, Stun Spore, Spore, Cotton Spore, Powder и т.п.).
+
+4) Урон/статы/PP
+   - guts: при основном статусе Атака ×1.5; ожог больше не режет физический
+     урон.
+   - hustle: Атака ×1.5, точность физических атак ×0.8.
+   - technician: атаки с базовой силой ≤60 бьют ×1.5.
+   - sheer_force: атаки с вторичным эффектом ×1.3; сам вторичный эффект
+     подавляется (гарантированные 100% само-бусты сохраняются).
+   - pressure: цель с Величеством заставляет атакующего тратить +1 PP.
+   - mold_breaker: игнорирует поглощение по типу, снижение входящего урона
+     (thick_fat/fur_coat и т.п.) и sturdy цели.
+
+5) Смена/поле/информация
+   - regenerator: при уходе с поля (SwitchHandler, switch-ходы, PvP-замена,
+     ИИ-замена тренера) восстанавливает 1/3 макс. HP; павшему не помогает.
+   - infiltrator: игнорирует Защитный экран/Экран света, Ограждение и Туман.
+   - frisk: при выходе определяет предмет противника и пишет в лог.
+   - telepathy: при выходе сообщает тренеру статусные атаки противника.
+   - damp: блокирует Самоподрыв/Взрыв/Туманный взрыв (обе стороны).
+     Заодно исправлен фейнт пользователя Взрыва (id 100) и Туманного взрыва
+     (id 707) — раньше обморок обрабатывался только для Самоподрыва (570).
+
+Изменённые файлы
+--------------------------------------------------------------------
+  server/db/abilities.go                 — migrateAbilityBatch6Keys()
+  server/db/database.go                  — вызов миграции batch6
+  server/handlers/api/abilities_battle.go — новые хуки/хелперы
+  server/handlers/api/battle.go          — sturdy, sheer force, guts/hustle,
+                                           pressure, infiltrator, damp, фейнт
+  server/handlers/api/ai_team.go         — implementedAbilityKeys + теги
+  server/handlers/api/weather_effects.go — overcoat (погодный урон)
+  server/handlers/api/screens.go         — погодная Скорость
+  server/handlers/api/fire_effects.go    — overcoat (порошок)
+  server/handlers/api/switch_moves.go    — regenerator (switch-ход)
+  server/handlers/api/pvp.go             — regenerator + pressure
+  server/handlers/api/block_moves.go     — oblivious (Taunt)
+  server/handlers/api/gender_moves.go    — oblivious (Attract)
+  server/handlers/api/volatiles.go       — inner_focus, own_tempo
+  server/handlers/api/gen2_moves.go      — isSelfDestructMove (100/570/707)
+  server/handlers/api/abilities_batch6_test.go — тесты
+
+Проверки
+--------------------------------------------------------------------
+[x] go build ./... — успешно.
+[x] go vet ./... — успешно.
+[x] go test ./... -count=1 — успешно (api: ok).
+[x] Бэкап БД: database/backups/pokemon.db.bak-before-batch6.
+[x] effect_key проставлены: было 58, стало 78 (58 + 20).
+[x] PRAGMA integrity_check — ok.
+[x] Тесты батча 6 (abilities_batch6_test.go):
+    TestBatch6WeatherSpeed, TestBatch6Sturdy, TestBatch6InnerFocus,
+    TestBatch6SheerForce, TestBatch6Pressure, TestBatch6OwnTempo,
+    TestBatch6Oblivious, TestBatch6Infiltrator, TestBatch6TelepathyFrisk,
+    TestBatch6Guts, TestBatch6Hydration, TestBatch6Regenerator,
+    TestBatch6Overcoat, TestBatch6Hustle, TestBatch6LeafGuard,
+    TestBatch6Technician, TestBatch6MoldBreaker, TestBatch6Damp.
+
+Живой прогон
+--------------------------------------------------------------------
+НЕ выполнен: на :8080 уже запущен server.exe (PID 10424) со старой сборкой.
+Чтобы проверить новые механики в браузере, нужен перезапуск сервера с тем же
+SESSION_KEY, что использовался при запуске (иначе слетят cookie-сессии).
+Миграция БД уже применена напрямую и идемпотентна — повторный запуск сервера
+её не изменит.
+
+Рекомендуемый живой чек-лист после перезапуска:
+  1. Покемон с sturdy (например, носитель из БД) — выживает с 1 HP от удара
+     на полном HP; OHKO-атака не срабатывает.
+  2. Покемон с regenerator — при смене HP восстанавливается на 1/3.
+  3. Покемон с pressure — PP атакующего уменьшается на 2 за ход.
+  4. Погодники swift_swim/chlorophyll — ходят раньше при своей погоде.
+  5. overcoat — не получает урон града/бури, порошок не действует.
+  6. damp — Самоподрыв/Взрыв блокируется и не роняет пользователя.
+
+Следующий батч
+--------------------------------------------------------------------
+Осталось 224 способности без логики (245 минус 20 реализованных минус
+отложенное Обжорство). Следующие по носителям: Обжорство (122, после
+появления боевых предметов), Озорник (124), Соперничество (184),
+Громоотвод (1), Синхронизация (14), Разгрузка (164), Фобии (210) и т.д.

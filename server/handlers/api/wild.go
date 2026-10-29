@@ -5,6 +5,8 @@ import (
 	"math"
 	"math/rand"
 	"pokemon-game/server/db"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,39 +30,50 @@ type WildPokemonGenerate struct {
 	NatureDec       string
 	// IV дикого — порядок как везде: HP,Atk,Def,Spd,SpAtk,SpDef. Протягивается
 	// в BattleState и сохраняется при поимке (иначе IV/натура терялись).
-	IV              [6]int
-	Moves           []GeneratedMove
+	IV    [6]int
+	Moves []GeneratedMove
 }
 
 type GeneratedMove struct {
-	ID             int
-	Name           string
-	EngName        string
-	TypeID         int
-	CategoryID     int
-	Power          int
-	Accuracy       int
-	PP             int
-	Priority       int
-	TargetID       int
-	Description    string
-	EffectID int
-	EffectChance   int
-	NeverMisses    bool
-	Disabled       bool
-	Drain          int
-	HealPercent    int
-	CritRate       int
-	HitsMin        int
-	HitsMax        int
-	Contact        bool
+	ID           int
+	Name         string
+	EngName      string
+	TypeID       int
+	CategoryID   int
+	Power        int
+	Accuracy     int
+	PP           int
+	Priority     int
+	TargetID     int
+	Description  string
+	EffectID     int
+	EffectChance int
+	NeverMisses  bool
+	Disabled     bool
+	Drain        int
+	HealPercent  int
+	CritRate     int
+	HitsMin      int
+	HitsMax      int
+	Contact      bool
+	Sound        bool
+}
+
+type wildCandidate struct {
+	ID       int
+	MinLevel int
+	MaxLevel int
+	Weight   int
 }
 
 func generateWildPokemon(locationID int) *WildPokemonGenerate {
-	// Выбираем ВИД из локации, ролим уровень 1–20, дальше — общее ядро
-	// buildGenerateFor (одна точка правды со сборкой команды NPC, поток B).
+	// Выбираем ВИД из локации с учётом rarity (вес), уровень — из
+	// min_level..max_level. Дальше — общее ядро buildGenerateFor.
 	rows, err := db.DB.Query(`
-		SELECT pl.pokemon_id
+		SELECT pl.pokemon_id,
+		       COALESCE(pl.min_level, 1),
+		       COALESCE(pl.max_level, 20),
+		       COALESCE(pl.rarity, '')
 		FROM pokemon_locations pl
 		WHERE pl.location_id = ?
 	`, locationID)
@@ -69,20 +82,76 @@ func generateWildPokemon(locationID int) *WildPokemonGenerate {
 	}
 	defer rows.Close()
 
-	var ids []int
+	var candidates []wildCandidate
+	totalWeight := 0
 	for rows.Next() {
-		var id int
-		if err := rows.Scan(&id); err == nil {
-			ids = append(ids, id)
+		var c wildCandidate
+		var rarity string
+		if err := rows.Scan(&c.ID, &c.MinLevel, &c.MaxLevel, &rarity); err != nil {
+			continue
 		}
+		c.Weight = rarityWeight(rarity)
+		totalWeight += c.Weight
+		candidates = append(candidates, c)
 	}
-	if len(ids) == 0 {
+	if len(candidates) == 0 || totalWeight <= 0 {
 		return nil
 	}
 
-	chosenID := ids[rand.Intn(len(ids))]
-	level := 1 + rand.Intn(20) // 1–20
-	return buildGenerateFor(chosenID, level)
+	roll := rand.Intn(totalWeight)
+	chosen := candidates[len(candidates)-1]
+	for _, c := range candidates {
+		roll -= c.Weight
+		if roll < 0 {
+			chosen = c
+			break
+		}
+	}
+
+	minLevel, maxLevel := chosen.MinLevel, chosen.MaxLevel
+	if minLevel < 1 {
+		minLevel = 1
+	}
+	if maxLevel < minLevel {
+		maxLevel = minLevel
+	}
+	if maxLevel > 100 {
+		maxLevel = 100
+	}
+	level := minLevel + rand.Intn(maxLevel-minLevel+1)
+	return buildGenerateFor(chosen.ID, level)
+}
+
+// rarityWeight превращает rarity в вес: больше = чаще.
+// Поддерживает числа ('98') и текстовые метки; мусор/пусто = 50.
+func rarityWeight(raw string) int {
+	s := strings.TrimSpace(strings.ToLower(raw))
+	if s == "" {
+		return 50
+	}
+	if n, err := strconv.Atoi(s); err == nil {
+		if n < 1 {
+			return 1
+		}
+		if n > 1000 {
+			return 1000
+		}
+		return n
+	}
+	switch s {
+	case "common", "обычный", "часто":
+		return 80
+	case "uncommon", "необычный":
+		return 50
+	case "rare", "редкий":
+		return 20
+	case "very_rare", "very rare", "очень редкий":
+		return 5
+	case "legendary", "легендарный":
+		return 1
+	default:
+		return 50
+	}
 }
 
 // buildGenerateFor — построить «сгенерированного» покемона по виду и уровню:
@@ -182,7 +251,8 @@ func generateWildMoves(pokemonID, level int) []GeneratedMove {
 		       COALESCE(a.effect_status_id, 0), COALESCE(a.effect_chance, 0),
 		       COALESCE(a.never_misses, 0), COALESCE(a.drain, 0),
 		       COALESCE(a.crit_rate, 0), COALESCE(a.hits_min, 1), COALESCE(a.hits_max, 1),
-		       COALESCE(a.disabled, 0), COALESCE(a.heal_percent, 0), COALESCE(a.contact, 0)
+		       COALESCE(a.disabled, 0), COALESCE(a.heal_percent, 0), COALESCE(a.contact, 0),
+		       COALESCE(a.sound, 0)
 		FROM pokemon_attacks pa
 		JOIN attacks a ON pa.attack_id = a.id
 		WHERE pa.pokemon_id = ? AND pa.learn_method_id = 1 AND pa.level_learned_at <= ?
@@ -196,13 +266,14 @@ func generateWildMoves(pokemonID, level int) []GeneratedMove {
 	var all []GeneratedMove
 	for rows.Next() {
 		var m GeneratedMove
-		var neverMisses, disabled, contact int
-		if err := rows.Scan(&m.ID, &m.Name, &m.EngName, &m.TypeID, &m.CategoryID, &m.Power, &m.Accuracy, &m.PP, &m.Priority, &m.TargetID, &m.Description, &m.EffectID, &m.EffectChance, &neverMisses, &m.Drain, &m.CritRate, &m.HitsMin, &m.HitsMax, &disabled, &m.HealPercent, &contact); err != nil {
+		var neverMisses, disabled, contact, sound int
+		if err := rows.Scan(&m.ID, &m.Name, &m.EngName, &m.TypeID, &m.CategoryID, &m.Power, &m.Accuracy, &m.PP, &m.Priority, &m.TargetID, &m.Description, &m.EffectID, &m.EffectChance, &neverMisses, &m.Drain, &m.CritRate, &m.HitsMin, &m.HitsMax, &disabled, &m.HealPercent, &contact, &sound); err != nil {
 			continue
 		}
 		m.NeverMisses = neverMisses != 0
 		m.Disabled = disabled != 0
 		m.Contact = contact != 0
+		m.Sound = sound != 0
 		all = append(all, m)
 	}
 	if len(all) == 0 {

@@ -31,6 +31,8 @@ type Item struct {
 	ForceNursery   int `json:"force_nursery"`
 	// TypeID — тип надеваемого (held) предмета для типового гейта. 0 = нет/не типовой.
 	TypeID int `json:"type_id"`
+	// AttackID — для TM/HM: атака, которую открывает предмет (0 = не TM/HM).
+	AttackID int `json:"attack_id"`
 }
 
 type UserItem struct {
@@ -51,7 +53,8 @@ func GetUserInventory(userID int) ([]UserItem, error) {
 		       COALESCE(i.image_url, ''), COALESCE(i.catch_multiplier, 100),
 		       COALESCE(i.catch_condition, ''), COALESCE(i.catch_cond_value, 0),
 		       COALESCE(i.gene_bonus, 0), COALESCE(i.happiness_bonus, 0),
-		       COALESCE(i.force_nursery, 0), COALESCE(i.type_id, 0), ui.quantity
+		       COALESCE(i.force_nursery, 0), COALESCE(i.type_id, 0),
+		       COALESCE(i.attack_id, 0), ui.quantity
 		FROM user_items ui
 		JOIN items i ON ui.item_id = i.id
 		LEFT JOIN item_categories ic ON i.category_id = ic.id
@@ -70,7 +73,8 @@ func GetUserInventory(userID int) ([]UserItem, error) {
 		if err := rows.Scan(&ui.ID, &ui.Name, &ui.Description, &ui.CategoryID,
 			&ui.CategoryName, &ui.Price, &ui.EffectType, &ui.EffectValue,
 			&ui.ImageURL, &ui.CatchMultiplier, &ui.CatchCondition, &ui.CatchCondValue,
-			&ui.GeneBonus, &ui.HappinessBonus, &ui.ForceNursery, &ui.TypeID, &ui.Quantity); err != nil {
+			&ui.GeneBonus, &ui.HappinessBonus, &ui.ForceNursery, &ui.TypeID,
+			&ui.AttackID, &ui.Quantity); err != nil {
 			log.Printf("GetUserInventory scan: %v", err)
 			continue
 		}
@@ -128,13 +132,14 @@ func GetItemByID(itemID int) (*Item, error) {
 		       COALESCE(i.image_url, ''), COALESCE(i.catch_multiplier, 100),
 		       COALESCE(i.catch_condition, ''), COALESCE(i.catch_cond_value, 0),
 		       COALESCE(i.gene_bonus, 0), COALESCE(i.happiness_bonus, 0),
-		       COALESCE(i.force_nursery, 0), COALESCE(i.type_id, 0)
+		       COALESCE(i.force_nursery, 0), COALESCE(i.type_id, 0),
+		       COALESCE(i.attack_id, 0)
 		FROM items i
 		LEFT JOIN item_categories ic ON i.category_id = ic.id
 		WHERE i.id = ?
 	`, itemID).Scan(&it.ID, &it.Name, &it.Description, &it.CategoryID,
 		&it.CategoryName, &it.Price, &it.EffectType, &it.EffectValue, &it.ImageURL, &it.CatchMultiplier,
-		&it.CatchCondition, &it.CatchCondValue, &it.GeneBonus, &it.HappinessBonus, &it.ForceNursery, &it.TypeID)
+		&it.CatchCondition, &it.CatchCondValue, &it.GeneBonus, &it.HappinessBonus, &it.ForceNursery, &it.TypeID, &it.AttackID)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +151,7 @@ func GetAllItems() ([]Item, error) {
 		SELECT i.id, i.name, COALESCE(i.description, ''), i.category_id,
 		       COALESCE(ic.name, ''), i.price,
 		       COALESCE(i.effect_type, ''), COALESCE(i.effect_value, 0),
-		       COALESCE(i.image_url, '')
+		       COALESCE(i.image_url, ''), COALESCE(i.attack_id, 0)
 		FROM items i
 		LEFT JOIN item_categories ic ON i.category_id = ic.id
 		ORDER BY i.category_id, i.id
@@ -160,7 +165,7 @@ func GetAllItems() ([]Item, error) {
 	for rows.Next() {
 		var it Item
 		if err := rows.Scan(&it.ID, &it.Name, &it.Description, &it.CategoryID,
-			&it.CategoryName, &it.Price, &it.EffectType, &it.EffectValue, &it.ImageURL); err != nil {
+			&it.CategoryName, &it.Price, &it.EffectType, &it.EffectValue, &it.ImageURL, &it.AttackID); err != nil {
 			continue
 		}
 		items = append(items, it)
@@ -201,27 +206,33 @@ func DeleteCategory(id int) error {
 	return err
 }
 
-func CreateItem(name, description string, categoryID, price int, effectType string, effectValue int, imageURL string, typeID int) error {
-	var typeVal interface{}
+func CreateItem(name, description string, categoryID, price int, effectType string, effectValue int, imageURL string, typeID, attackID int) error {
+	var typeVal, attackVal interface{}
 	if typeID > 0 {
 		typeVal = typeID
 	}
+	if attackID > 0 {
+		attackVal = attackID
+	}
 	_, err := DB.Exec(`
-		INSERT INTO items (name, description, category_id, price, effect_type, effect_value, image_url, type_id)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, name, description, categoryID, price, effectType, effectValue, imageURL, typeVal)
+		INSERT INTO items (name, description, category_id, price, effect_type, effect_value, image_url, type_id, attack_id)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, name, description, categoryID, price, effectType, effectValue, imageURL, typeVal, attackVal)
 	return err
 }
 
-func UpdateItem(id int, name, description string, categoryID, price int, effectType string, effectValue int, imageURL string, typeID int) error {
-	var typeVal interface{}
+func UpdateItem(id int, name, description string, categoryID, price int, effectType string, effectValue int, imageURL string, typeID, attackID int) error {
+	var typeVal, attackVal interface{}
 	if typeID > 0 {
 		typeVal = typeID
 	}
+	if attackID > 0 {
+		attackVal = attackID
+	}
 	_, err := DB.Exec(`
-		UPDATE items SET name=?, description=?, category_id=?, price=?, effect_type=?, effect_value=?, image_url=?, type_id=?
+		UPDATE items SET name=?, description=?, category_id=?, price=?, effect_type=?, effect_value=?, image_url=?, type_id=?, attack_id=?
 		WHERE id=?
-	`, name, description, categoryID, price, effectType, effectValue, imageURL, typeVal, id)
+	`, name, description, categoryID, price, effectType, effectValue, imageURL, typeVal, attackVal, id)
 	return err
 }
 

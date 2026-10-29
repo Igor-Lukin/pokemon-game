@@ -123,6 +123,28 @@ func DeleteItemCategoryHandler(w http.ResponseWriter, r *http.Request) {
 
 // ====================== ПРЕДМЕТЫ ======================
 
+type attackOption struct {
+	ID   int
+	Name string
+}
+
+func getAttackOptions() ([]attackOption, error) {
+	rows, err := db.DB.Query("SELECT id, name FROM attacks WHERE COALESCE(disabled, 0) = 0 ORDER BY name")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var list []attackOption
+	for rows.Next() {
+		var a attackOption
+		if err := rows.Scan(&a.ID, &a.Name); err != nil {
+			continue
+		}
+		list = append(list, a)
+	}
+	return list, rows.Err()
+}
+
 func ItemsListHandler(w http.ResponseWriter, r *http.Request) {
 	if !checkAdmin(r) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -153,12 +175,18 @@ func CreateItemHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		attacks, err := getAttackOptions()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		tmpl := template.Must(template.ParseFiles("./server/templates/admin/item_form.html"))
 		tmpl.Execute(w, struct {
 			Categories []db.Category
 			Types      []db.Category
+			Attacks    []attackOption
 			Item       *db.Item
-		}{cats, types, nil})
+		}{cats, types, attacks, nil})
 		return
 	}
 
@@ -170,12 +198,13 @@ func CreateItemHandler(w http.ResponseWriter, r *http.Request) {
 	effectValue, _ := strconv.Atoi(r.FormValue("effect_value"))
 	imageURL := r.FormValue("image_url")
 	typeID, _ := strconv.Atoi(r.FormValue("type_id"))
+	attackID, _ := strconv.Atoi(r.FormValue("attack_id"))
 
 	if name == "" || categoryID == 0 {
 		http.Error(w, "Name and category are required", http.StatusBadRequest)
 		return
 	}
-	if err := db.CreateItem(name, description, categoryID, price, effectType, effectValue, imageURL, typeID); err != nil {
+	if err := db.CreateItem(name, description, categoryID, price, effectType, effectValue, imageURL, typeID, attackID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -214,12 +243,18 @@ func EditItemHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		attacks, err := getAttackOptions()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		tmpl := template.Must(template.ParseFiles("./server/templates/admin/item_form.html"))
 		tmpl.Execute(w, struct {
 			Categories []db.Category
 			Types      []db.Category
+			Attacks    []attackOption
 			Item       *db.Item
-		}{cats, types, item})
+		}{cats, types, attacks, item})
 		return
 	}
 
@@ -231,12 +266,13 @@ func EditItemHandler(w http.ResponseWriter, r *http.Request) {
 	effectValue, _ := strconv.Atoi(r.FormValue("effect_value"))
 	imageURL := r.FormValue("image_url")
 	typeID, _ := strconv.Atoi(r.FormValue("type_id"))
+	attackID, _ := strconv.Atoi(r.FormValue("attack_id"))
 
 	if name == "" || categoryID == 0 {
 		http.Error(w, "Name and category are required", http.StatusBadRequest)
 		return
 	}
-	if err := db.UpdateItem(id, name, description, categoryID, price, effectType, effectValue, imageURL, typeID); err != nil {
+	if err := db.UpdateItem(id, name, description, categoryID, price, effectType, effectValue, imageURL, typeID, attackID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

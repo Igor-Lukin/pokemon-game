@@ -72,6 +72,14 @@ func inflictInfatuation(t *BattlePokemon, round int, log *[]BattleLogEntry) {
 	if t.Infatuated {
 		return
 	}
+	if t.AbilityKey == "oblivious" { // [batch6] Забывчивость
+		abilityLog(t, round, log, "", "моментально забывает Увлечение")
+		return
+	}
+	if t.AbilityKey == "aroma_veil" { // [batch7] Благоухание
+		abilityLog(t, round, log, "", "аромат защищает от Увлечения")
+		return
+	}
 	t.Infatuated = true
 	*log = append(*log, BattleLogEntry{
 		Round:        round,

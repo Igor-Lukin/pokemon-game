@@ -9,6 +9,19 @@ import (
 //   204 Подарок (Present)       — случайно: мощность 40/80/120 ИЛИ лечит цель 25%.
 //   212 Последнее средство (Last Resort) — доступна, только когда все ОСТАЛЬНЫЕ
 //       ходы покемона уже применялись в этом бою.
+//   558 Ложный выпад (False Swipe) — не может снизить HP цели ниже 1.
+
+const moveFalseSwipe = 558
+
+// applyFalseSwipe — Ложный выпад оставляет цели минимум 1 HP.
+func applyFalseSwipe(defender *BattlePokemon, move *BattleMove) {
+	if move.ID != moveFalseSwipe || defender == nil || defender.IsFainted {
+		return
+	}
+	if defender.CurrentHP <= 0 {
+		defender.CurrentHP = 1
+	}
+}
 
 // applyPresentRoll — Подарок(204): бросок исхода. 20% — лечит ЦЕЛЬ на 25% макс. HP
 // (урона нет); иначе возвращает копию хода со случайной мощностью 40/80/120.
@@ -54,6 +67,10 @@ func applyPresentRoll(move *BattleMove, defender *BattlePokemon, round int, log 
 // Подстрекательство/Приказ/Обезоруживание — block_moves.go).
 func markMoveUsed(p *BattlePokemon, id int) {
 	p.LastUsedMoveID = id
+	// [batch7] Прокрастинатор: после каждого действия — отдых.
+	if p.AbilityKey == "truant" {
+		p.MustRecharge = true
+	}
 	for _, u := range p.UsedMoveIDs {
 		if u == id {
 			return

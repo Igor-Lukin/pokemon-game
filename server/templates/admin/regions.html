@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Manage Regions</title>
+    <link rel="stylesheet" href="/static/css/admin.css" />
+  </head>
+  <body>
+    <h1>Regions</h1>
+    <p>
+      <a href="/admin/regions/create">Create New Region</a> |
+      <a href="/admin/locations">Manage Locations</a> |
+      <a href="/admin">Admin Home</a>
+    </p>
+    <table border="1">
+      <tr>
+        <th>ID</th>
+        <th>Name</th>
+        <th>Current Weather</th>
+        <th>Locations</th>
+        <th>Actions</th>
+      </tr>
+      {{range .}}
+      <tr>
+        <td>{{.ID}}</td>
+        <td>{{.Name}}</td>
+        <td>{{.WeatherName}} (ID {{.CurrentWeatherID}})</td>
+        <td>{{.LocationCount}}</td>
+        <td>
+          <a href="/admin/regions/edit?id={{.ID}}">Edit</a>
+          <form
+            action="/admin/regions/delete"
+            method="POST"
+            style="display: inline"
+          >
+            <input type="hidden" name="id" value="{{.ID}}" />
+            <button
+              type="submit"
+              onclick="return confirm('Delete this region?')"
+              {{if gt .LocationCount 0}}disabled title="Сначала удалите или перенесите локации"{{end}}
+            >
+              Delete
+            </button>
+          </form>
+        </td>
+      </tr>
+      {{end}}
+    </table>
+  </body>
+</html>

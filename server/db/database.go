@@ -17,6 +17,13 @@ func InitDB() {
 	}
 	createTables()
 	insertInitialData()
+	seedEvolutionItems()
+	seedHappinessBerry()
+	seedHeldItems()
+	seedBattleItems()
+	SeedEastJohtoFiveRoads()
+	BackfillLegendaryFlags()
+	SeedPokemonForms()
 }
 
 func CloseDB() {
@@ -146,6 +153,34 @@ func createTables() {
             FOREIGN KEY(ability_id) REFERENCES abilities(id)
         );`,
 
+		// Боевые/альтернативные формы (HP-порог или использованный ход).
+		// trigger_key = abilities.effect_key; trigger_mode = 'hp' | 'move'.
+		`CREATE TABLE IF NOT EXISTS pokemon_forms (
+            pokemon_id INTEGER NOT NULL,
+            form_key TEXT NOT NULL,
+            trigger_key TEXT NOT NULL,
+            form_name TEXT NOT NULL,
+            form_label TEXT,
+            image_url TEXT,
+            primary_type_id INTEGER,
+            secondary_type_id INTEGER,
+            hp_threshold_percent INTEGER NOT NULL DEFAULT 50,
+            hp_mode INTEGER NOT NULL DEFAULT 1,
+            min_level INTEGER NOT NULL DEFAULT 0,
+            attack_mult REAL NOT NULL DEFAULT 1,
+            defense_mult REAL NOT NULL DEFAULT 1,
+            speed_mult REAL NOT NULL DEFAULT 1,
+            special_attack_mult REAL NOT NULL DEFAULT 1,
+            special_defense_mult REAL NOT NULL DEFAULT 1,
+            trigger_mode TEXT NOT NULL DEFAULT 'hp',
+            trigger_move_id INTEGER NOT NULL DEFAULT 0,
+            trigger_move_kind TEXT NOT NULL DEFAULT '',
+            is_base_form INTEGER NOT NULL DEFAULT 0,
+            form_order INTEGER NOT NULL DEFAULT 0,
+            form_description TEXT,
+            PRIMARY KEY(pokemon_id, form_key)
+        );`,
+
 		`CREATE TABLE IF NOT EXISTS attacks (
             id INTEGER PRIMARY KEY,
             name TEXT NOT NULL UNIQUE,
@@ -191,6 +226,8 @@ func createTables() {
             pokemon_id INTEGER,
             location_id INTEGER,
             rarity TEXT,
+            min_level INTEGER DEFAULT 1,
+            max_level INTEGER DEFAULT 20,
             PRIMARY KEY(pokemon_id, location_id),
             FOREIGN KEY(pokemon_id) REFERENCES pokemons(id),
             FOREIGN KEY(location_id) REFERENCES locations(id)
@@ -224,6 +261,7 @@ func createTables() {
             ev_special_defense INTEGER DEFAULT 0,
             available_ev INTEGER DEFAULT 0,   -- нераспределённые очки EV
             position INTEGER DEFAULT 0,
+            is_starter INTEGER DEFAULT 0,     -- 1 = стартовый покемон (первым в бой)
             status_id INTEGER,
             nature_id INTEGER,
             gender TEXT,            -- пол экземпляра: 'M'/'F'/'N' (см. RollGender)
@@ -234,7 +272,7 @@ func createTables() {
             FOREIGN KEY(status_id) REFERENCES statuses(id),
             FOREIGN KEY(nature_id) REFERENCES natures(id)
 	);`,
-        `CREATE TABLE IF NOT EXISTS user_pokemon_learnable_attacks (
+		`CREATE TABLE IF NOT EXISTS user_pokemon_learnable_attacks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_pokemon_id INTEGER NOT NULL,
             attack_id INTEGER NOT NULL,
@@ -242,6 +280,8 @@ func createTables() {
             is_learned BOOLEAN DEFAULT 0,
             position INTEGER,
             current_pp INTEGER DEFAULT 0,
+            source TEXT DEFAULT 'level',        -- 'level' | 'tm' | 'hm'
+            source_item_id INTEGER,              -- TM/HM item, которым открыта атака
             UNIQUE(user_pokemon_id, attack_id),
             FOREIGN KEY(user_pokemon_id) REFERENCES user_pokemons(id) ON DELETE CASCADE,
             FOREIGN KEY(attack_id) REFERENCES attacks(id)
@@ -285,6 +325,7 @@ func createTables() {
 			effect_type TEXT,
 			effect_value INTEGER,
 			image_url TEXT,
+			attack_id INTEGER,                  -- TM/HM: какую атаку открывает предмет
 			FOREIGN KEY(category_id) REFERENCES item_categories(id)
 		);`,
 		`CREATE TABLE IF NOT EXISTS user_items (
@@ -353,6 +394,20 @@ func createTables() {
 			FOREIGN KEY(npc_id) REFERENCES npc(id),
 			FOREIGN KEY(pokemon_id) REFERENCES pokemons(id)
 		);`,
+		// AI-команды тренера (ai_level >= 1): пул сохранённых составов.
+		// team_json — снимок полного покемона (вид, ходы, способность, характер,
+		// IV/EV, предмет), чтобы бой воспроизводился без пересоздания.
+		`CREATE TABLE IF NOT EXISTS npc_ai_teams (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			npc_id INTEGER NOT NULL,
+			ai_level INTEGER NOT NULL DEFAULT 1,
+			level INTEGER NOT NULL,
+			team_json TEXT NOT NULL,
+			score REAL DEFAULT 0,
+			source TEXT DEFAULT 'draft',
+			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY(npc_id) REFERENCES npc(id)
+		);`,
 		// ===== РАЗВЕДЕНИЕ (поток [13]) =====
 		// Яйцо, полученное сведе́нием пары в питомнике. Вид (species_id) —
 		// БАЗОВАЯ форма линии; IV уже посчитаны при создании (макс родителей +30%).
@@ -382,10 +437,16 @@ func createTables() {
 	DB.Exec("ALTER TABLE locations ADD COLUMN has_nursery INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE locations ADD COLUMN has_healing INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE locations ADD COLUMN region_id INTEGER DEFAULT 1 REFERENCES regions(id)")
+	DB.Exec("ALTER TABLE pokemon_locations ADD COLUMN min_level INTEGER DEFAULT 1")
+	DB.Exec("ALTER TABLE pokemon_locations ADD COLUMN max_level INTEGER DEFAULT 20")
 	DB.Exec("ALTER TABLE user_pokemon_learnable_attacks ADD COLUMN current_pp INTEGER DEFAULT 0")
+	DB.Exec("ALTER TABLE user_pokemon_learnable_attacks ADD COLUMN source TEXT DEFAULT 'level'")
+	DB.Exec("ALTER TABLE user_pokemon_learnable_attacks ADD COLUMN source_item_id INTEGER")
+	DB.Exec("ALTER TABLE items ADD COLUMN attack_id INTEGER")
 	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN happiness INTEGER DEFAULT 0")
-	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN gender TEXT")         // пол экземпляра 'M'/'F'/'N'
-	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN attractiveness TEXT") // буква привлекательности 'A'/'B'/'C'
+	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN gender TEXT")                  // пол экземпляра 'M'/'F'/'N'
+	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN attractiveness TEXT")          // буква привлекательности 'A'/'B'/'C'
+	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN is_starter INTEGER DEFAULT 0") // 1 = стартовый (первым в бой)
 
 	// Карточка тренера (поток [7]): поля профиля на users + флаг награды на items.
 	DB.Exec("ALTER TABLE users ADD COLUMN status_text TEXT")           // статус игрока (сам пишет)
@@ -400,6 +461,10 @@ func createTables() {
 	DB.Exec("ALTER TABLE npc ADD COLUMN team_size INTEGER DEFAULT 6")     // 1..6
 	DB.Exec("ALTER TABLE npc ADD COLUMN min_level INTEGER DEFAULT 5")
 	DB.Exec("ALTER TABLE npc ADD COLUMN max_level INTEGER DEFAULT 10")
+	// AI-уровень тренера: 0 = старый smart-AI, 1/2 = новый бот, 3/4 = задел.
+	DB.Exec("ALTER TABLE npc ADD COLUMN ai_level INTEGER DEFAULT 0")
+	// Признак легендарки/мифика для ограничений драфта (бэкфилл — legendaries.go).
+	DB.Exec("ALTER TABLE pokemons ADD COLUMN is_legendary INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN never_misses INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN recoil INTEGER DEFAULT 0")
 	DB.Exec("ALTER TABLE attacks ADD COLUMN drain INTEGER DEFAULT 0")
@@ -426,7 +491,7 @@ func createTables() {
 	`)
 
 	// Удаляем устаревшие записи
-	DB.Exec("DELETE FROM statuses WHERE id = 9") // Путы
+	DB.Exec("DELETE FROM statuses WHERE id = 9")  // Путы
 	DB.Exec("DELETE FROM statuses WHERE id = 12") // дубль Испуг
 
 	// Новые эффекты атак (погода)
@@ -443,12 +508,22 @@ func createTables() {
 		DB.Exec("INSERT OR IGNORE INTO statuses (id, name, description) VALUES (?, ?, ?)", s.id, s.name, s.desc)
 	}
 
-	// Категория "candy" и предмет "Леденец"
+	// Общая категория TM/HM (тип предмета различается effect_type: tm/hm)
+	DB.Exec("INSERT OR IGNORE INTO item_categories (id, name) VALUES (10, 'TM/HM')")
+
+	// Категория "candy" и конфеты. effect_value = сколько EV даётся за уровень.
 	DB.Exec("INSERT OR IGNORE INTO item_categories (name) VALUES ('candy')")
 	DB.Exec(`
 		INSERT OR IGNORE INTO items (id, name, description, category_id, price, effect_type, effect_value, image_url)
 		VALUES (?, ?, ?, (SELECT id FROM item_categories WHERE name = 'candy'), ?, ?, ?, ?)
-	`, 100, "Леденец", "Повышает уровень покемона на 1 и даёт +2 EV", 0, "candy", 1, "/static/images/items/41.png")
+	`, 100, "Леденец", "Повышает уровень покемона на 1 и даёт +2 EV", 0, "candy", 2, "/static/images/items/41.png")
+	DB.Exec(`
+		INSERT OR IGNORE INTO items (id, name, description, category_id, price, effect_type, effect_value, image_url)
+		VALUES (?, ?, ?, (SELECT id FROM item_categories WHERE name = 'candy'), ?, ?, ?, ?)
+	`, 167, "Жёлтая конфета", "Повышает уровень покемона на 1 и даёт +3 EV", 0, "candy", 3, "/static/images/items/yellow_candy.png")
+	// Идемпотентно приводим effect_value Леденца к смыслу «EV за уровень»
+	// (исторически там стояла 1, а +2 было захардкожено в useCandy).
+	DB.Exec("UPDATE items SET effect_value = 2 WHERE id = 100 AND effect_type = 'candy' AND effect_value = 1")
 
 	// Способности (поток [9] — КАРКАС). Схема + миграция слотов + бэкфилл экземпляров.
 	// ALTER fire-and-ignore (конвенция проекта: дубль колонки игнорируется).
@@ -456,8 +531,76 @@ func createTables() {
 	DB.Exec("ALTER TABLE pokemon_abilities ADD COLUMN slot INTEGER")     // 1=базовая X, 2=базовая Y, 3=скрытая
 	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN ability_id INTEGER")   // закреплённая способность экземпляра
 	DB.Exec("ALTER TABLE user_pokemons ADD COLUMN ability_slot INTEGER") // её слот (для ремапа при эволюции)
+	// [forms] Расширение pokemon_forms: переключение по ходу + подписи/порядок.
+	DB.Exec("ALTER TABLE pokemon_forms ADD COLUMN form_label TEXT")
+	DB.Exec("ALTER TABLE pokemon_forms ADD COLUMN trigger_mode TEXT DEFAULT 'hp'")
+	DB.Exec("ALTER TABLE pokemon_forms ADD COLUMN trigger_move_id INTEGER DEFAULT 0")
+	DB.Exec("ALTER TABLE pokemon_forms ADD COLUMN trigger_move_kind TEXT DEFAULT ''")
+	DB.Exec("ALTER TABLE pokemon_forms ADD COLUMN is_base_form INTEGER DEFAULT 0")
+	DB.Exec("ALTER TABLE pokemon_forms ADD COLUMN form_order INTEGER DEFAULT 0")
+	DB.Exec("ALTER TABLE pokemon_forms ADD COLUMN form_description TEXT")
 	migrateAbilitySlots()       // проставить slot существующим pokemon_abilities (идемпотентно)
 	backfillInstanceAbilities() // назначить способность экземплярам без неё (идемпотентно)
+	migrateAbilityBatch5Keys()  // [batch5] effect_key сложных способностей (идемпотентно)
+	migrateAbilityBatch6Keys()  // [batch6] effect_key топ-20 по носителям (идемпотентно)
+	migrateAbilityBatch7Keys()  // [batch7] effect_key расширенного набора (идемпотентно)
+
+	// Условия эволюции (день/ночь, сравнение стат и т.п.). Пустое значение —
+	// условие не задано; для level-эволюций это норма (только уровень).
+	DB.Exec("ALTER TABLE pokemons ADD COLUMN evolution_condition TEXT")
+	DB.Exec("ALTER TABLE pokemons ADD COLUMN evolution_priority INTEGER DEFAULT 0")
+	migrateEvolutionConditions()
+	migrateEvolutionParents()
+}
+
+// migrateEvolutionConditions заполняет условия для развилок, которые раньше
+// были неразличимы (Иви→Эспеон/Умбреон, Тайрог→Хитмон*). Идемпотентно: трогает
+// строку только пока condition пустой, чтобы не затирать правки из админки.
+func migrateEvolutionConditions() {
+	queries := []string{
+		// Иви: friendship-ветки различаются временем суток.
+		`UPDATE pokemons
+		 SET evolves_from_id = 133, evolution_method_id = 4, evolution_level = NULL,
+		     evolution_condition = 'time_day', evolution_priority = 0
+		 WHERE id = 196 AND (evolution_condition IS NULL OR evolution_condition = '')`,
+		`UPDATE pokemons
+		 SET evolves_from_id = 133, evolution_method_id = 4, evolution_level = NULL,
+		     evolution_condition = 'time_night', evolution_priority = 0
+		 WHERE id = 197 AND (evolution_condition IS NULL OR evolution_condition = '')`,
+		// Сильвеон — приоритетнее день/ночь, если Иви знает Fairy-атаку.
+		`UPDATE pokemons
+		 SET evolves_from_id = 133, evolution_method_id = 4, evolution_level = NULL,
+		     evolution_condition = 'fairy_move', evolution_priority = 10
+		 WHERE id = 700 AND (evolution_condition IS NULL OR evolution_condition = '')`,
+
+		// Тайрог: три ветки по сравнению Atk/Def на момент эволюции.
+		`UPDATE pokemons
+		 SET evolves_from_id = 236, evolution_method_id = 1, evolution_level = 20,
+		     evolution_condition = 'atk_gt_def', evolution_priority = 0
+		 WHERE id = 106 AND (evolution_condition IS NULL OR evolution_condition = '')`,
+		`UPDATE pokemons
+		 SET evolves_from_id = 236, evolution_method_id = 1, evolution_level = 20,
+		     evolution_condition = 'atk_lt_def', evolution_priority = 0
+		 WHERE id = 107 AND (evolution_condition IS NULL OR evolution_condition = '')`,
+		`UPDATE pokemons
+		 SET evolves_from_id = 236, evolution_method_id = 1, evolution_level = 20,
+		     evolution_condition = 'atk_eq_def', evolution_priority = 0
+		 WHERE id = 237 AND (evolution_condition IS NULL OR evolution_condition = '')`,
+	}
+	for _, q := range queries {
+		DB.Exec(q)
+	}
+}
+
+// migrateEvolutionParents чинит ошибочные родительские связи, оставшиеся от
+// линейного импорта: все формы Иви должны эволюционировать напрямую из Иви (133),
+// а не Вапореон → Джолтеон → Флареон. Идемпотентно.
+func migrateEvolutionParents() {
+	DB.Exec(`
+		UPDATE pokemons
+		SET evolves_from_id = 133
+		WHERE id IN (135, 136) AND (evolves_from_id IS NULL OR evolves_from_id <> 133)
+	`)
 }
 
 // Начальные данные для справочных таблиц
@@ -480,11 +623,16 @@ func insertInitialData() {
 		DB.Exec("INSERT OR IGNORE INTO attack_targets (name) VALUES (?)", t)
 	}
 
-	// Методы эволюции
-	evoMethods := []string{"level", "trade", "stone", "friendship", "item"}
+	// Методы эволюции. «Обмен» заменён на «Разведение»: торговли в игре нет,
+	// покемон эволюционирует при спаривании (BreedHandler). Переименовываем
+	// существующую строку id=2 ДО вставки, чтобы UNIQUE(name) не создал дубль.
+	DB.Exec("UPDATE evolution_methods SET name = 'breeding' WHERE id = 2 AND name = 'trade'")
+	evoMethods := []string{"level", "breeding", "stone", "friendship", "item"}
 	for _, m := range evoMethods {
 		DB.Exec("INSERT OR IGNORE INTO evolution_methods (name) VALUES (?)", m)
 	}
+	// gen1-«обменные» (метод был NULL): Алаказам/Мачамп/Голем/Генгар.
+	DB.Exec("UPDATE pokemons SET evolution_method_id = 2 WHERE id IN (65, 68, 76, 94) AND evolution_method_id IS NULL")
 
 	// Методы изучения атак
 	learnMethods := []string{"level-up", "tm", "egg", "tutor"}
@@ -516,16 +664,6 @@ func insertInitialData() {
 	}
 	for _, s := range statuses {
 		DB.Exec("INSERT OR IGNORE INTO statuses (id, name, description) VALUES (?, ?, ?)", s.id, s.name, s.desc)
-	}
-
-	// Если таблица locations пуста, добавим стартовую локацию (лес)
-	var count int
-	DB.QueryRow("SELECT COUNT(*) FROM locations").Scan(&count)
-	if count == 0 {
-		DB.Exec("INSERT INTO locations (id, name, description, has_nursery, has_healing) VALUES (1, 'Лес Пикачу', 'Густой лес с высокими деревьями...', 0, 0)")
-		DB.Exec("INSERT INTO locations (id, name, description, has_nursery, has_healing) VALUES (2, 'Дорога к городу', 'Пыльная дорога, ведущая к городу', 0, 0)")
-		DB.Exec("INSERT INTO locations (id, name, description, has_nursery, has_healing) VALUES (3, 'Пещера Зубата', 'Тёмная пещера, где обитают летучие мыши', 0, 0)")
-		DB.Exec("INSERT INTO location_exits (from_location, to_location) VALUES (1,2), (1,3), (2,1), (3,1)")
 	}
 
 	natures := []struct {
@@ -635,11 +773,7 @@ func insertInitialData() {
 		DB.Exec("INSERT OR IGNORE INTO player_roles (id, name) VALUES (?, ?)", pr.id, pr.name)
 	}
 
-	// Регионы
-	DB.Exec("INSERT OR IGNORE INTO regions (id, name) VALUES (1, 'Джотто')")
-
-	// Назначить все существующие локации региону Джотто
-	DB.Exec("UPDATE locations SET region_id = 1 WHERE region_id IS NULL OR region_id = 1")
+	// Регион создаётся в SeedEastJohtoFiveRoads (id=3).
 
 	// Погода
 	weatherTypes := []string{"Обычная", "Солнечно", "Дождь", "Град", "Песчаная буря"}
@@ -649,4 +783,144 @@ func insertInitialData() {
 
 	// Установить случайную погоду для каждого региона при первом запуске
 	DB.Exec("UPDATE regions SET current_weather_id = (ABS(RANDOM()) % 5) + 1")
+}
+
+// seedEvolutionItems идемпотентно добавляет предметы эволюции и привязывает
+// их к видам через pokemons.evolution_item_id. Привязка ставится только если поле
+// ещё пустое — ручные правки админа не затираются повторным запуском.
+//
+// Каноничные камни (10): Fire, Water, Thunder, Leaf, Moon, Sun, Shiny, Dusk,
+// Dawn, Ice. King's Rock / Metal Coat / Dragon Scale / Up-Grade оставлены как
+// trade-предметы (method=2). Oval Stone (Хаппини → Ченси) — предмет с той же
+// механикой «применить из инвентаря». Региональные формы (Alolan Sandslash/
+// Ninetales, Galarian Darmanitan, Hisuian Electrode) в БД не заведены
+// отдельными видами, поэтому их каменные ветки сюда не включены.
+// seedHappinessBerry идемпотентно добавляет «Сладкую ягоду» — расходуемый
+// предмет, поднимающий счастье покемона на 5 (максимум 255). При достижении
+// 255 friendship-эволюция срабатывает сразу (см. api.useHappiness).
+func seedHappinessBerry() {
+	DB.Exec(`
+		INSERT OR IGNORE INTO items
+			(id, name, description, category_id, price, effect_type, effect_value, image_url)
+		VALUES (166, 'Сладкая ягода',
+			'Увеличивает счастье покемона на 5. Максимум — 255.',
+			6, 0, 'happiness', 5, '/static/images/items/sweet_berry.png')
+	`)
+}
+
+// seedHeldItems идемпотентно добавляет надеваемые предметы с боевыми эффектами.
+// Зажигалка (burn_holder): в конце хода поджигает покемона, на котором надета.
+func seedHeldItems() {
+	DB.Exec("INSERT OR IGNORE INTO item_categories (id, name) VALUES (9, 'held')")
+	DB.Exec(`
+		INSERT OR IGNORE INTO items
+			(id, name, description, category_id, price, effect_type, effect_value, image_url)
+		VALUES (168, 'Зажигалка',
+			'Надеваемый предмет. В конце хода поджигает покемона, на котором надет, вызывая ожог.',
+			9, 0, 'burn_holder', 0, '/static/images/items/lighter.svg')
+	`)
+}
+
+// seedBattleItems идемпотентно добавляет расходуемые предметы, которые можно
+// применять в бою (лечение HP и снятие статусов). effect_type:
+//
+//	battle_heal_hp      — вылечить effect_value HP;
+//	battle_full_restore — полностью вылечить и срезать бусты статов выше +2;
+//	battle_cure_status  — снять статус effect_value (13 = замешательство,
+//	                      6 = любое отравление: 6 и 7).
+func seedBattleItems() {
+	DB.Exec("INSERT OR IGNORE INTO item_categories (id, name) VALUES (2, 'potion')")
+	DB.Exec("INSERT OR IGNORE INTO item_categories (id, name) VALUES (3, 'status_healer')")
+	items := []struct {
+		id          int
+		name        string
+		description string
+		categoryID  int
+		effectType  string
+		effectValue int
+		imageURL    string
+	}{
+		{169, "Стимпак", "Боевой предмет. Полностью восстанавливает HP активного покемона, но все его характеристики выше +2 сбрасываются до +2.", 2, "battle_full_restore", 0, "/static/images/items/stimpak.svg"},
+		{170, "Стимулятор", "Боевой предмет. Восстанавливает 10 HP активному покемону.", 2, "battle_heal_hp", 10, "/static/images/items/stimulator.svg"},
+		{171, "Лечебная трава", "Боевой предмет. Восстанавливает 5 HP активному покемону.", 2, "battle_heal_hp", 5, "/static/images/items/healing_herb.svg"},
+		{172, "Суперстимулятор", "Боевой предмет. Восстанавливает 100 HP активному покемону.", 2, "battle_heal_hp", 100, "/static/images/items/super_stimulator.svg"},
+		{173, "Антидот", "Боевой предмет. Снимает отравление (обычное и сильное) с активного покемона.", 3, "battle_cure_status", 6, "/static/images/items/antidote.svg"},
+		{174, "Антипаралитик", "Боевой предмет. Снимает паралич с активного покемона.", 3, "battle_cure_status", 2, "/static/images/items/antiparalytic.svg"},
+		{175, "Антизаморозка", "Боевой предмет. Снимает заморозку с активного покемона.", 3, "battle_cure_status", 4, "/static/images/items/antifreeze.svg"},
+		{176, "Пробуждение", "Боевой предмет. Снимает сон с активного покемона.", 3, "battle_cure_status", 5, "/static/images/items/awakening.svg"},
+		{177, "Ожоговый бальзам", "Боевой предмет. Снимает ожог с активного покемона.", 3, "battle_cure_status", 3, "/static/images/items/burn_balm.svg"},
+		{178, "Успокоительное", "Боевой предмет. Снимает замешательство с активного покемона.", 3, "battle_cure_status", 13, "/static/images/items/calm_balm.svg"},
+	}
+	for _, it := range items {
+		DB.Exec(`
+			INSERT OR IGNORE INTO items
+				(id, name, description, category_id, price, effect_type, effect_value, image_url)
+			VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+		`, it.id, it.name, it.description, it.categoryID, it.effectType, it.effectValue, it.imageURL)
+	}
+}
+
+func seedEvolutionItems() {
+	DB.Exec("INSERT OR IGNORE INTO item_categories (id, name) VALUES (5, 'evolution_stone')")
+
+	items := []struct {
+		id          int
+		name        string
+		description string
+		imageURL    string
+	}{
+		{151, "Солнечный камень", "Эволюционный предмет: Глум → Беллоссом, Санкерн → Санфлора, Коттони → Вимсикотт, Петилил → Лиллигант, Хелиоптайл → Хелиолиск.", "/static/images/items/sun_stone.png"},
+		{152, "Королевский камень", "Эволюционный предмет: Поливирл → Политоуд, Слоупок → Слоукинг.", "/static/images/items/kings_rock.png"},
+		{153, "Металлическая оболочка", "Эволюционный предмет: Оникс → Стиликс, Сайзер → Сайзор.", "/static/images/items/metal_coat.png"},
+		{154, "Драконья чешуя", "Эволюционный предмет: Сидра → Кингдра.", "/static/images/items/dragon_scale.png"},
+		{155, "Обновление уровень 1", "Эволюционный предмет: Поригон → Поригон2.", "/static/images/items/up_grade.png"},
+		{156, "Огненный камень", "Эволюционный предмет: Вульпикс → Нинетейлс, Гроулит → Арканин, Иви → Флареон, Пансир → Симисир, Капсакид → Сковиллен.", "/static/images/items/fire_stone.png"},
+		{157, "Водный камень", "Эволюционный предмет: Поливирл → Поливрат, Шеллдер → Клойстер, Старью → Старми, Иви → Вапореон, Ломбре → Лудиколо, Панпур → Симипур.", "/static/images/items/water_stone.png"},
+		{158, "Громовой камень", "Эволюционный предмет: Пикачу → Райчу, Иви → Джолтеон, Магнетон → Магнезон, Ноузпасс → Пробопасс, Илектрайк → Электросс, Чарджабаг → Викаволт, Тадбулб → Беллиболт.", "/static/images/items/thunder_stone.png"},
+		{159, "Листовой камень", "Эволюционный предмет: Глум → Вилеплум, Випинбелл → Виктрибел, Эгзекьют → Экзеггутор, Назлиф → Шифтри, Иви → Лифеон, Пансейдж → Симисейдж.", "/static/images/items/leaf_stone.png"},
+		{160, "Лунный камень", "Эволюционный предмет: Нидорина → Нидоуквин, Нидорино → Нидокинг, Клефейри → Клефабл, Джигглипафф → Вигглитафф, Скитти → Делкатти, Мунна → Мушарна.", "/static/images/items/moon_stone.png"},
+		{161, "Блестящий камень", "Эволюционный предмет: Розелия → Розрейд, Тогетик → Тогекисс, Минччино → Чинччино, Флоэтт → Флоржес.", "/static/images/items/shiny_stone.png"},
+		{162, "Тёмный камень", "Эволюционный предмет: Мисдривус → Мисмагиус, Муркроу → Хончкроу, Лампент → Шанделюр, Дублейд → Иджислаш.", "/static/images/items/dusk_stone.png"},
+		{163, "Рассветный камень", "Эволюционный предмет: Кирлия → Галлейд, Снорант → Фросласс.", "/static/images/items/dawn_stone.png"},
+		{164, "Ледяной камень", "Эволюционный предмет: Иви → Глейсеон, Крабролер → Крабоминабл, Сетоддл → Сетайтан.", "/static/images/items/ice_stone.png"},
+		{165, "Овальный камень", "Эволюционный предмет: Хаппини → Ченси.", "/static/images/items/oval_stone.png"},
+	}
+	for _, it := range items {
+		DB.Exec(`
+			INSERT OR IGNORE INTO items
+				(id, name, description, category_id, price, effect_type, effect_value, image_url)
+			VALUES (?, ?, ?, 5, 0, 'evolve', 0, ?)
+		`, it.id, it.name, it.description, it.imageURL)
+	}
+
+	// method: 3=stone, 2=trade. Для новых связей метод ставится явно (3): часть
+	// строк в БД была method=1/null, и старый COALESCE оставлял их без item-эволюции.
+	// Привязка по-прежнему только для пустого evolution_item_id.
+	links := []struct {
+		pokemonID, itemID, methodID int
+	}{
+		{182, 151, 3}, {192, 151, 3}, {547, 151, 3}, {549, 151, 3}, {695, 151, 3},
+		{186, 152, 2}, {199, 152, 2},
+		{208, 153, 2}, {212, 153, 2},
+		{230, 154, 2},
+		{233, 155, 2},
+		{38, 156, 3}, {59, 156, 3}, {136, 156, 3}, {514, 156, 3}, {952, 156, 3},
+		{62, 157, 3}, {91, 157, 3}, {121, 157, 3}, {134, 157, 3}, {272, 157, 3}, {516, 157, 3},
+		{26, 158, 3}, {135, 158, 3}, {462, 158, 3}, {476, 158, 3}, {604, 158, 3}, {738, 158, 3}, {939, 158, 3},
+		{45, 159, 3}, {71, 159, 3}, {103, 159, 3}, {275, 159, 3}, {470, 159, 3}, {512, 159, 3},
+		{31, 160, 3}, {34, 160, 3}, {36, 160, 3}, {40, 160, 3}, {301, 160, 3}, {518, 160, 3},
+		{407, 161, 3}, {468, 161, 3}, {573, 161, 3}, {671, 161, 3},
+		{429, 162, 3}, {430, 162, 3}, {609, 162, 3}, {681, 162, 3},
+		{475, 163, 3}, {478, 163, 3},
+		{471, 164, 3}, {740, 164, 3}, {975, 164, 3},
+		{113, 165, 3},
+	}
+	for _, l := range links {
+		DB.Exec(`
+			UPDATE pokemons
+			SET evolution_item_id = ?,
+			    evolution_method_id = ?
+			WHERE id = ? AND evolution_item_id IS NULL
+		`, l.itemID, l.methodID, l.pokemonID)
+	}
 }

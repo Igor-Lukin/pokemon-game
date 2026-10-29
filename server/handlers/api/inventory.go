@@ -87,6 +87,7 @@ func UseItemHandler(w http.ResponseWriter, r *http.Request) {
 
 	var message string
 	applied := 1
+	consumed := false
 
 	switch item.EffectType {
 	case "heal_hp":
@@ -112,7 +113,29 @@ func UseItemHandler(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "user_pokemon_id is required", http.StatusBadRequest)
 			return
 		}
-		message, applied, err = useCandy(userID, *req.UserPokemonID, req.Quantity)
+		message, applied, err = useCandy(userID, *req.UserPokemonID, req.Quantity, item.EffectValue)
+	case "happiness":
+		if req.UserPokemonID == nil {
+			http.Error(w, "user_pokemon_id is required", http.StatusBadRequest)
+			return
+		}
+		message, applied, err = useHappiness(userID, *req.UserPokemonID, item.EffectValue, req.Quantity)
+	case "evolve":
+		if req.UserPokemonID == nil {
+			http.Error(w, "user_pokemon_id is required", http.StatusBadRequest)
+			return
+		}
+		var evolved bool
+		evolved, message, err = EvolveWithItem(userID, *req.UserPokemonID, req.ItemID)
+		if err == nil && !evolved {
+			// Неподходящий предмет — no-op: ничего не меняем и не списываем.
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(UseItemResponse{Success: false, Message: message})
+			return
+		}
+		if evolved {
+			consumed = true
+		}
 	default:
 		http.Error(w, "Этот предмет нельзя использовать напрямую", http.StatusBadRequest)
 		return
@@ -123,11 +146,13 @@ func UseItemHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	removed, err := db.RemoveItemFromUser(userID, req.ItemID, applied)
-	if err != nil || !removed {
-		log.Printf("UseItemHandler: failed to remove item %d from user %d: %v", req.ItemID, userID, err)
-		http.Error(w, "Failed to consume item", http.StatusInternalServerError)
-		return
+	if !consumed {
+		removed, err := db.RemoveItemFromUser(userID, req.ItemID, applied)
+		if err != nil || !removed {
+			log.Printf("UseItemHandler: failed to remove item %d from user %d: %v", req.ItemID, userID, err)
+			http.Error(w, "Failed to consume item", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	log.Printf("User %d used item %s (id=%d)", userID, item.Name, req.ItemID)
@@ -205,7 +230,13 @@ func useRevive(userID, userPokemonID, percent int) error {
 	return err
 }
 
-func useCandy(userID, userPokemonID, quantity int) (string, int, error) {
+// useCandy поднимает уровень покемона на quantity и начисляет evPerLevel
+// нераспределённых EV за каждый новый уровень (effect_value предмета:
+// «Леденец» = 2, «Жёлтая конфета» = 3).
+func useCandy(userID, userPokemonID, quantity, evPerLevel int) (string, int, error) {
+	if evPerLevel <= 0 {
+		evPerLevel = 2
+	}
 	var ownerID, level, pokemonID, natureID, availableEV int
 	var iv [6]int
 	var ev [6]int
@@ -233,7 +264,7 @@ func useCandy(userID, userPokemonID, quantity int) (string, int, error) {
 			break
 		}
 		level++
-		availableEV += 2
+		availableEV += evPerLevel
 		applied++
 	}
 
@@ -248,9 +279,77 @@ func useCandy(userID, userPokemonID, quantity int) (string, int, error) {
 
 	log.Printf("User %d used %d candy on pokemon %d -> level %d (pokemon_id %d)", userID, applied, userPokemonID, level, newPokemonID)
 
-	msg := "Покемон повысил уровень до " + strconv.Itoa(level) + "!"
+	msg := "Покемон повысил уровень до " + strconv.Itoa(level) + "! (+" +
+		strconv.Itoa(applied*evPerLevel) + " EV)"
 	if evoInfo != nil && evoInfo.CanEvolve {
 		msg += " " + evoInfo.EvolvesToName + " ждёт эволюции! Зайдите в профиль покемона."
 	}
+	return msg, applied, nil
+}
+
+// useHappiness поднимает счастье покемона на amount за каждую использованную
+// единицу предмета (кламп на 255). При достижении 255 сразу проверяет и
+// применяет friendship-эволюцию, чтобы покемон эволюционировал в момент
+// максимума счастья, а не только на следующем уровне.
+func useHappiness(userID, userPokemonID, amount, quantity int) (string, int, error) {
+	if amount <= 0 {
+		amount = 1
+	}
+
+	var ownerID, happiness, pokemonID, level int
+	err := db.DB.QueryRow(`
+		SELECT user_id, COALESCE(happiness, 0), pokemon_id, level
+		FROM user_pokemons WHERE id = ?
+	`, userPokemonID).Scan(&ownerID, &happiness, &pokemonID, &level)
+	if err != nil {
+		return "", 0, err
+	}
+	if ownerID != userID {
+		return "", 0, errPermission
+	}
+	if happiness >= evoHappinessMax {
+		return "", 0, errors.New("Счастье уже максимальное")
+	}
+
+	before := happiness
+	applied := 0
+	for i := 0; i < quantity; i++ {
+		if happiness >= evoHappinessMax {
+			break
+		}
+		happiness += amount
+		if happiness > evoHappinessMax {
+			happiness = evoHappinessMax
+		}
+		applied++
+	}
+
+	if _, err := db.DB.Exec(
+		"UPDATE user_pokemons SET happiness = ? WHERE id = ?",
+		happiness, userPokemonID,
+	); err != nil {
+		return "", 0, err
+	}
+
+	msg := "Счастье: " + strconv.Itoa(happiness) + "/" + strconv.Itoa(evoHappinessMax) +
+		" (+" + strconv.Itoa(happiness-before) + ")"
+
+	// Достигли порога — пытаемся эволюционировать сразу (дружба).
+	if happiness >= evoHappinessMax {
+		info, err := checkEvolutionFor(userPokemonID, pokemonID, level)
+		if err != nil {
+			log.Printf("useHappiness: checkEvolutionFor error: %v", err)
+		} else if info != nil && info.CanEvolve {
+			name, _, err := evolveByInfo(userID, userPokemonID, info)
+			if err != nil {
+				log.Printf("useHappiness: evolveByInfo error: %v", err)
+			} else {
+				msg += " " + name + " эволюционировал!"
+			}
+		}
+	}
+
+	log.Printf("User %d used %d happiness item on pokemon %d: happiness %d -> %d",
+		userID, applied, userPokemonID, before, happiness)
 	return msg, applied, nil
 }

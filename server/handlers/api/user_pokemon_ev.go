@@ -54,8 +54,8 @@ func DistributeEVHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Amount <= 0 {
-		http.Error(w, "Amount must be positive", http.StatusBadRequest)
+	if req.Amount == 0 {
+		http.Error(w, "Amount must be non-zero", http.StatusBadRequest)
 		return
 	}
 
@@ -84,12 +84,17 @@ func DistributeEVHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validation
-	if availableEV < req.Amount {
-		http.Error(w, "Недостаточно свободных EV", http.StatusBadRequest)
-		return
-	}
-	if currentStatEV+req.Amount > 126 {
-		http.Error(w, "В этом стате не может быть больше 126 EV", http.StatusBadRequest)
+	if req.Amount > 0 {
+		if availableEV < req.Amount {
+			http.Error(w, "Недостаточно свободных EV", http.StatusBadRequest)
+			return
+		}
+		if currentStatEV+req.Amount > 126 {
+			http.Error(w, "В этом стате не может быть больше 126 EV", http.StatusBadRequest)
+			return
+		}
+	} else if currentStatEV+req.Amount < 0 {
+		http.Error(w, "EV в стате не может быть меньше 0", http.StatusBadRequest)
 		return
 	}
 
@@ -168,8 +173,13 @@ func DistributeEVHandler(w http.ResponseWriter, r *http.Request) {
 	statValues := [6]int{maxHP, atk, def, spd, spAtk, spDef}
 	statColumns := []string{"current_hp", "attack", "defense", "speed", "special_attack", "special_defense"}
 	if idx == 0 {
-		// HP: also update current_hp to match new max_hp
-		_, err = db.DB.Exec("UPDATE user_pokemons SET max_hp = ?, current_hp = max_hp WHERE id = ?", statValues[0], pokemonID)
+		// HP: при добавлении восстанавливаем до нового максимума, при снятии
+		// не даём текущему HP превысить новый максимум.
+		if req.Amount > 0 {
+			_, err = db.DB.Exec("UPDATE user_pokemons SET max_hp = ?, current_hp = max_hp WHERE id = ?", statValues[0], pokemonID)
+		} else {
+			_, err = db.DB.Exec("UPDATE user_pokemons SET max_hp = ?, current_hp = MIN(current_hp, ?) WHERE id = ?", statValues[0], statValues[0], pokemonID)
+		}
 	} else {
 		_, err = db.DB.Exec("UPDATE user_pokemons SET "+statColumns[idx]+" = ? WHERE id = ?", statValues[idx], pokemonID)
 	}

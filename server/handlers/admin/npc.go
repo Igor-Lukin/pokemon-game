@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"pokemon-game/server/db"
+	"pokemon-game/server/handlers/api"
 	"strconv"
 	"text/template"
 )
@@ -50,11 +51,14 @@ type NPCFormData struct {
 	TeamSize int
 	MinLevel int
 	MaxLevel int
+	AILevel  int // 0 = старый AI, 1/2 = бот, 3/4 = задел
 	// диалог
 	Nodes []DialogueNodeView
 	// команда (fixed-ростер, поток B)
 	Roster      []RosterRowView
 	AllPokemons []PokemonOption
+	// пул сохранённых AI-команд
+	AITeams []api.AITeamMeta
 }
 
 // RosterRowView — строка фикс-ростера команды NPC (npc_pokemons).
@@ -213,7 +217,7 @@ func CreateNonPlayerCharacterHandler(w http.ResponseWriter, r *http.Request) {
 
 		data := NPCFormData{
 			ID: 0, Name: "", AllLocations: allLocations,
-			TeamMode: "smart", TeamSize: 6, MinLevel: 5, MaxLevel: 5,
+			TeamMode: "smart", TeamSize: 6, MinLevel: 5, MaxLevel: 5, AILevel: 0,
 		}
 
 		tmpl, err := template.ParseFiles("./server/templates/admin/npc_form.html")
@@ -307,11 +311,11 @@ func EditNonPlayerCharacterHandler(w http.ResponseWriter, r *http.Request) {
 		var name string
 		var location_id int
 		var teamMode string
-		var teamSize, minLevel, maxLevel int
+		var teamSize, minLevel, maxLevel, aiLevel int
 
 		err := db.DB.QueryRow(
-			"SELECT name, location_id, COALESCE(team_mode,'random'), COALESCE(team_size,6), COALESCE(min_level,5), COALESCE(max_level,10) FROM npc WHERE id = ?", id).
-			Scan(&name, &location_id, &teamMode, &teamSize, &minLevel, &maxLevel)
+			"SELECT name, location_id, COALESCE(team_mode,'random'), COALESCE(team_size,6), COALESCE(min_level,5), COALESCE(max_level,10), COALESCE(ai_level,0) FROM npc WHERE id = ?", id).
+			Scan(&name, &location_id, &teamMode, &teamSize, &minLevel, &maxLevel, &aiLevel)
 		if err != nil {
 			if err == sql.ErrNoRows {
 				http.Error(w, "NPC not found", http.StatusNotFound)
@@ -341,9 +345,11 @@ func EditNonPlayerCharacterHandler(w http.ResponseWriter, r *http.Request) {
 		data := NPCFormData{
 			ID: id, Name: name, LocationID: location_id, AllLocations: allLocations,
 			TeamMode: teamMode, TeamSize: teamSize, MinLevel: minLevel, MaxLevel: maxLevel,
+			AILevel:     aiLevel,
 			Nodes:       loadNPCDialogue(id),
 			Roster:      loadNPCRoster(id),
 			AllPokemons: loadAllPokemons(),
+			AITeams:     api.ListSavedAITeamsForNPC(id),
 		}
 
 		tmpl, err := template.ParseFiles("./server/templates/admin/npc_form.html")
@@ -384,10 +390,16 @@ func EditNonPlayerCharacterHandler(w http.ResponseWriter, r *http.Request) {
 			minLevel = 1
 		}
 		maxLevel := minLevel
+		aiLevel := atoiDefault(r.FormValue("ai_level"), 0)
+		if aiLevel < 0 {
+			aiLevel = 0
+		} else if aiLevel > 4 {
+			aiLevel = 4
+		}
 
 		_, err := db.DB.Exec(
-			"UPDATE npc SET name = ?, location_id = ?, team_mode = ?, team_size = ?, min_level = ?, max_level = ? WHERE id = ?",
-			name, locationId, teamMode, teamSize, minLevel, maxLevel, id)
+			"UPDATE npc SET name = ?, location_id = ?, team_mode = ?, team_size = ?, min_level = ?, max_level = ?, ai_level = ? WHERE id = ?",
+			name, locationId, teamMode, teamSize, minLevel, maxLevel, aiLevel, id)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

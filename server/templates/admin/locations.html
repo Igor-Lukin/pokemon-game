@@ -6,10 +6,15 @@
   </head>
   <body>
     <h1>Locations</h1>
-    <a href="/admin/locations/create">Create New Location</a>
+    <p>
+      <a href="/admin/locations/create">Create New Location</a> |
+      <a href="/admin/regions">Manage Regions</a> |
+      <a href="/admin">Admin Home</a>
+    </p>
     <table border="1">
       <tr>
         <th>ID</th>
+        <th>Region</th>
         <th>Name</th>
         <th>Description</th>
         <th>Питомник</th>
@@ -19,10 +24,11 @@
       {{range .}}
       <tr>
         <td>{{.ID}}</td>
+        <td>{{.RegionName}} (ID {{.RegionID}})</td>
         <td>{{.Name}}</td>
         <td>{{.Description}}</td>
-        <td>{{if .HasNursery}}✅{{else}}❌{{end}}</td>
-        <td>{{if .HasHealing}}✅{{else}}❌{{end}}</td>
+        <td>{{if .HasNursery}}Да{{else}}—{{end}}</td>
+        <td>{{if .HasHealing}}Да{{else}}—{{end}}</td>
         <td>
           <a href="/admin/locations/edit?id={{.ID}}">Edit</a>
           <form

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
@@ -30,6 +31,7 @@ const (
 	ivPlusChance       = 0.30          // шанс +1 к унаследованному гену
 	ivCap              = 31            // потолок IV
 	baseFormMaxSteps   = 10            // защита от цикла в линии эволюции
+	maxEggsPerUser     = 3             // лимит незавершённых яиц на игрока
 )
 
 // eggTimeLayout — формат хранения created_at/hatch_at в таблице eggs
@@ -119,13 +121,14 @@ type breedRequest struct {
 }
 
 type eggJSON struct {
-	ID               int    `json:"id"`
-	SpeciesID        int    `json:"species_id"`
-	Name             string `json:"name"`
-	ImageURL         string `json:"image_url"`
-	HatchAt          string `json:"hatch_at"`
-	RemainingSeconds int    `json:"remaining_seconds"`
-	Ready            bool   `json:"ready"`
+	ID               int      `json:"id"`
+	SpeciesID        int      `json:"species_id"`
+	Name             string   `json:"name"`
+	ImageURL         string   `json:"image_url"`
+	HatchAt          string   `json:"hatch_at"`
+	RemainingSeconds int      `json:"remaining_seconds"`
+	Ready            bool     `json:"ready"`
+	Evolved          []string `json:"evolved,omitempty"`
 }
 
 // BreedHandler — POST /api/nursery/breed {parent1_id, parent2_id}. Сводит пару
@@ -178,24 +181,62 @@ func BreedHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Одно незавершённое яйцо на пару проверяется в транзакции ниже.
+
+	speciesID := baseFormOf(p1.up.PokemonID) // виды равны -> базовая форма общего вида
+	iv := childIV(p1.iv, p2.iv)
+
+	// Лимит яиц + проверка дубликата пары + INSERT — в одной транзакции
+	// (BEGIN IMMEDIATE), чтобы двойной сабмит не создал два яйца.
+	ctx := r.Context()
+	conn, err := db.DB.Conn(ctx)
+	if err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	defer conn.Close()
+
+	rollback := true
+	defer func() {
+		if rollback {
+			conn.ExecContext(context.Background(), "ROLLBACK")
+		}
+	}()
+
+	if _, err := conn.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+		log.Printf("BreedHandler: begin: %v", err)
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+
+	var eggCount int
+	if err := conn.QueryRowContext(ctx, "SELECT COUNT(*) FROM eggs WHERE user_id = ?", userID).Scan(&eggCount); err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	if eggCount >= maxEggsPerUser {
+		http.Error(w, "Инкубатор полон (3 яйца)", http.StatusBadRequest)
+		return
+	}
+
 	// Одно незавершённое яйцо на пару (в любом порядке родителей).
 	var dup int
-	db.DB.QueryRow(`
+	if err := conn.QueryRowContext(ctx, `
 		SELECT COUNT(*) FROM eggs
 		WHERE user_id = ?
 		  AND ((parent1_id = ? AND parent2_id = ?) OR (parent1_id = ? AND parent2_id = ?))`,
-		userID, p1.up.ID, p2.up.ID, p2.up.ID, p1.up.ID).Scan(&dup)
+		userID, p1.up.ID, p2.up.ID, p2.up.ID, p1.up.ID).Scan(&dup); err != nil {
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
 	if dup > 0 {
 		http.Error(w, "У этой пары уже есть яйцо", http.StatusBadRequest)
 		return
 	}
 
-	speciesID := baseFormOf(p1.up.PokemonID) // виды равны -> базовая форма общего вида
-	iv := childIV(p1.iv, p2.iv)
-
 	now := time.Now().UTC()
 	hatch := now.Add(incubationDuration)
-	res, err := db.DB.Exec(`
+	res, err := conn.ExecContext(ctx, `
 		INSERT INTO eggs (user_id, species_id, iv_hp, iv_attack, iv_defense,
 			iv_speed, iv_special_attack, iv_special_defense,
 			parent1_id, parent2_id, created_at, hatch_at)
@@ -203,10 +244,18 @@ func BreedHandler(w http.ResponseWriter, r *http.Request) {
 		userID, speciesID, iv[0], iv[1], iv[2], iv[3], iv[4], iv[5],
 		p1.up.ID, p2.up.ID, now.Format(eggTimeLayout), hatch.Format(eggTimeLayout))
 	if err != nil {
+		log.Printf("BreedHandler: insert egg: %v", err)
 		http.Error(w, "DB error", http.StatusInternalServerError)
 		return
 	}
 	eggID, _ := res.LastInsertId()
+
+	if _, err := conn.ExecContext(ctx, "COMMIT"); err != nil {
+		log.Printf("BreedHandler: commit: %v", err)
+		http.Error(w, "DB error", http.StatusInternalServerError)
+		return
+	}
+	rollback = false
 
 	var name string
 	var img sql.NullString
@@ -217,11 +266,53 @@ func BreedHandler(w http.ResponseWriter, r *http.Request) {
 		remaining = 0
 	}
 	log.Printf("User %d bred pokemons %d+%d -> egg %d (species %d)", userID, p1.up.ID, p2.up.ID, eggID, speciesID)
+
+	// [эволюция] «Разведение» (бывший «обмен», method=2): после успешного
+	// спаривания эволюционирует каждый родитель, у вида которого есть такая
+	// эволюция. Предметы (King's Rock/Metal Coat и пр.) для этого не нужны.
+	var evolved []string
+	for _, parentID := range []int{p1.up.ID, p2.up.ID} {
+		if name, ok := evolveByBreeding(userID, parentID); ok {
+			evolved = append(evolved, name)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(eggJSON{
 		ID: int(eggID), SpeciesID: speciesID, Name: name, ImageURL: img.String,
 		HatchAt: hatch.Format(eggTimeLayout), RemainingSeconds: remaining, Ready: remaining == 0,
+		Evolved: evolved,
 	})
+}
+
+// evolveByBreeding эволюционирует покемона-родителя, если у его вида есть
+// эволюция методом 2 («Разведение», исторически «обмен»). Возвращает имя
+// новой формы и признак успеха.
+func evolveByBreeding(userID, userPokemonID int) (string, bool) {
+	var pokemonID int
+	if err := db.DB.QueryRow(
+		"SELECT pokemon_id FROM user_pokemons WHERE id = ? AND user_id = ?",
+		userPokemonID, userID,
+	).Scan(&pokemonID); err != nil {
+		return "", false
+	}
+	var newID int
+	var newName string
+	err := db.DB.QueryRow(`
+		SELECT id, name FROM pokemons
+		WHERE evolves_from_id = ? AND evolution_method_id = 2
+		ORDER BY id LIMIT 1`, pokemonID).Scan(&newID, &newName)
+	if err != nil {
+		return "", false
+	}
+	info := &EvolutionInfo{CanEvolve: true, EvolvesToID: newID, EvolvesToName: newName}
+	evolvedName, _, err := evolveByInfo(userID, userPokemonID, info)
+	if err != nil {
+		log.Printf("evolveByBreeding: user_pokemon=%d -> %d: %v", userPokemonID, newID, err)
+		return "", false
+	}
+	log.Printf("User %d: breeding evolution %d -> %s (pokemon_id %d)", userID, userPokemonID, evolvedName, newID)
+	return evolvedName, true
 }
 
 // EggsHandler — GET /api/nursery/eggs. Список яиц игрока с обратным таймером.

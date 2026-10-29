@@ -1,0 +1,171 @@
+====================================================================
+TEST_gen4 — ОТЧЁТ ПО ВНЕСЕНИЮ ЧЕТВЁРТОГО ПОКОЛЕНИЯ (#387–493, Синно)
+Исполнитель: ИИ-агент. Дата: 2026-10-23.
+Основа: PokeAPI (pokemon / pokemon-species / generation-4 /
+evolution-chain / move), спрайты — Pokémon Showdown (ani/*.gif).
+ТЗ: HANDOFF_gen4.txt. Скилл: adding-pokemon-generations.
+====================================================================
+
+ИТОГ: ГОТОВО (данные). Все 107 видов #387–493 внесены, включая
+легендарных (9) и мифических (5). Лёрнсеты, способности (base+hidden),
+эволюции (включая 7 кросс-ген беби и 18 кросс-ген эволюций старых
+видов) и спрайты проставлены. Движок не менялся; недостающие механики
+вынесены в MISSING_MOVES_gen4.txt.
+
+--------------------------------------------------------------------
+1. ЧТО ВНЕСЕНО (числа)
+--------------------------------------------------------------------
+                     было      стало     дельта
+  pokemons           386       493       +107
+  attacks            587       609       +22
+  abilities          226       228       +2
+  pokemon_attacks  17236     24016      +6780
+  pokemon_abilities  925      1170       +245
+
+  • Виды #387–493: 107/107, min/max id = 387/493.
+  • Новые атаки (id 590–611, 22 шт.): 20 новых gen4 + 2 старые
+    (Follow Me, Jump Kick), которых не было в БД. Все — только данные;
+    механики перечислены в MISSING_MOVES_gen4.txt.
+  • Новые способности каталога (id 236–237): Пламенный порыв
+    (Flare Boost), Острота (Sharpness). effect_key = NULL.
+  • Спрайты: 107 анимированных .gif из Pokémon Showdown в
+    normal/387.gif … 493.gif и мини-копии в mini/ (107/107 в каждой
+    папке). PNG-fallback не понадобился.
+  • pokedex.js: запасной maxPokemonId 386 -> 493
+    (реальный максимум всё равно берётся из /api/pokedex/list).
+
+--------------------------------------------------------------------
+2. ДАННЫЕ ВИДОВ (сверено с PokeAPI, 0 расхождений)
+--------------------------------------------------------------------
+Для всех 107 видов: id = национальный номер; русское имя; описание;
+современные типы (Fairy уже есть у gen1–2); 6 base-статов; height/weight;
+category_power = base_experience; experience_group = 3; rarity = 1;
+пол/бесполость; catch_rate; image_url = normal/NNN.gif.
+Примеры (совпадают с PokeAPI):
+  #387 Тортвиг   [Grass]             HP55 Atk68 Def64 SpA45 SpD55 Spe31
+  #390 Чимчар    [Fire]              HP44 Atk58 Def44 SpA58 SpD44 Spe61
+  #393 Пиплап    [Water]             HP53 Atk51 Def53 SpA61 SpD56 Spe40
+  #445 Гарчомп   [Dragon/Ground]     HP108 Atk130 Def95 SpA80 SpD85 Spe102
+  #448 Лукарио   [Fighting/Steel]    HP70 Atk110 Def70 SpA115 SpD70 Spe90
+  #475 Галлейд   [Psychic/Fighting]  HP68 Atk125 Def65 SpA65 SpD115 Spe80
+  #478 Фросласс  [Ice/Ghost]         HP70 Atk80 Def70 SpA80 SpD70 Spe110
+  #483 Диалга    [Steel/Dragon]      HP100 Atk120 Def120 SpA150 SpD100 Spe90
+  #493 Аркеус    [Normal]            HP120 Atk120 Def120 SpA120 SpD120 Spe120
+Двутипных: 53. Бесполых: 17. Легендарных: 9, мифических: 5.
+Описания непустые у всех; формат как у gen2/gen3:
+  «X — покемон/легендарный покемон/мифический покемон четвёртого
+   поколения (регион Синно). Национальный №N.»
+
+--------------------------------------------------------------------
+3. ЛЁРНСЕТЫ
+--------------------------------------------------------------------
+Источник — PokeAPI, версия Platinum; для видов/ходов без Platinum —
+Diamond/Pearl или HGSS (fallback). Методы:
+  level-up 1329, machine 4025, egg 298, tutor 1128  => 6780 строк.
+Сопоставление с attacks — по нормализованному eng_name.
+  • У каждого вида есть level-up атаки и хотя бы одна урон-атака
+    (фолбэки не понадобились: канон даёт урон-ходы всем 107 видам).
+  • TM/tutor/egg — как данные (механик TM в бою нет).
+  • Пропущена 1 form-change строка Rotom (Thunder Shock) — это ход
+    бытовой формы, базовому Ротому не нужен (см. MISSING).
+
+--------------------------------------------------------------------
+4. ЭВОЛЮЦИИ
+--------------------------------------------------------------------
+  • 55 видов gen4 имеют evolves_from: level 42, trade 5, stone 6,
+    friendship 2; 52 базовых.
+  • Кросс-ген из старых поколений в gen4 (18): Magnezone, Lickilicky,
+    Rhyperior, Tangrowth, Electivire, Magmortar, Togekiss, Yanmega,
+    Leafeon, Glaceon, Gliscor, Mamoswine, Porygon-Z, Gallade,
+    Probopass, Dusknoir, Froslass, Ambipom; плюс Roserade (315->407),
+    Mismagius (200->429), Honchkrow (198->430).
+  • Кросс-ген беби gen4 -> старые виды (7 старых строк обновлены):
+      Sudowoodo (185) <- Bonsly (438);
+      Mr. Mime (122)  <- Mime Jr. (439);
+      Chansey (113)   <- Happiny (440);
+      Snorlax (143)   <- Munchlax (446);
+      Mantine (226)   <- Mantyke (458);
+      Roselia (315)   <- Budew (406);
+      Chimecho (358)  <- Chingling (433).
+  • Ссылок на gen5+ нет; циклов нет; «висящих» evolves_from нет.
+  • Phione->Manaphy НЕ заведена: в PokeAPI это пустые evolution_details
+    (размножение, а не эволюция).
+  • Предметы эволюции не заводились; методы stone/trade/item стоят без
+    evolution_item_id. Условия (магнитное поле, Moss/Ice Rock, время
+    суток, пол, known move, party species) приближены ближайшим методом
+    и перечислены в MISSING_MOVES_gen4.txt.
+
+--------------------------------------------------------------------
+5. СПОСОБНОСТИ
+--------------------------------------------------------------------
+  • 107 видов, 245 строк pokemon_abilities:
+      slot 1 — 107, slot 2 — 47, slot 3 (hidden) — 91.
+      base 154, hidden 91. У каждого вида есть хотя бы одна базовая.
+  • 107 уникальных английских имён (включая способности, появившиеся
+    позже, — PokeAPI отдаёт их как hidden у gen4-видов).
+  • 105 имён смаплены на существующие русские строки по смыслу,
+    описанию и effect_key. 2 отсутствовавшие добавлены: Flare Boost,
+    Sharpness (effect_key=NULL).
+  • Скрытые: is_hidden=1 <=> slot=3; дублей hidden/base и дублей слота
+    нет. Экземпляры без ability_id в user_pokemons отсутствуют (0),
+    дополнительный бэкфилл не потребовался.
+
+--------------------------------------------------------------------
+6. ПРОВЕРКИ
+--------------------------------------------------------------------
+  go build ./... ....................................... OK
+  go vet ./... ......................................... OK
+  go test ./... -count=1 ............................... OK
+  node --check client/static/js/pokedex.js ............. OK
+  PRAGMA integrity_check ............................... ok
+  Виды #387–493: 107/107; статы/типы/пол/рост/вес/catch/base_exp/
+    имя/картинка сверены с PokeAPI — 0 расхождений.
+  У всех 107: непустой description, image_url, category_power > 0,
+    catch_rate > 0, способность, урон-атака level-up.
+  Дубли pokemons.name / attacks.name / attacks.eng_name /
+    abilities.name — 0.
+  Сироты pokemon_attacks / pokemon_abilities — 0.
+  Файлы спрайтов normal/ и mini/: 493/493 (включая #387–493),
+    все gen4-файлы — валидные GIF.
+  Эволюции: 0 ссылок на gen5+, 0 циклов, 0 висящих id.
+  Регрессия по бэкапу before-gen4:
+    – у gen1–3 изменились РОВНО 7 строк (evolves_from_id/method/level
+      у беби-форм, см. §4); остальные поля и все лёрнсеты/способности
+      старых видов не тронуты;
+    – user_pokemons не изменились (525/525 строк равны).
+  PRAGMA foreign_key_check: те же 18 pre-existing нарушений
+    attacks.effect_status_id (9/12/20/21), что и в бэкапе; новых нет,
+    не исправлялись (известный дефект проекта).
+
+  Живой HTTP-смоук (уже запущенный сервер, БД читается на лету):
+    GET /api/pokedex/list                    -> 200, 493 вида,
+                                                последний #493 «Аркеус»;
+    GET /api/pokedex/pokemon/387/full        -> 200, 2 способности, 65 атак;
+    GET /api/pokedex/pokemon/390/full        -> 200, 2 способности, 77 атак;
+    GET /api/pokedex/pokemon/393/full        -> 200, 2 способности, 64 атаки;
+    GET /api/pokedex/pokemon/448/full        -> 200, 3 способности, 77 атак;
+    GET /api/pokedex/pokemon/462/full        -> 200, 3 способности, 57 атак;
+    GET /api/pokedex/pokemon/475/full        -> 200, 3 способности, 91 атака;
+    GET /api/pokedex/pokemon/478/full        -> 200, 2 способности, 67 атак;
+    GET /api/pokedex/pokemon/493/full        -> 200, 1 способность, 117 атак;
+    GET /static/images/pokemons/normal/387.gif -> 200 image/gif;
+    GET /static/images/pokemons/normal/493.gif -> 200 image/gif;
+    GET /static/images/pokemons/mini/387.gif   -> 200 image/gif;
+    GET /static/images/pokemons/mini/493.gif   -> 200 image/gif.
+
+  Полноценный браузерный бой новым gen4-покемоном не проводился:
+  аккаунт владельца не создавался/не менялся. Код создания экземпляра
+  (utils.CreateUserPokemon) не менялся и работает по данным БД.
+
+--------------------------------------------------------------------
+7. ФАЙЛЫ / БЭКАП
+--------------------------------------------------------------------
+  database/pokemon.db
+  client/static/images/pokemons/{normal,mini}/387.gif … 493.gif
+  client/static/js/pokedex.js (maxPokemonId fallback 493)
+  MISSING_MOVES_gen4.txt
+  TEST_gen4.txt
+  HANDOFF_STATUS.txt (обновлён)
+  Бэкап: database/backups/pokemon.db.bak-before-gen4-20261023-115734
+  Скрипты импорта/проверок — вне репозитория (scratchpad).
+====================================================================

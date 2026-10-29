@@ -26,7 +26,7 @@ func GameHandler(w http.ResponseWriter, r *http.Request) {
 	tmpl.Execute(w, struct {
 		Username string
 		Version  string
-	}{Username: username, Version: "18"})
+	}{Username: username, Version: "46"})
 }
 
 func GamePostHandler(w http.ResponseWriter, r *http.Request) {

@@ -1,0 +1,35 @@
+TEST_faint_sprite — спрайт в строке «X теряет сознание!»
+=========================================================
+Дата: 2026-10-27
+Часть задачи «Исправления ошибок в разных механиках».
+
+ЗАДАЧА
+------
+Перед строкой «X теряет сознание!» показывать мини-спрайт покемона — так же,
+как в строке хода «X → Атака».
+
+СДЕЛАНО
+-------
+1) server/handlers/api/battle.go — fillFaintLogImages(bs, log): для записей
+   Fainted без PokemonImage подставляет картинку из PlayerTeam/EnemyTeam по
+   имени (одинаковое имя = один вид = один спрайт). Вызывается:
+   - finishBattleTurn (ход игрока/предмет),
+   - SwitchHandler (все 5 ответов: need_switch/defeat/victory/switch_done),
+   - pvp.go (новые строки лога NewLog).
+2) client/static/js/game.js — ветка entry.fainted рендерит mini-спрайт
+   (entry.pokemon_image с заменой /normal/→/mini/) перед текстом.
+3) client/static/css/game.css — .log-fainted теперь flex с выравниванием по
+   центру и gap 4px (спрайт + текст в строку).
+4) Версия статики 23.
+
+ПРОВЕРКИ
+--------
+[x] go build / go vet — OK; node --check game.js — OK; integrity_check ok;
+[x] живой прогон (временный пользователь, затем удалён):
+    запись о падении содержит картинку:
+    {"round":1,"pokemon_name":"Мьюту",
+     "pokemon_image":"/static/images/pokemons/normal/150.gif","fainted":true};
+[x] сервер перезапущен в фоне.
+
+ПРИМЕЧАНИЕ: клиенту нужен Ctrl+F5 (game.js/game.css). Правки сервера
+применяются к новым/текущим боям без перезапуска страницы.

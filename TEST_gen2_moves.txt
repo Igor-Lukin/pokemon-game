@@ -1,0 +1,192 @@
+====================================================================
+TEST_gen2_moves — 26 атак gen2, механики и проверки
+Дата ревизии: 2026-10-22 (после повторной проверки рабочего дерева).
+Источник: MISSING_MOVES_gen2.txt. ТЗ: HANDOFF_gen2_moves.txt.
+====================================================================
+
+1. КРАТКО
+--------------------------------------------------------------------
+Повторная проверка показала: 26 атак и лёрнсеты уже были заведены
+в другом проходе, но часть механик отсутствовала. Доделано:
+  • Rage (+1 Atk при получении урона);
+  • Thief (кража held-предмета + персист held_item_id);
+  • Triple Kick (10/20/30, отдельная точность на удар);
+  • Self Destruct падает в обморок и под Защитой/поглощением;
+  • flinch больше не переносится на следующий ход и срабатывает
+    только по ещё не ходившей цели;
+  • Sacred Fire размораживает пользователя и цель;
+  • multi-hit: одна проверка точности, каноническое распределение
+    2–5 (3/8, 3/8, 1/8, 1/8);
+  • Bind/Wrap: ловушка 2–5 ходов (остальные ловушки не тронуты);
+  • схлопнут исторический дубль Fire Blast (id 284 -> id 78).
+
+2. ДАННЫЕ (database/pokemon.db)
+--------------------------------------------------------------------
+26/26 атак на месте (id 552–577):
+  Bind, Body Slam, Comet Punch, Cut, Drill Peck, Egg Bomb, False Swipe,
+  Feint Attack, Fury Attack, Fury Cutter, Headbutt, Horn Attack,
+  Mega Punch, Megahorn, Mirror Coat, Rage, Sacred Fire, Seismic Toss,
+  Self Destruct, Slam, Steel Wing, Stomp, Thief, Thunder Punch,
+  Triple Kick, Wrap.
+
+Лёрнсеты (pokemon_attacks) по новым атакам:
+  Bind 1, Body Slam 10, Comet Punch 2, Cut 29, Drill Peck 3,
+  Egg Bomb 1, False Swipe 1, Feint Attack 13, Fury Attack 4,
+  Fury Cutter 17, Headbutt 76, Horn Attack 3, Mega Punch 1,
+  Megahorn 1, Mirror Coat 3, Rage 9, Sacred Fire 1, Seismic Toss 2,
+  Self Destruct 3, Slam 8, Steel Wing 11, Stomp 5, Thief 40,
+  Thunder Punch 18, Triple Kick 1, Wrap 1.
+  Атак без лёрнсета: 0.
+
+Чистка дублей:
+  Fire Blast id 284 («Огненный залп», 20 строк лёрнсета) слит в
+  id 78 («Огненный Плевок», 120 силы). После слияния id 78 имеет
+  68 строк лёрнсета. id 284 удалён.
+  Итог: attacks = 575 уникальных (до чистки было 576 сырых строк),
+  max id = 577, дублей name/eng_name = 0.
+  pokemon_attacks = 10485, дублей (вид, атака, метод) = 0,
+  сирот = 0.
+
+3. МЕХАНИКИ (код)
+--------------------------------------------------------------------
+server/handlers/api/battle.go
+  • executeDamagingMove, ветка HitsMin>1: checkHit один раз,
+    распределение 2–5; Triple Kick — отдельная ветка (3 удара,
+    точность на каждый удар);
+  • flinch: второй ход проверяет second.Flinched и пропускается;
+    флаг сбрасывается в конце хода (defer), а также при смене;
+  • self-destruct: selfDestructFaint вызывается и при ранних return
+    (Защита/поглощение способностью);
+  • Sacred Fire: thawBySacredFire для цели после попадания;
+  • Rage: флаг Raging ставится при использовании, снимается при
+    другом ходе/смене; applyRageOnHit даёт +1 Atk;
+  • Thief: applyThief после попадания; held_item_id сохраняется в
+    saveBattleState;
+  • Bind/Wrap: TrapTurns = 2..5 (точечно по id 552/577);
+  • Rage/flinch сбрасываются при смене (performInBattleSwitch).
+
+server/handlers/api/gen2_moves.go (новый)
+  • tripleKickPower (10/20/30);
+  • applyRageOnHit, applyThief, selfDestructFaint,
+    thawBySacredFire, sacredFireCanAct.
+
+server/handlers/api/pvp.go
+  • Sacred Fire-разморозка для обеих сторон;
+  • flinch второго хода и сброс флага;
+  • Rage снимается при выборе другого хода;
+  • held_item_id сохраняется в savePvpTeam (кража в PvP).
+
+Ранее уже работали и не переделывались:
+  False Swipe (min 1 HP), Seismic Toss (урон = уровень), Mirror Coat
+  (спец-контратака ×2), Fury Cutter (40/80/160), статусы Body Slam
+  (паралич 30%), Thunder Punch (паралич 10%), Sacred Fire (ожог 50%),
+  Headbutt/Stomp (испуг 30%), Steel Wing (+1 Def, 10%),
+  Feint Attack (never miss).
+
+4. АВТОТЕСТЫ
+--------------------------------------------------------------------
+go build ./... ...................................... OK
+go vet ./... ........................................ OK
+go test ./... -count=1 .............................. OK
+
+Новый файл server/handlers/api/gen2_moves_test.go:
+  • TestGen2AllMovesExecuteWildAndTrainer — все 26 атак через
+    executeDamagingMove в состояниях wild и trainer;
+  • TestGen2AllMovesThroughProcessTurn — все 26 атак через боевой
+    оркестратор processTurn в wild и trainer (Mirror Coat: враг
+    бьёт спец-атакой первым, затем возврат ×2);
+  • multi-hit 2–5: распределение, 300 прогонов, встречаются 2/3/4/5;
+  • Bind/Wrap: TrapTurns строго 2..5;
+  • Fury Cutter: 40/80/160/160;
+  • Triple Kick: 10/20/30 и ровно 3 удара;
+  • False Swipe: HP не ниже 1;
+  • Seismic Toss: урон = уровень;
+  • Self Destruct: обморок, в т.ч. под Защитой;
+  • Thief: перенос held-предмета;
+  • Mirror Coat: возврат спец-урона ×2;
+  • Rage: +1 Atk при получении урона;
+  • Body Slam / Thunder Punch / Sacred Fire: паралич/ожог;
+  • Steel Wing: +1 Def;
+  • Sacred Fire: разморозка цели и пользователя;
+  • Feint Attack: 100/100 попаданий при accuracy=1;
+  • flinch: второй покемон пропускает ход, сообщение в логе.
+
+5. ЖИВОЙ ПРОГОН
+--------------------------------------------------------------------
+Сервер собран отдельным exe и запущен из корня с SESSION_KEY.
+  GET / -> 200
+  stderr: «Сервер запущен на http://localhost:8080»
+Автотесты wild/trainer идут через те же processTurn/executeDamagingMove,
+которые вызывает HTTP.
+
+5.1. ЖИВОЙ PvP ПО HTTP (два аккаунта)
+Тестовые аккаунты (созданы в database/pokemon.db, локация 100):
+  qa_pvp_a / QaTest123!
+  qa_pvp_b / QaTest123!
+(только для локальных прогонов; при выкладке в прод удалить/сменить)
+Команды (ручной сценарий, requests + cookie-сессии):
+  challenge -> incoming -> respond(accept) -> pvp/current -> pvp/lead
+  -> pvp/action (оба) -> pvp/state -> pvp/replace -> pvp/forfeit.
+
+Команды:
+  A: Mew [Thief, Rage, Triple Kick, Headbutt] + Alakazam
+     [Psychic, False Swipe, Seismic Toss, Fury Cutter];
+  B: Snorlax (held item id 133) [Mirror Coat, Sacred Fire, Body Slam,
+     Steel Wing] + Machamp [Thunder Punch, Stomp, Comet Punch,
+     Fury Attack].
+
+Что реально проверено в живом PvP:
+  [x] вызов, принятие, lead_select, переход в battling;
+  [x] Thief украл held-предмет у Snorlax: у A item=133, у B NULL;
+      то же сохранено в user_pokemons после хода;
+  [x] Rage: после ответного удара Atk-стадия = 1;
+  [x] Triple Kick: в логе hit_count = 3;
+  [x] Headbutt: в логе «испуган(а) и пропускает ход»;
+  [x] смена A: Mew -> Alakazam, входящий получил удар;
+  [x] Mirror Coat: в логе «возвращает удар вдвое»;
+  [x] смена B: Snorlax -> Machamp;
+  [x] Seismic Toss: в логе damage = 50 (уровень 50);
+  [x] Fury Cutter: сила растёт (в логе 7 -> 14, юнит-тест 40/80/160);
+  [x] Comet Punch / Fury Attack: multi-hit 2–5 в логе;
+  [x] обморок B2 -> фаза await_replace -> replace на Snorlax;
+  [x] forfeit B -> finished, winner = A;
+  [x] после боя HP и held_item_id сохранены в БД;
+  [x] PRAGMA integrity_check = ok.
+
+После прогона тестовые покемоны вылечены (HP=max), B1 снова держит
+item 133 — фикстура готова к повторному запуску. Сервер остановлен,
+database/pokemon.db-journal удалён.
+
+6. ОГРАНИЧЕНИЯ / НА БУДУЩЕЕ
+--------------------------------------------------------------------
+• Дикие покемоны и NPC-команды сейчас не носят held-предметы, поэтому
+  Thief в wild/trainer чаще всего пишет «крадёт» только при наличии
+  предмета; кража реально проверена юнит-тестом и поддержана в PvP.
+• Механики TM в игре нет: строки pokemon_attacks method=2 остаются
+  данными на будущее.
+• Fury Cutter считает серию по SameStreak (общий счётчик подряд
+  одинаковых ходов), как и было задумано для Эхо-Волн/Ледяного шара.
+• PvP-ветки flinch/Sacred Fire/held-персиста проверены живым HTTP-PvP
+  двумя аккаунтами (см. 5.1); GUI-браузер не использовался, но это
+  тот же серверный API, что и у клиента.
+
+7. БЭКАПЫ
+--------------------------------------------------------------------
+database/backups/pokemon.db.bak-before-gen2-moves-20261022-185147
+database/backups/pokemon.db.bak-before-gen2-moves-cleanup-20261022
+
+8. ЧЕК-ЛИСТ DoD
+--------------------------------------------------------------------
+[x] go build ./... / go vet ./... / go test ./... — зелёные
+[x] все 26 атак есть в attacks, лёрнсеты не пустые
+[x] каждая атака прогнана в боевых состояниях wild и trainer
+[x] механики: multi-hit, bind/wrap, Fury Cutter, Triple Kick, flinch,
+    False Swipe, Seismic Toss, Self Destruct, Thief, Mirror Coat,
+    Rage, статусы Body Slam/Thunder Punch/Sacred Fire, Steel Wing
+[x] регрессия multi-hit/bind/status
+[x] нет дублей attacks.name / attacks.eng_name
+[x] PRAGMA integrity_check = ok, сирот/дублей лёрнсетов нет
+[x] живой PvP двумя аккаунтами по HTTP (см. п. 5.1)
+[~] живой бой всеми 26 ходами в браузере — не проводился; боевые
+    ветки покрыты автотестами и живым PvP-сценарием
+====================================================================

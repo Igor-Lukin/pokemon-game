@@ -18,7 +18,7 @@ func LoginPostHandler(w http.ResponseWriter, r *http.Request) {
 	username := r.FormValue("username")
 	password := r.FormValue("password")
 
-	log.Println("Login attempt:", username, password)
+	log.Println("Login attempt:", username)
 
 	var user struct {
 		ID         int

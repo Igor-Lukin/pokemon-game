@@ -1,0 +1,83 @@
+TEST_evolution_items — эволюция через предметы (ген-2)
+=====================================================
+
+ЗАДАЧА
+------
+5 предметов: Sun Stone, King's Rock, Metal Coat, Dragon Scale, Up-Grade.
+Эволюция через pokemons.evolution_item_id, расход ровно одного предмета из
+user_items. Неподходящий предмет — no-op с сообщением. Админка: метод + предмет.
+
+СДЕЛАНО
+-------
+1) Предметы (id 151–155, category 5 evolution_stone, effect_type='evolve'):
+   151 Sun Stone      → 182 Беллоссом (из 44 Глум), 192 Санфлора (из 191 Санкерн)
+   152 King's Rock    → 186 Политоуд (из 61 Поливирл), 199 Слоукинг (из 79 Слоупок)
+   153 Metal Coat     → 208 Стиликс (из 95 Оникс), 212 Сайзор (из 123 Сайзер)
+   154 Dragon Scale   → 230 Кингдра (из 117 Сидра)
+   155 Up-Grade       → 233 Поригон2 (из 137 Поригон)
+
+   Методы: Sun Stone — stone(3), остальные — trade(2). Механика принимает
+   trade/stone/item (2/3/5), поэтому админ может переключить метод на item.
+   Иконки — временные плейсхолдеры 85×85: sun_stone.png, kings_rock.png,
+   metal_coat.png, dragon_scale.png, up_grade.png.
+
+2) server/db/database.go — seedEvolutionItems() вызывается из InitDB:
+   - идемпотентно создаёт категорию 5 и предметы 151–155 (INSERT OR IGNORE);
+   - проставляет evolution_item_id только там, где поле ещё NULL
+     (ручные правки админа повторным запуском не затираются).
+
+3) server/handlers/api/evolution.go:
+   - calcEvolvedStats() — общий расчёт статов после смены вида;
+   - EvolveWithItem() — поиск цели по evolves_from_id + evolution_item_id,
+     проверка владельца, расчёт статов, затем ОДНА транзакция:
+     списание quantity−1 из user_items + UPDATE user_pokemons с гардом по
+     старому pokemon_id. Повторный/параллельный вызов не спишет второй предмет.
+     После commit — InitLearnableAttacks и RemapAbilityOnEvolve.
+   - EvolveHandler переведён на общий calcEvolvedStats (регрессии уровня).
+
+4) server/handlers/api/inventory.go — case "evolve": сначала вызывает
+   EvolveWithItem; при no-op возвращает {success:false, message} и НЕ списывает
+   предмет. Успешная эволюция сама списывает предмет в транзакции.
+
+5) client/static/js/game.js — effect_type 'evolve' доступен в сумке:
+   выбор покемона команды (включая fainted), сообщение через showToast и на
+   успех, и на no-op.
+
+6) Админка (server/handlers/admin/pokemons.go + pokemon_form.html):
+   evolution_item_id теперь select с предметами эволюции (и текущим значением),
+   evolution_method_id — существующий select методов.
+
+7) server/handlers/api/evolution_item_test.go — автотест всех 8 связей:
+   эволюция, ровно −1 предмет, повторный no-op, неподходящий предмет,
+   отсутствие предмета.
+
+ПРОВЕРКИ
+--------
+[x] go build ./... — OK
+[x] go vet ./... — OK
+[x] node --check client/static/js/game.js — OK
+[x] go test ./... -count=1 — OK (TestEvolveWithItemAllLines PASS)
+
+Живой прогон (локальный сервер + временный игрок, затем удалён):
+[x] 5 предметов видны в /api/inventory с effect_type=evolve;
+[x] Sun Stone на Поливирла — success=false, предмет не списан, вид не изменился;
+[x] все 5 линий: 44→182, 61→186, 95→208, 117→230, 137→233 — успешно;
+[x] после каждой эволюции количество предмета 2→1;
+[x] повторное применение к уже эволюционировавшему виду — no-op, предмет остаётся 1;
+[x] без предмета эволюции нет (автотест);
+[x] админ-страница /admin/pokemons/edit?id=182 отдаёт поля
+    evolution_item_id (Sun Stone 151) и evolution_method_id;
+[x] PRAGMA integrity_check = ok; тестовые пользователи удалены.
+
+БД / ДАННЫЕ
+-----------
+Активная БД обновлена (items 151–155, 8 связей evolution_item_id).
+Бэкап до изменений: database/backups/pokemon_pre_evolution_items_20261023_111128.db.
+
+ПРИМЕЧАНИЯ
+----------
+- Предмет применяется к покемону из команды (position 1..6), как и остальные
+  расходники; покемоны из питомника в списке не показываются.
+- Иконки — плейсхолдеры, владелец может заменить файлы в
+  client/static/images/items/ без правки БД.
+- Тестовый сервер после прогона остановлен; порт 8080 свободен.

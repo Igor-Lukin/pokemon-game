@@ -17,18 +17,18 @@ import mathrand "math/rand"
 // StatusDef — "бланк" карточки статуса. 8 граф, общие для всех статусов.
 // Пустая графа (nil / 0) = "на этом этапе статус ничего не делает".
 type StatusDef struct {
-	Name        string                                    // 1. Имя — как показывать в логе (именительный падеж)
-	TickWord    string                                    // 1б. форма для сообщения об уроне ("получает урон от <TickWord>")
-	SkipMessage string                                    // 1в. сообщение при пропуске хода из-за статуса ("Покемон парализован")
-	ImmuneTypes []int                                     // 2. ИммунныТипы — типы, на которых статус не действует
-	Duration    int                                       // 3. Длительность — сколько ходов живёт (0 = до лечения)
-	OnTurn      func(p *BattlePokemon) int                // 4. КаждыйХод — изменение HP за ход (- урон / + лечение)
-	StatMult    map[int]float64                           // 5. МножительСтата — постоянные множители статов, пока висит
+	Name        string                                             // 1. Имя — как показывать в логе (именительный падеж)
+	TickWord    string                                             // 1б. форма для сообщения об уроне ("получает урон от <TickWord>")
+	SkipMessage string                                             // 1в. сообщение при пропуске хода из-за статуса ("Покемон парализован")
+	ImmuneTypes []int                                              // 2. ИммунныТипы — типы, на которых статус не действует
+	Duration    int                                                // 3. Длительность — сколько ходов живёт (0 = до лечения)
+	OnTurn      func(p *BattlePokemon) int                         // 4. КаждыйХод — изменение HP за ход (- урон / + лечение)
+	StatMult    map[int]float64                                    // 5. МножительСтата — постоянные множители статов, пока висит
 	CanAct      func(p *BattlePokemon, log *[]BattleLogEntry) bool // 6. МожетДействовать — false = пропускает ход; может менять статус и писать в лог (разморозка/пробуждение)
-	MoveFilter  func(p *BattlePokemon, m *BattleMove) bool // 7. ФильтрАтак — какие атаки запрещены (Фаза 1)
-	Custom      func(bs *BattleState, p *BattlePokemon)   // 8. СвойКод — заглушка для уникальной экзотики (Фаза 1+)
-	OnInflict   func(p *BattlePokemon)                     // 9. что сделать при наложении статуса (сон -> SleepTurns, сильный яд -> PoisonTurns)
-	UpgradeFrom int                                        // 10. можно навесить поверх этого статуса (сильный яд=7 поверх яда=6); 0 = только на чистого
+	MoveFilter  func(p *BattlePokemon, m *BattleMove) bool         // 7. ФильтрАтак — какие атаки запрещены (Фаза 1)
+	Custom      func(bs *BattleState, p *BattlePokemon)            // 8. СвойКод — заглушка для уникальной экзотики (Фаза 1+)
+	OnInflict   func(p *BattlePokemon)                             // 9. что сделать при наложении статуса (сон -> SleepTurns, сильный яд -> PoisonTurns)
+	UpgradeFrom int                                                // 10. можно навесить поверх этого статуса (сильный яд=7 поверх яда=6); 0 = только на чистого
 }
 
 // Индексы статов в StatStages (для графы StatMult): 1 Атака, 3 Скорость и т.д.
@@ -124,8 +124,16 @@ var statusRegistry = map[int]StatusDef{
 		SkipMessage: "Покемон спит",
 		OnInflict:   func(p *BattlePokemon) { p.SleepTurns = mathrand.Intn(3) + 1 },
 		CanAct: func(p *BattlePokemon, log *[]BattleLogEntry) bool {
+			// [batch7] Кома: постоянно спит, но действует.
+			if p.AbilityKey == "coma" {
+				return true
+			}
+			step := 1
+			if p.AbilityKey == "early_bird" {
+				step = 2
+			}
 			if p.SleepTurns > 0 {
-				p.SleepTurns--
+				p.SleepTurns -= step
 			}
 			if p.SleepTurns > 0 {
 				return false
@@ -178,10 +186,10 @@ func statMultiplier(statusID, statIdx int) float64 {
 
 // Condition — простое условие про состояние боя. Нулевое поле = "не задано".
 type Condition struct {
-	Weather      int // требуется эта погода (id из таблицы weather)
-	WeatherNot   int // требуется НЕ эта погода
-	SelfHPBelow  int // HP атакующего ниже N %
-	TargetType   int // цель этого типа (для иммунитетов)
+	Weather     int // требуется эта погода (id из таблицы weather)
+	WeatherNot  int // требуется НЕ эта погода
+	SelfHPBelow int // HP атакующего ниже N %
+	TargetType  int // цель этого типа (для иммунитетов)
 }
 
 // conditionMet — общий "судья": выполнено ли условие сейчас.
